@@ -1,0 +1,33 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.ave.generated"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.ave.generated"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++20 -Wall -Wextra"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    sourceSets {
+        main.java.srcDirs += ["__AVE_ENGINE_ROOT__/engine/runtime/android/java"]
+    }
+}

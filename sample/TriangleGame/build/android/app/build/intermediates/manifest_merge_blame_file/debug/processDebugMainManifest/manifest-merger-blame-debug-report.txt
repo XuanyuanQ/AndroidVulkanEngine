@@ -1,0 +1,53 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.example.trianglegame"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-feature
+11-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:2:5-121
+12        android:name="android.hardware.vulkan.version"
+12-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:2:19-65
+13        android:required="true"
+13-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:2:95-118
+14        android:version="0x00400000" />
+14-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:2:66-94
+15
+16    <application
+16-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:4:5-18:19
+17        android:debuggable="true"
+18        android:extractNativeLibs="false"
+19        android:hasCode="true"
+19-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:7:9-31
+20        android:label="TriangleGame"
+20-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:5:9-37
+21        android:theme="@style/AppTheme" >
+21-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:6:9-40
+22        <activity
+22-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:8:9-17:20
+23            android:name="com.ave.engine.AveActivity"
+23-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:9:13-54
+24            android:configChanges="keyboardHidden|orientation|screenSize"
+24-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:10:13-74
+25            android:exported="true"
+25-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:12:13-36
+26            android:screenOrientation="landscape" >
+26-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:11:13-50
+27            <intent-filter>
+27-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:13:13-16:29
+28                <action android:name="android.intent.action.MAIN" />
+28-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:14:17-69
+28-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:14:25-66
+29
+30                <category android:name="android.intent.category.LAUNCHER" />
+30-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:15:17-77
+30-->D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\AndroidManifest.xml:15:27-74
+31            </intent-filter>
+32        </activity>
+33    </application>
+34
+35</manifest>

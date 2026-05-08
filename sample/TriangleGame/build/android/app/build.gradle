@@ -1,0 +1,33 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.example.trianglegame"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.example.trianglegame"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++20 -Wall -Wextra"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    sourceSets {
+        main.java.srcDirs += ["D:/Code/ForestRendering/evaluation/AndroidVulkanEngine/engine/runtime/android/java"]
+    }
+}

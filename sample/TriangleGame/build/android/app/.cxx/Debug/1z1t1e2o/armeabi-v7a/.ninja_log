@@ -1,0 +1,4 @@
+# ninja log v5
+23	5488	7999568254499712	CMakeFiles/ave_runtime.dir/31d858b097429ce3e98616be435a2b19/engine/runtime/android/cpp/native_entry.cpp.o	e444e7730b785330
+2	15418	7999568352655384	CMakeFiles/ave_runtime.dir/31d858b097429ce3e98616be435a2b19/engine/runtime/android/cpp/minimal_vulkan_triangle.cpp.o	a9862c112c92b389
+15421	15857	7999568358200957	D:/Code/ForestRendering/evaluation/AndroidVulkanEngine/sample/TriangleGame/build/android/app/build/intermediates/cxx/Debug/1z1t1e2o/obj/armeabi-v7a/libave_runtime.so	437fb89ebc67ec69

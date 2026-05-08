@@ -1,0 +1,12 @@
+[
+{
+  "directory": "D:/Code/ForestRendering/evaluation/AndroidVulkanEngine/sample/TriangleGame/build/android/app/.cxx/Debug/1z1t1e2o/arm64-v8a",
+  "command": "D:\\Setup\\android_sdk\\ndk\\26.1.10909125\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --sysroot=D:/Setup/android_sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dave_runtime_EXPORTS -ID:/Code/ForestRendering/evaluation/AndroidVulkanEngine/engine/runtime/android/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++20 -Wall -Wextra -fno-limit-debug-info  -fPIC -o CMakeFiles\\ave_runtime.dir\\7d88ceb93db4b4cd654b01cee12673b1\\AndroidVulkanEngine\\engine\\runtime\\android\\cpp\\native_entry.cpp.o -c D:\\Code\\ForestRendering\\evaluation\\AndroidVulkanEngine\\engine\\runtime\\android\\cpp\\native_entry.cpp",
+  "file": "D:\\Code\\ForestRendering\\evaluation\\AndroidVulkanEngine\\engine\\runtime\\android\\cpp\\native_entry.cpp"
+},
+{
+  "directory": "D:/Code/ForestRendering/evaluation/AndroidVulkanEngine/sample/TriangleGame/build/android/app/.cxx/Debug/1z1t1e2o/arm64-v8a",
+  "command": "D:\\Setup\\android_sdk\\ndk\\26.1.10909125\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --sysroot=D:/Setup/android_sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dave_runtime_EXPORTS -ID:/Code/ForestRendering/evaluation/AndroidVulkanEngine/engine/runtime/android/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++20 -Wall -Wextra -fno-limit-debug-info  -fPIC -o CMakeFiles\\ave_runtime.dir\\31d858b097429ce3e98616be435a2b19\\engine\\runtime\\android\\cpp\\minimal_vulkan_triangle.cpp.o -c D:\\Code\\ForestRendering\\evaluation\\AndroidVulkanEngine\\engine\\runtime\\android\\cpp\\minimal_vulkan_triangle.cpp",
+  "file": "D:\\Code\\ForestRendering\\evaluation\\AndroidVulkanEngine\\engine\\runtime\\android\\cpp\\minimal_vulkan_triangle.cpp"
+}
+]

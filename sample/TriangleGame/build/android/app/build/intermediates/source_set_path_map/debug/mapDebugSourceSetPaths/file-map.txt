@@ -1,0 +1,7 @@
+com.example.trianglegame.app-pngs-0 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\generated\res\pngs\debug
+com.example.trianglegame.app-resValues-1 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\generated\res\resValues\debug
+com.example.trianglegame.app-packageDebugResources-2 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.example.trianglegame.app-packageDebugResources-3 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.example.trianglegame.app-debug-4 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.example.trianglegame.app-debug-5 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\debug\res
+com.example.trianglegame.app-main-6 D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\src\main\res
