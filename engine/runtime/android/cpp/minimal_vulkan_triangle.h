@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ave/rhi/VulkanDevice.h"
+
 #include <android/asset_manager.h>
 #include <android/native_window.h>
 #include <vulkan/vulkan.h>
@@ -18,10 +20,7 @@ public:
     void resize(int width, int height);
 
 private:
-    bool createInstance();
     bool createSurface();
-    bool selectPhysicalDevice();
-    bool createDevice();
     bool createSwapchain();
     bool createRenderPass();
     bool loadSceneMesh();
@@ -38,7 +37,6 @@ private:
     void logProjectAsset() const;
     std::vector<uint32_t> readShaderAsset(char const* path) const;
     std::string readTextAsset(char const* path) const;
-    uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
 
     struct Vertex {
         float position[3];
@@ -51,12 +49,8 @@ private:
     int width_ = 0;
     int height_ = 0;
 
-    VkInstance instance_ = VK_NULL_HANDLE;
+    rhi::VulkanDevice device_;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-    VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
-    VkDevice device_ = VK_NULL_HANDLE;
-    uint32_t graphics_queue_family_ = UINT32_MAX;
-    VkQueue graphics_queue_ = VK_NULL_HANDLE;
 
     VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
     VkFormat swapchain_format_ = VK_FORMAT_UNDEFINED;
