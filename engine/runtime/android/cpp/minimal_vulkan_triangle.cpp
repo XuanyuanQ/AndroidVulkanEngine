@@ -2,13 +2,13 @@
 
 #include "minimal_vulkan_triangle.h"
 
+#include "ave/project/XmlSceneLoader.h"
+
 #include <android/log.h>
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <limits>
-#include <regex>
-#include <sstream>
 #include <stdexcept>
 
 namespace ave::android {
@@ -55,37 +55,6 @@ VkPresentModeKHR choosePresentMode(std::vector<VkPresentModeKHR> const& modes)
         }
     }
     return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-std::array<float, 3> parseFloat3(std::string const& text, std::array<float, 3> fallback)
-{
-    if (text.empty()) {
-        return fallback;
-    }
-    std::array<float, 3> value = fallback;
-    char comma = 0;
-    std::stringstream stream(text);
-    stream >> value[0] >> comma >> value[1] >> comma >> value[2];
-    return value;
-}
-
-std::array<float, 4> parseFloat4(std::string const& text, std::array<float, 4> fallback)
-{
-    if (text.empty()) {
-        return fallback;
-    }
-    std::array<float, 4> value = fallback;
-    char comma = 0;
-    std::stringstream stream(text);
-    stream >> value[0] >> comma >> value[1] >> comma >> value[2] >> comma >> value[3];
-    return value;
-}
-
-std::string attribute(std::string const& tag, std::string const& name)
-{
-    std::regex const pattern(name + "=\"([^\"]*)\"");
-    std::smatch match;
-    return std::regex_search(tag, match, pattern) ? match[1].str() : std::string{};
 }
 
 } // namespace
@@ -367,31 +336,24 @@ bool MinimalVulkanTriangle::createRenderPass()
 bool MinimalVulkanTriangle::loadSceneMesh()
 {
     vertices_.clear();
-    auto project_text = readTextAsset(project_path_.c_str());
 
-    std::string scene_path = "scenes/main.scene.xml";
-    std::regex const entry_pattern("entryScene=\"([^\"]*)\"");
-    std::smatch entry_match;
-    if (std::regex_search(project_text, entry_match, entry_pattern)) {
-        scene_path = entry_match[1].str();
-    }
+    ave::project::XmlSceneLoader loader;
+    auto const project_text = readTextAsset(project_path_.c_str());
+    auto const project = loader.LoadProjectText(project_text);
+    auto const scene_text = readTextAsset(project.entry_scene.c_str());
+    auto const scene = loader.LoadSceneText(scene_text);
 
-    auto scene_text = readTextAsset(scene_path.c_str());
-    std::regex const vertex_pattern(R"(<Vertex\b[^>]*/?>)");
-    for (std::sregex_iterator it(scene_text.begin(), scene_text.end(), vertex_pattern), end; it != end; ++it) {
-        auto const tag = it->str();
-        auto const position = parseFloat3(attribute(tag, "position"), {0.0f, 0.0f, 0.0f});
-        auto const color = parseFloat4(attribute(tag, "color"), {1.0f, 1.0f, 1.0f, 1.0f});
+    for (auto const& object : scene.objects) {
+        if (!object.has_mesh) {
+            continue;
+        }
 
-        Vertex vertex{};
-        vertex.position[0] = position[0];
-        vertex.position[1] = position[1];
-        vertex.position[2] = position[2];
-        vertex.color[0] = color[0];
-        vertex.color[1] = color[1];
-        vertex.color[2] = color[2];
-        vertex.color[3] = color[3];
-        vertices_.push_back(vertex);
+        for (auto const& source : object.mesh.vertices) {
+            Vertex vertex{};
+            std::copy(source.position.begin(), source.position.end(), vertex.position);
+            std::copy(source.color.begin(), source.color.end(), vertex.color);
+            vertices_.push_back(vertex);
+        }
     }
 
     if (vertices_.size() < 3) {
@@ -399,7 +361,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         return false;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded %zu XML-defined vertices from %s", vertices_.size(), scene_path.c_str());
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded %zu XML-defined vertices from %s", vertices_.size(), project.entry_scene.c_str());
     return true;
 }
 

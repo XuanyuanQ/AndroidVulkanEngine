@@ -79,6 +79,11 @@ std::string XmlSceneLoader::ReadText(std::filesystem::path const& path)
 ProjectConfig XmlSceneLoader::LoadProject(std::filesystem::path const& project_xml) const
 {
     auto const text = ReadText(project_xml);
+    return LoadProjectText(text);
+}
+
+ProjectConfig XmlSceneLoader::LoadProjectText(std::string const& text) const
+{
     std::regex const pattern(R"(<Project\b[^>]*>)");
     std::smatch match;
     if (!std::regex_search(text, match, pattern)) {
@@ -97,6 +102,11 @@ ProjectConfig XmlSceneLoader::LoadProject(std::filesystem::path const& project_x
 SceneDocument XmlSceneLoader::LoadScene(std::filesystem::path const& scene_xml) const
 {
     auto const text = ReadText(scene_xml);
+    return LoadSceneText(text);
+}
+
+SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
+{
     std::regex const scene_pattern(R"(<Scene\b[^>]*>)");
     std::smatch scene_match;
     if (!std::regex_search(text, scene_match, scene_pattern)) {
