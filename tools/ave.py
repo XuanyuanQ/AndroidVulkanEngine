@@ -124,6 +124,7 @@ def compile_shaders(project_dir: Path, output_dir: Path) -> None:
 
 def run_gradle(output_dir: Path) -> None:
     gradlew = output_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
+    print("gradlew:",gradlew)
     if gradlew.exists():
         command = [str(gradlew), "assembleDebug"]
     else:
@@ -140,6 +141,10 @@ def build_android(args: argparse.Namespace) -> None:
     project_dir = Path(args.project).resolve()
     config = read_project(project_dir)
     validate_scene(project_dir, config["entry_scene"])
+
+    # Set VULKAN_SDK environment variable if provided
+    if args.vulkan_sdk:
+        os.environ["VULKAN_SDK"] = args.vulkan_sdk
 
     output_dir = Path(args.output).resolve() if args.output else project_dir / "build" / "android"
     if output_dir.exists():
@@ -183,6 +188,7 @@ def main() -> int:
     android.add_argument("project", help="Path to a game project folder")
     android.add_argument("--output", help="Generated Android project output directory")
     android.add_argument("--sdk-dir", help="Android SDK path used to generate local.properties")
+    android.add_argument("--vulkan-sdk", help="Vulkan SDK path (sets VULKAN_SDK environment variable)")
     android.add_argument("--no-gradle", action="store_true", help="Generate Android project without invoking Gradle")
     android.set_defaults(func=build_android)
 

@@ -1,5 +1,0 @@
-<Project
-    name="TriangleGame"
-    package="com.example.trianglegame"
-    entryScene="scenes/main.scene.xml"
-    orientation="landscape" />

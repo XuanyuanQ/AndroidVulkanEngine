@@ -1,6 +1,16 @@
 #pragma once
 
+#include "VkContext.hpp"
+#include "VkSwapchain.hpp"
+#include "VkFrameSync.hpp"
+
 #include "ave/rhi/VulkanDevice.h"
+
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
+#include <vulkan/vulkan_raii.hpp>
+#else
+import vulkan_hpp;
+#endif
 
 #include <android/asset_manager.h>
 #include <android/native_window.h>
@@ -20,20 +30,16 @@ public:
     void resize(int width, int height);
 
 private:
-    bool createSurface();
-    bool createSwapchain();
     bool createRenderPass();
     bool loadSceneMesh();
     bool createVertexBuffer();
     bool createPipeline();
     bool createFramebuffers();
     bool createCommandPoolAndBuffers();
-    bool createSyncObjects();
-    void recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index);
+    void recordCommandBuffer(vk::raii::CommandBuffer& command_buffer, uint32_t image_index);
     void drawFrame();
 
     void cleanupSurfaceResources();
-    void cleanupDeviceResources();
     void logProjectAsset() const;
     std::vector<uint32_t> readShaderAsset(char const* path) const;
     std::string readTextAsset(char const* path) const;
@@ -49,27 +55,23 @@ private:
     int width_ = 0;
     int height_ = 0;
 
-    rhi::VulkanDevice device_;
-    VkSurfaceKHR surface_ = VK_NULL_HANDLE;
+    vkfw::VkContext ctx_{};
+    vkfw::VkSwapchain swapchainWrap_{};
+    vkfw::VkFrameSync sync_{};
+    uint32_t frame_index_ = 0;
 
-    VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
-    VkFormat swapchain_format_ = VK_FORMAT_UNDEFINED;
-    VkExtent2D swapchain_extent_{};
-    std::vector<VkImage> swapchain_images_;
-    std::vector<VkImageView> swapchain_image_views_;
-    std::vector<VkFramebuffer> framebuffers_;
+    // Vulkan objects using raii wrappers
 
-    VkRenderPass render_pass_ = VK_NULL_HANDLE;
-    VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline pipeline_ = VK_NULL_HANDLE;
-    VkBuffer vertex_buffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory vertex_memory_ = VK_NULL_HANDLE;
-    VkCommandPool command_pool_ = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> command_buffers_;
+    vk::raii::RenderPass render_pass_ = nullptr;
+    vk::raii::PipelineLayout pipeline_layout_ = nullptr;
+    vk::raii::Pipeline pipeline_ = nullptr;
+    vk::raii::Buffer vertex_buffer_ = nullptr;
+    vk::raii::DeviceMemory vertex_memory_ = nullptr;
+    vk::raii::CommandPool command_pool_ = nullptr;
+    std::vector<vk::raii::CommandBuffer> command_buffers_;
+    std::vector<vk::raii::Framebuffer> framebuffers_;
 
-    VkSemaphore image_available_ = VK_NULL_HANDLE;
-    VkSemaphore render_finished_ = VK_NULL_HANDLE;
-    VkFence in_flight_ = VK_NULL_HANDLE;
+    // Synchronization objects now managed by vkfw::VkFrameSync
     std::vector<Vertex> vertices_;
 };
 

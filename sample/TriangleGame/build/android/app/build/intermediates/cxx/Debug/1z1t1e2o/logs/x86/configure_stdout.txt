@@ -1,9 +1,0 @@
--- The CXX compiler identification is Clang 17.0.2
--- Detecting CXX compiler ABI info
--- Detecting CXX compiler ABI info - done
--- Check for working CXX compiler: D:/Setup/android_sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/bin/clang++.exe - skipped
--- Detecting CXX compile features
--- Detecting CXX compile features - done
--- Configuring done
--- Generating done
--- Build files have been written to: D:/Code/ForestRendering/evaluation/AndroidVulkanEngine/sample/TriangleGame/build/android/app/.cxx/Debug/1z1t1e2o/x86

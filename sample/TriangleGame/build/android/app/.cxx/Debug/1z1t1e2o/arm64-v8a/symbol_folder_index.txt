@@ -1,1 +1,0 @@
-D:\Code\ForestRendering\evaluation\AndroidVulkanEngine\sample\TriangleGame\build\android\app\build\intermediates\cxx\Debug\1z1t1e2o\obj\arm64-v8a
