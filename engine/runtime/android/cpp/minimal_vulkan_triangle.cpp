@@ -76,11 +76,11 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         return;
     }
 
-    ave::rhi::RasterShaderCode shaders{
+    ave::render::RasterShaderCode shaders{
         readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
         readShaderAsset("compiled_shaders/solid_triangle.frag.spv"),
     };
-    if (!renderer_.Initialize(ctx_, swapchainWrap_, sync_, vertices_, shaders)) {
+    if (!renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders)) {
         logError("Failed to initialize Vulkan triangle renderer.");
         return;
     }
@@ -139,7 +139,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         }
 
         for (auto const& source : object.mesh.vertices) {
-            ave::rhi::RasterColorVertex vertex{};
+            ave::render::RasterColorVertex vertex{};
             vertex.position = source.position;
             vertex.color = source.color;
             vertices_.push_back(vertex);
@@ -157,12 +157,12 @@ bool MinimalVulkanTriangle::loadSceneMesh()
 
 void MinimalVulkanTriangle::drawFrame()
 {
-    renderer_.RenderFrame(ctx_, swapchainWrap_, sync_, frame_index_);
+    renderer_.RenderRasterFrame(ctx_, swapchainWrap_, sync_, frame_index_);
 }
 
 void MinimalVulkanTriangle::cleanupSurfaceResources()
 {
-    renderer_.Shutdown();
+    renderer_.ShutdownRaster();
 }
 
 

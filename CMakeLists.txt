@@ -25,6 +25,8 @@ add_library(ave_engine STATIC
 target_include_directories(ave_engine
     PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/core"
 )
 
 target_compile_features(ave_engine PUBLIC cxx_std_20)

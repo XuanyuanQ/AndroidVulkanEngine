@@ -3,7 +3,7 @@
 #include "VkContext.hpp"
 #include "VkSwapchain.hpp"
 #include "VkFrameSync.hpp"
-#include "VulkanRasterRenderer.hpp"
+#include "ave/render/Renderer.h"
 
 #include <android/asset_manager.h>
 #include <android/native_window.h>
@@ -40,8 +40,8 @@ private:
     vkfw::VkSwapchain swapchainWrap_{};
     vkfw::VkFrameSync sync_{};
     uint32_t frame_index_ = 0;
-    rhi::VulkanRasterRenderer renderer_{};
-    std::vector<rhi::RasterColorVertex> vertices_{};
+    ave::render::Renderer renderer_{};
+    std::vector<ave::render::RasterColorVertex> vertices_{};
 };
 
 } // namespace ave::android
