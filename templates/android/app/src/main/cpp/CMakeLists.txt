@@ -26,14 +26,20 @@ find_path(VULKAN_HPP_INCLUDE_DIR
     NO_CMAKE_FIND_ROOT_PATH
 )
 
-file(GLOB CORE_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
+# file(GLOB CORE_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
 file(GLOB RHI_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
 add_library(ave_runtime SHARED
     "${AVE_ANDROID_RUNTIME}/native_entry.cpp"
     "${AVE_ANDROID_RUNTIME}/minimal_vulkan_triangle.cpp"
+    "${AVE_ENGINE_ROOT}/src/core/JobSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
-    # "${AVE_ENGINE_ROOT}/src/rhi/VulkanDevice.cpp"
-    "${CORE_SOURCES}"
+    # "${CORE_SOURCES}"
+    "${AVE_ENGINE_ROOT}/src/core/JobSystem.cpp"
+    "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
+    "${AVE_ENGINE_ROOT}/src/resource/GpuUploadQueue.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/CommandRecorder.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/FrameGraph.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/Renderer.cpp"
     "${RHI_SOURCES}"
 )
 
