@@ -123,7 +123,7 @@ static uint32_t FindGraphicsPresentQueueFamily(vk::raii::PhysicalDevice const& p
 
 static bool DeviceSuitable(vk::raii::PhysicalDevice const& pd, vk::SurfaceKHR surface)
 {
-  if (pd.getProperties().apiVersion < VK_API_VERSION_1_3)
+  if (pd.getProperties().apiVersion < VK_API_VERSION_1_0)
     return false;
 
   if (FindGraphicsPresentQueueFamily(pd, surface) == ~0u)
@@ -134,17 +134,6 @@ static bool DeviceSuitable(vk::raii::PhysicalDevice const& pd, vk::SurfaceKHR su
     if (!HasExtension(exts, req))
       return false;
   }
-
-  auto feats = pd.getFeatures2<
-      vk::PhysicalDeviceFeatures2,
-      vk::PhysicalDeviceVulkan11Features,
-      vk::PhysicalDeviceVulkan13Features>();
-  auto const& f11 = feats.get<vk::PhysicalDeviceVulkan11Features>();
-  auto const& f13 = feats.get<vk::PhysicalDeviceVulkan13Features>();
-  if (!f11.shaderDrawParameters)
-    return false;
-  if (!f13.dynamicRendering || !f13.synchronization2)
-    return false;
 
   return true;
 }
@@ -166,7 +155,9 @@ bool VkContext::Init(ContextCreateInfo const& info)
   app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
   app_info.pEngineName = "vkfw";
   app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  app_info.apiVersion = VK_API_VERSION_1_3;
+  // The current Android sample still uses render passes and classic sync primitives,
+  // so requiring Vulkan 1.3 would reject otherwise-capable mobile GPUs for no benefit.
+  app_info.apiVersion = VK_API_VERSION_1_0;
 
   std::vector<char const*> layers{};
   if (impl_->enable_validation) {
@@ -248,18 +239,8 @@ bool VkContext::Init(ContextCreateInfo const& info)
   qci.queueCount = 1;
   qci.pQueuePriorities = &priority;
 
-  vk::PhysicalDeviceVulkan11Features f11{};
-  f11.shaderDrawParameters = VK_TRUE;
-  vk::PhysicalDeviceVulkan13Features f13{};
-  f13.dynamicRendering = VK_TRUE;
-  f13.synchronization2 = VK_TRUE;
-  f11.pNext = &f13;
-  vk::PhysicalDeviceFeatures2 f2{};
-  f2.pNext = &f11;
-
   auto dev_exts = RequiredDeviceExtensions();
   vk::DeviceCreateInfo dci{};
-  dci.pNext = &f2;
   dci.queueCreateInfoCount = 1;
   dci.pQueueCreateInfos = &qci;
   dci.enabledExtensionCount = static_cast<uint32_t>(dev_exts.size());

@@ -16,6 +16,16 @@ else()
     message(STATUS "Using system Vulkan library")
 endif()
 
+find_path(VULKAN_HPP_INCLUDE_DIR
+    NAMES vulkan/vulkan_raii.hpp
+    PATHS
+        "$ENV{VULKAN_SDK}/Include"
+        "$ENV{VULKAN_SDK}/include"
+        /usr/local/include
+        /opt/homebrew/include
+    NO_CMAKE_FIND_ROOT_PATH
+)
+
 file(GLOB CORE_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
 add_library(ave_runtime SHARED
     "${AVE_ANDROID_RUNTIME}/native_entry.cpp"
@@ -35,8 +45,8 @@ target_include_directories(ave_runtime
 )
 
 # 添加本地 Vulkan 头文件路径
-if(VULKAN_SDK_PATH)
-    target_include_directories(ave_runtime PRIVATE "$ENV{VULKAN_SDK}/Include")
+if(VULKAN_HPP_INCLUDE_DIR)
+    target_include_directories(ave_runtime PRIVATE "${VULKAN_HPP_INCLUDE_DIR}")
 endif()
 
 
