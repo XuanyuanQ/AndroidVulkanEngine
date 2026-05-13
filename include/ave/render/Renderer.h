@@ -4,7 +4,6 @@
 #include "ave/render/CommandRecorder.h"
 #include "ave/render/FrameGraph.h"
 #include "ave/resource/GpuUploadQueue.h"
-#include "ave/rhi/VulkanDevice.h"
 
 namespace ave::render {
 

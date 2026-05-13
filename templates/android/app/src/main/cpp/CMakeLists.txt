@@ -27,12 +27,14 @@ find_path(VULKAN_HPP_INCLUDE_DIR
 )
 
 file(GLOB CORE_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
+file(GLOB RHI_SOURCES "${AVE_ENGINE_ROOT}/src/rhi/core/*.cpp")
 add_library(ave_runtime SHARED
     "${AVE_ANDROID_RUNTIME}/native_entry.cpp"
     "${AVE_ANDROID_RUNTIME}/minimal_vulkan_triangle.cpp"
     "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
-    "${AVE_ENGINE_ROOT}/src/rhi/VulkanDevice.cpp"
+    # "${AVE_ENGINE_ROOT}/src/rhi/VulkanDevice.cpp"
     "${CORE_SOURCES}"
+    "${RHI_SOURCES}"
 )
 
 target_compile_features(ave_runtime PRIVATE cxx_std_20)

@@ -5,3 +5,5 @@ adb install -r sample\TriangleGame\build\android\app\build\outputs\apk\debug\app
 adb shell am start -n com.example.trianglegame/com.ave.engine.AveActivity
 
 adb shell am force-stop com.example.trianglegame
+
+taskkill /F /IM emulator.exe /T 

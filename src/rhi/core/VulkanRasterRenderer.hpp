@@ -1,8 +1,12 @@
 #pragma once
 
 #include "VkContext.hpp"
-#include "VkFrameSync.hpp"
 #include "VkSwapchain.hpp"
+#include "VkFrameSync.hpp"
+#include "VkRenderPass.hpp"
+#include "VkPipeline.hpp"
+#include "VkBuffer.hpp"
+#include "VkShader.hpp"
 
 #include <array>
 #include <cstdint>
@@ -57,7 +61,7 @@ private:
 
   bool initialized_ = false;
   std::vector<RasterColorVertex> vertices_{};
-  vk::raii::RenderPass render_pass_{nullptr};
+  vkfw::VkRenderPass render_pass_;
   vk::raii::PipelineLayout pipeline_layout_{nullptr};
   vk::raii::Pipeline pipeline_{nullptr};
   vk::raii::Buffer vertex_buffer_{nullptr};

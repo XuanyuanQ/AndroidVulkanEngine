@@ -108,49 +108,32 @@ void VulkanRasterRenderer::RenderFrame(vkfw::VkContext& ctx,
   frame_index = (frame_index + 1) % sync.FramesInFlight();
 }
 
+
 bool VulkanRasterRenderer::createRenderPass(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain)
 {
-  vk::AttachmentDescription color_attachment{};
-  color_attachment.format = swapchain.Format();
-  color_attachment.samples = vk::SampleCountFlagBits::e1;
-  color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-  color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-  color_attachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-  color_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-  color_attachment.initialLayout = vk::ImageLayout::eUndefined;
-  color_attachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+    vkfw::RenderPassInfo render_pass_info{};
+    
+    vkfw::RenderPassSubpass subpass{};
+    vkfw::RenderPassAttachment color_attachment{};
+    color_attachment.binding = 0;
+    color_attachment.type = vkfw::RenderPassAttachmentType::Color;
+    color_attachment.format = swapchain.Format();
+    color_attachment.samples = vk::SampleCountFlagBits::e1;
+    color_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
+    color_attachment.store_op = vkfw::RenderPassStoreOp::Store;
+    color_attachment.initial_layout = vk::ImageLayout::eUndefined;
+    color_attachment.final_layout = vk::ImageLayout::ePresentSrcKHR;
+    
+    subpass.color_attachments.push_back(color_attachment);
+    render_pass_info.subpasses.push_back(subpass);
+    render_pass_info.final_layout = vk::ImageLayout::ePresentSrcKHR;
 
-  vk::AttachmentReference color_ref{};
-  color_ref.attachment = 0;
-  color_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
+    if (!render_pass_.Init(ctx, render_pass_info)) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to create render pass");
+        return false;
+    }
 
-  vk::SubpassDescription subpass{};
-  subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-  subpass.colorAttachmentCount = 1;
-  subpass.pColorAttachments = &color_ref;
-
-  vk::SubpassDependency dependency{};
-  dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-  dependency.dstSubpass = 0;
-  dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-  dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-  dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-
-  vk::RenderPassCreateInfo create_info{};
-  create_info.attachmentCount = 1;
-  create_info.pAttachments = &color_attachment;
-  create_info.subpassCount = 1;
-  create_info.pSubpasses = &subpass;
-  create_info.dependencyCount = 1;
-  create_info.pDependencies = &dependency;
-
-  try {
-    render_pass_ = vk::raii::RenderPass(ctx.Device(), create_info);
     return true;
-  } catch (vk::SystemError& e) {
-    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createRenderPass failed: %s", e.what());
-    return false;
-  }
 }
 
 bool VulkanRasterRenderer::createVertexBuffer(vkfw::VkContext& ctx, std::span<RasterColorVertex const> vertices)
@@ -281,7 +264,7 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
     pipeline_info.pMultisampleState = &multisample;
     pipeline_info.pColorBlendState = &blend;
     pipeline_info.layout = *pipeline_layout_;
-    pipeline_info.renderPass = *render_pass_;
+    pipeline_info.renderPass = render_pass_.Handle();
     pipeline_info.subpass = 0;
 
     pipeline_ = vk::raii::Pipeline(ctx.Device(), nullptr, pipeline_info);
@@ -301,7 +284,7 @@ bool VulkanRasterRenderer::createFramebuffers(vkfw::VkContext& ctx, vkfw::VkSwap
     for (uint32_t i = 0; i < swapchain.ImageCount(); ++i) {
       auto view = swapchain.ImageView(i);
       vk::FramebufferCreateInfo create_info{};
-      create_info.renderPass = *render_pass_;
+      create_info.renderPass = render_pass_.Handle();
       create_info.attachmentCount = 1;
       create_info.pAttachments = &view;
       create_info.width = extent.width;
@@ -349,7 +332,7 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
   clear.color.float32[3] = 1.0f;
 
   vk::RenderPassBeginInfo render_pass_info{};
-  render_pass_info.renderPass = *render_pass_;
+  render_pass_info.renderPass = render_pass_.Handle();
   render_pass_info.framebuffer = *framebuffers_.at(image_index);
   render_pass_info.renderArea.extent = swapchain.Extent();
   render_pass_info.clearValueCount = 1;
@@ -371,7 +354,7 @@ void VulkanRasterRenderer::destroyResources()
   command_pool_ = nullptr;
   pipeline_ = nullptr;
   pipeline_layout_ = nullptr;
-  render_pass_ = nullptr;
+  // render_pass_ = nullptr;
   vertex_buffer_ = nullptr;
   vertex_memory_ = nullptr;
   vertices_.clear();
