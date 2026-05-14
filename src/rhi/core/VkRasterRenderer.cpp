@@ -1,0 +1,301 @@
+#include "VulkanRasterRenderer.hpp"
+
+#include <android/log.h>
+#include <cstring>
+#include <stdexcept>
+
+namespace ave::rhi {
+namespace {
+
+constexpr char kLogTag[] = "AveRuntime";
+
+} // namespace
+
+bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
+                                      vkfw::VkSwapchain& swapchain,
+                                      vkfw::VkFrameSync& sync,
+                                      std::span<RasterColorVertex const> vertices,
+                                      RasterShaderCode const& shaders)
+{
+  Shutdown();
+  ctx_ = &ctx;
+  vertices_.assign(vertices.begin(), vertices.end());
+
+  if (!createVertexBuffer(ctx, vertices) ||
+      !createRenderPass(ctx, swapchain) ||
+      !createPipeline(ctx, swapchain, shaders) ||
+      !createFramebuffers(ctx, swapchain) ||
+      !createCommandPoolAndBuffers(ctx, sync)) {
+    destroyResources();
+    return false;
+  }
+
+  initialized_ = true;
+  return true;
+}
+
+void VulkanRasterRenderer::Shutdown()
+{
+  destroyResources();
+  ctx_ = nullptr;
+  initialized_ = false;
+}
+
+void VulkanRasterRenderer::RenderFrame(vkfw::VkContext& ctx,
+                                       vkfw::VkSwapchain& swapchain,
+                                       vkfw::VkFrameSync& sync,
+                                       uint32_t& frame_index)
+{
+  if (!initialized_ || swapchain.Handle() == vk::SwapchainKHR{} || command_buffers_.Count() == 0) {
+    return;
+  }
+
+  sync.WaitForFrame(ctx, frame_index);
+  auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
+  if (acq_result == vk::Result::eErrorOutOfDateKHR) {
+    return;
+  }
+  if (acq_result != vk::Result::eSuccess && acq_result != vk::Result::eSuboptimalKHR) {
+    throw std::runtime_error("acquireNextImage failed");
+  }
+
+  sync.ResetFence(ctx, frame_index);
+  command_buffers_.Reset(frame_index);
+  auto cmd = command_buffers_.Handle(frame_index);
+  recordCommandBuffer(swapchain, cmd, image_index);
+  swapchain.MarkUsed(image_index);
+
+  vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+  vk::SubmitInfo submit{};
+  submit.waitSemaphoreCount = 1;
+  auto image_avail = sync.ImageAvailable(frame_index);
+  submit.pWaitSemaphores = &image_avail;
+  submit.pWaitDstStageMask = &wait_stage;
+  submit.commandBufferCount = 1;
+  submit.pCommandBuffers = &cmd;
+  submit.signalSemaphoreCount = 1;
+  auto render_finished = sync.RenderFinished(frame_index);
+  submit.pSignalSemaphores = &render_finished;
+  ctx.GraphicsQueue().submit(submit, sync.InFlightFence(frame_index));
+
+  vk::PresentInfoKHR present{};
+  present.waitSemaphoreCount = 1;
+  present.pWaitSemaphores = &render_finished;
+  present.swapchainCount = 1;
+  auto handle = swapchain.Handle();
+  present.pSwapchains = &handle;
+  present.pImageIndices = &image_index;
+  auto pres_result = ctx.GraphicsQueue().presentKHR(present);
+  if (pres_result == vk::Result::eErrorOutOfDateKHR || pres_result == vk::Result::eSuboptimalKHR) {
+    return;
+  }
+  if (pres_result != vk::Result::eSuccess) {
+    throw std::runtime_error("presentKHR failed");
+  }
+
+  frame_index = (frame_index + 1) % sync.FramesInFlight();
+}
+
+
+bool VulkanRasterRenderer::createRenderPass(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain)
+{
+    vkfw::RenderPassInfo render_pass_info{};
+    
+    vkfw::RenderPassSubpass subpass{};
+    vkfw::RenderPassAttachment color_attachment{};
+    color_attachment.binding = 0;
+    color_attachment.type = vkfw::RenderPassAttachmentType::Color;
+    color_attachment.format = swapchain.Format();
+    color_attachment.samples = vk::SampleCountFlagBits::e1;
+    color_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
+    color_attachment.store_op = vkfw::RenderPassStoreOp::Store;
+    color_attachment.initial_layout = vk::ImageLayout::eUndefined;
+    color_attachment.final_layout = vk::ImageLayout::ePresentSrcKHR;
+    
+    subpass.color_attachments.push_back(color_attachment);
+    render_pass_info.subpasses.push_back(subpass);
+    render_pass_info.final_layout = vk::ImageLayout::ePresentSrcKHR;
+
+    if (!render_pass_.Init(ctx, render_pass_info)) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to create render pass");
+        return false;
+    }
+
+    return true;
+}
+
+bool VulkanRasterRenderer::createVertexBuffer(vkfw::VkContext& ctx, std::span<RasterColorVertex const> vertices)
+{
+  uint32_t const buffer_size = static_cast<uint32_t>(sizeof(RasterColorVertex) * vertices.size());
+  if (!vertex_buffer_.Init(ctx, vkfw::BufferInfo{
+          .size = buffer_size,
+          .usage = vkfw::BufferUsage::Vertex,
+          .mappable = true,
+      })) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createVertexBuffer failed");
+    return false;
+  }
+
+  vertex_buffer_.UpdateData(ctx, vertices.data(), buffer_size);
+  return true;
+}
+
+bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
+                                          vkfw::VkSwapchain& swapchain,
+                                          RasterShaderCode const& shaders)
+{
+  if (shaders.vertex.empty() || shaders.fragment.empty()) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: shader code is empty");
+    return false;
+  }
+
+  try {
+    vkfw::VkShader vertex_shader{};
+    if (!vertex_shader.Init(ctx, vkfw::ShaderInfo{
+            .spirv_code = shaders.vertex,
+            .stage = vkfw::ShaderStage::Vertex,
+            .entry_point = "main",
+        })) {
+      __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: vertex shader init");
+      return false;
+    }
+
+    vkfw::VkShader fragment_shader{};
+    if (!fragment_shader.Init(ctx, vkfw::ShaderInfo{
+            .spirv_code = shaders.fragment,
+            .stage = vkfw::ShaderStage::Fragment,
+            .entry_point = "main",
+        })) {
+      __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: fragment shader init");
+      return false;
+    }
+
+    if (!pipeline_layout_.Init(ctx, {})) {
+      __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: pipeline layout init");
+      return false;
+    }
+
+    vk::Viewport viewport{};
+    auto extent = swapchain.Extent();
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    vk::Rect2D scissor{};
+    scissor.extent = extent;
+
+    vkfw::PipelineInfo pipeline_info{};
+    pipeline_info.shaders.push_back(std::move(vertex_shader));
+    pipeline_info.shaders.push_back(std::move(fragment_shader));
+    pipeline_info.vertex_input.vertex_inputs = {
+        vkfw::PipelineVertexInput{
+            .binding = 0,
+            .location = 0,
+            .stride = static_cast<uint32_t>(sizeof(RasterColorVertex)),
+            .format = vk::Format::eR32G32B32Sfloat,
+            .offset = static_cast<uint32_t>(offsetof(RasterColorVertex, position)),
+        },
+        vkfw::PipelineVertexInput{
+            .binding = 0,
+            .location = 1,
+            .stride = static_cast<uint32_t>(sizeof(RasterColorVertex)),
+            .format = vk::Format::eR32G32B32A32Sfloat,
+            .offset = static_cast<uint32_t>(offsetof(RasterColorVertex, color)),
+        },
+    };
+    pipeline_info.vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
+    pipeline_info.render_pass = render_pass_.Handle();
+    pipeline_info.layout = pipeline_layout_.Handle();
+    pipeline_info.viewport.viewports = {viewport};
+    pipeline_info.viewport.scissors = {scissor};
+    pipeline_info.rasterization.polygon_mode = vk::PolygonMode::eFill;
+    pipeline_info.rasterization.cull_mode = vk::CullModeFlagBits::eNone;
+    pipeline_info.rasterization.front_face = vk::FrontFace::eCounterClockwise;
+    pipeline_info.multisample.rasterization_samples = vk::SampleCountFlagBits::e1;
+    pipeline_info.depth_stencil.depth_test_enable = false;
+    pipeline_info.depth_stencil.depth_write_enable = false;
+    pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
+    if (!pipeline_.Init(ctx, pipeline_info)) {
+      __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: pipeline init");
+      pipeline_layout_.Shutdown(ctx);
+      return false;
+    }
+    return true;
+  } catch (std::exception const& e) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createPipeline failed: %s", e.what());
+    return false;
+  }
+}
+
+bool VulkanRasterRenderer::createFramebuffers(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain)
+{
+  if (!framebuffers_.Init(ctx, swapchain, render_pass_)) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createFramebuffers failed");
+    return false;
+  }
+  return true;
+}
+
+bool VulkanRasterRenderer::createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync)
+{
+  if (!command_buffers_.Init(ctx, vkfw::CommandBufferInfo{
+          .level = vkfw::CommandBufferLevel::Primary,
+          .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
+          .count = sync.FramesInFlight(),
+      })) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createCommandPoolAndBuffers failed");
+    return false;
+  }
+  return true;
+}
+
+void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
+                                               vk::CommandBuffer command_buffer,
+                                               uint32_t image_index)
+{
+  command_buffer.begin(vk::CommandBufferBeginInfo{});
+
+  vk::ClearValue clear{};
+  clear.color.float32[0] = 0.03f;
+  clear.color.float32[1] = 0.04f;
+  clear.color.float32[2] = 0.06f;
+  clear.color.float32[3] = 1.0f;
+
+  vk::RenderPassBeginInfo render_pass_info{};
+  render_pass_info.renderPass = render_pass_.Handle();
+  render_pass_info.framebuffer = framebuffers_.Handle(image_index);
+  render_pass_info.renderArea.extent = swapchain.Extent();
+  render_pass_info.clearValueCount = 1;
+  render_pass_info.pClearValues = &clear;
+
+  command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eInline);
+  command_buffer.bindPipeline(pipeline_.BindPoint(), pipeline_.Handle());
+  vk::DeviceSize offset = 0;
+  auto vertex_buffer = vertex_buffer_.Handle();
+  command_buffer.bindVertexBuffers(0, vertex_buffer, offset);
+  command_buffer.draw(static_cast<uint32_t>(vertices_.size()), 1, 0, 0);
+  command_buffer.endRenderPass();
+  command_buffer.end();
+}
+
+void VulkanRasterRenderer::destroyResources()
+{
+  if (ctx_ != nullptr) {
+    command_buffers_.Shutdown(*ctx_);
+    framebuffers_.Shutdown(*ctx_);
+    pipeline_.Shutdown(*ctx_);
+    pipeline_layout_.Shutdown(*ctx_);
+    render_pass_.Shutdown(*ctx_);
+    if (vertex_buffer_.MappedData() != nullptr) {
+      vertex_buffer_.Unmap(*ctx_);
+    }
+    vertex_buffer_.Shutdown(*ctx_);
+  } else {
+    command_buffers_ = {};
+    framebuffers_ = {};
+  }
+  vertices_.clear();
+}
+
+} // namespace ave::rhi

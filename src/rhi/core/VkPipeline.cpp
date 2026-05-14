@@ -5,7 +5,8 @@
 namespace vkfw {
 
 static vk::VertexInputRate GetVertexInputRate(uint32_t stride) {
-    return (stride > 0) ? vk::VertexInputRate::eInstance : vk::VertexInputRate::eVertex;
+    (void)stride;
+    return vk::VertexInputRate::eVertex;
 }
 
 bool VkPipelineLayout::Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> const& descriptor_layouts) {

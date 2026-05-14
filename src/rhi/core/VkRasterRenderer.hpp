@@ -7,6 +7,8 @@
 #include "VkPipeline.hpp"
 #include "VkBuffer.hpp"
 #include "VkShader.hpp"
+#include "VkFramebufferSet.hpp"
+#include "VkCommandBuffer.hpp"
 
 #include <array>
 #include <cstdint>
@@ -55,20 +57,19 @@ private:
   bool createFramebuffers(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain);
   bool createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
   void recordCommandBuffer(vkfw::VkSwapchain& swapchain,
-                           vk::raii::CommandBuffer& command_buffer,
+                           vk::CommandBuffer command_buffer,
                            uint32_t image_index);
   void destroyResources();
 
+  vkfw::VkContext* ctx_ = nullptr;
   bool initialized_ = false;
   std::vector<RasterColorVertex> vertices_{};
   vkfw::VkRenderPass render_pass_;
-  vk::raii::PipelineLayout pipeline_layout_{nullptr};
-  vk::raii::Pipeline pipeline_{nullptr};
-  vk::raii::Buffer vertex_buffer_{nullptr};
-  vk::raii::DeviceMemory vertex_memory_{nullptr};
-  vk::raii::CommandPool command_pool_{nullptr};
-  std::vector<vk::raii::CommandBuffer> command_buffers_{};
-  std::vector<vk::raii::Framebuffer> framebuffers_{};
+  vkfw::VkPipelineLayout pipeline_layout_{};
+  vkfw::VkPipeline pipeline_{};
+  vkfw::VkBuffer vertex_buffer_{};
+  vkfw::VkCommandBuffer command_buffers_{};
+  vkfw::VkFramebufferSet framebuffers_{};
 };
 
 } // namespace ave::rhi

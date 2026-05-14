@@ -134,11 +134,11 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     auto const scene = loader.LoadSceneText(scene_text);
 
     for (auto const& object : scene.objects) {
-        if (!object.has_mesh) {
+        if (!object.components.mesh_renderer.has_value()) {
             continue;
         }
 
-        for (auto const& source : object.mesh.vertices) {
+        for (auto const& source : object.components.mesh_renderer->vertices) {
             ave::render::RasterColorVertex vertex{};
             vertex.position = source.position;
             vertex.color = source.color;
