@@ -2,6 +2,12 @@
 
 namespace ave::game {
 
+namespace {
+
+project::TransformData const kIdentityTransform{};
+
+} // namespace
+
 GameObject::GameObject(project::GameObjectData data)
     : data_(std::move(data))
 {
@@ -19,12 +25,16 @@ std::string const& GameObject::Name() const noexcept
 
 std::string const& GameObject::Parent() const noexcept
 {
-    return data_.parent;
+    return data_.hierarchy.parent;
 }
 
 project::TransformData const& GameObject::Transform() const noexcept
 {
-    return data_.transform;
+    if (data_.components.transform.has_value()) {
+        return *data_.components.transform;
+    }
+
+    return kIdentityTransform;
 }
 
 project::GameObjectData const& GameObject::Data() const noexcept

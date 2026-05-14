@@ -30,9 +30,9 @@ public:
     Renderer();
     ~Renderer();
 
-    // bool Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads);
+    bool Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads);
     void Shutdown();
-    // void Render(core::FrameData const& frame, core::JobSystem& jobs);
+    void Render(core::FrameData const& frame, core::JobSystem& jobs);
     bool InitializeRaster(vkfw::VkContext& ctx,
                           vkfw::VkSwapchain& swapchain,
                           vkfw::VkFrameSync& sync,

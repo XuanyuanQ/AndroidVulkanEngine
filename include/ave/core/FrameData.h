@@ -1,35 +1,89 @@
 ﻿#pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace ave::core {
 
-struct CameraData {
+struct FrameViewData {
+    std::string camera_object_id;
     float view[16]{};
     float projection[16]{};
+    float view_projection[16]{};
+    std::array<float, 3> world_position{0.0f, 0.0f, 0.0f};
+    float near_plane = 0.1f;
+    float far_plane = 1000.0f;
 };
 
-struct RenderableData {
+struct FrameRenderableData {
+    std::string object_id;
     std::string debug_name;
-    uint32_t mesh_id = 0;
-    uint32_t material_id = 0;
+
+    std::string mesh_id;
+    std::string material_id;
+
     float world[16]{};
+
+    uint32_t index_count = 0;
+    uint32_t vertex_count = 0;
+    uint32_t first_index = 0;
+    uint32_t first_vertex = 0;
+
+    bool visible = true;
+    bool casts_shadow = false;
+    bool receives_shadow = true;
+
+    uint64_t sort_key = 0;
 };
 
-struct LightData {
-    float position[3]{};
+struct FrameLightData {
+    std::string object_id;
+    std::string debug_name;
+    std::string type{"point"};
+
+    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> direction{0.0f, -1.0f, 0.0f};
+    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+
     float intensity = 1.0f;
-    float color[3]{1.0f, 1.0f, 1.0f};
-    float radius = 10.0f;
+    float range = 10.0f;
+    float inner_angle = 20.0f;
+    float outer_angle = 35.0f;
+
+    bool cast_shadows = false;
+};
+
+struct FrameUiData {
+    std::string object_id;
+    std::string debug_name;
+
+    std::string material_id;
+    std::string texture_id;
+
+    std::array<float, 2> position{0.0f, 0.0f};
+    std::array<float, 2> size{0.0f, 0.0f};
+    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+
+    float depth = 0.0f;
+    bool visible = true;
+    bool interactable = false;
+};
+
+struct FrameResourceTable {
+    std::vector<std::string> meshes;
+    std::vector<std::string> materials;
+    std::vector<std::string> textures;
 };
 
 struct FrameData {
     uint64_t frame_index = 0;
-    CameraData camera{};
-    std::vector<RenderableData> renderables;
-    std::vector<LightData> lights;
+    FrameViewData view{};
+    std::vector<FrameRenderableData> renderables;
+    std::vector<FrameLightData> lights;
+    std::vector<FrameUiData> ui_items;
+    FrameResourceTable resources{};
 };
 
 } // namespace ave::core

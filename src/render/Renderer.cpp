@@ -78,11 +78,12 @@ public:
 Renderer::Renderer() = default;
 Renderer::~Renderer() = default;
 
-// bool Renderer::Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads)
-// {
-//     uploads_ = &uploads;
-//     return device_.Initialize(rhi::VulkanDeviceConfig{config.enable_validation});
-// }
+bool Renderer::Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads)
+{
+    (void)config;
+    uploads_ = &uploads;
+    return true;
+}
 
 void Renderer::Shutdown()
 {
@@ -91,19 +92,15 @@ void Renderer::Shutdown()
     uploads_ = nullptr;
 }
 
-// void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)
-// {
-//     if (uploads_ != nullptr) {
-//         auto uploads = uploads_->Drain();
-//         for (auto const& upload : uploads) {
-//             device_.SubmitDebugWork(upload.debug_name, 1);
-//         }
-//     }
+void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)
+{
+    if (uploads_ != nullptr) {
+        (void)uploads_->Drain();
+    }
 
-//     auto recorded = recorder_.RecordSceneParallel(frame, jobs);
-//     device_.SubmitDebugWork("FrameData secondary command buffers", static_cast<uint32_t>(recorded.size()));
-//     graph_.Execute(RenderPassContext{&frame});
-// }
+    (void)recorder_.RecordSceneParallel(frame, jobs);
+    graph_.Execute(RenderPassContext{&frame});
+}
 
 bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
                                 vkfw::VkSwapchain& swapchain,

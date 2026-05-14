@@ -42,6 +42,36 @@ std::array<float, 4> Float4(std::string const& text, std::array<float, 4> fallba
     return value;
 }
 
+std::array<float, 2> Float2(std::string const& text, std::array<float, 2> fallback)
+{
+    if (text.empty()) {
+        return fallback;
+    }
+
+    std::array<float, 2> value = fallback;
+    char comma = 0;
+    std::stringstream stream(text);
+    stream >> value[0] >> comma >> value[1];
+    return value;
+}
+
+std::vector<uint32_t> UIntList(std::string const& text)
+{
+    std::vector<uint32_t> values;
+    std::stringstream stream(text);
+    while (stream.good()) {
+        uint32_t value = 0;
+        char comma = 0;
+        stream >> value;
+        if (stream.fail()) {
+            break;
+        }
+        values.push_back(value);
+        stream >> comma;
+    }
+    return values;
+}
+
 std::vector<std::string> MatchTags(std::string const& text, std::string const& tag_name)
 {
     std::vector<std::string> tags;
@@ -114,7 +144,14 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
     }
 
     SceneDocument scene;
+    scene.version = Attribute(scene_match[0].str(), "version", "1");
     scene.name = Attribute(scene_match[0].str(), "name", "MainScene");
+
+    auto environment_tags = MatchTags(text, "Environment");
+    if (!environment_tags.empty()) {
+        scene.environment.clear_color = Float4(Attribute(environment_tags.front(), "clearColor"), scene.environment.clear_color);
+        scene.environment.ambient_color = Float3(Attribute(environment_tags.front(), "ambientColor"), scene.environment.ambient_color);
+    }
 
     std::regex const object_pattern(R"(<GameObject\b([^>]*)>([\s\S]*?)</GameObject>)");
     for (std::sregex_iterator it(text.begin(), text.end(), object_pattern), end; it != end; ++it) {
@@ -124,46 +161,110 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         GameObjectData object;
         object.id = Attribute(object_tag, "id");
         object.name = Attribute(object_tag, "name", object.id);
-        object.parent = Attribute(object_tag, "parent");
+        object.hierarchy.parent = Attribute(object_tag, "parent");
 
         auto transform_tags = MatchTags(body, "Transform");
         if (!transform_tags.empty()) {
-            object.transform.position = Float3(Attribute(transform_tags.front(), "position"), object.transform.position);
-            object.transform.rotation = Float3(Attribute(transform_tags.front(), "rotation"), object.transform.rotation);
-            object.transform.scale = Float3(Attribute(transform_tags.front(), "scale"), object.transform.scale);
+            TransformData transform{};
+            transform.position = Float3(Attribute(transform_tags.front(), "position"), transform.position);
+            transform.rotation = Float3(Attribute(transform_tags.front(), "rotation"), transform.rotation);
+            transform.scale = Float3(Attribute(transform_tags.front(), "scale"), transform.scale);
+            object.components.transform = std::move(transform);
         }
 
         auto triangle_tags = MatchTags(body, "TriangleRenderer");
         if (!triangle_tags.empty()) {
-            object.has_triangle = true;
-            object.triangle.color = Float4(Attribute(triangle_tags.front(), "color"), object.triangle.color);
-            object.triangle.material = Attribute(triangle_tags.front(), "material");
+            TriangleRendererData triangle{};
+            triangle.color = Float4(Attribute(triangle_tags.front(), "color"), triangle.color);
+            triangle.material = Attribute(triangle_tags.front(), "material");
+            object.components.triangle_renderer = std::move(triangle);
         }
 
         auto mesh_tags = MatchTagBodies(body, "MeshRenderer");
         if (!mesh_tags.empty()) {
-            object.has_mesh = true;
-            object.mesh.material = Attribute(mesh_tags.front().first, "material");
+            MeshRendererData mesh{};
+            mesh.mesh = Attribute(mesh_tags.front().first, "mesh");
+            mesh.material = Attribute(mesh_tags.front().first, "material");
+            mesh.topology = Attribute(mesh_tags.front().first, "topology", mesh.topology);
 
             for (auto const& vertex_tag : MatchTags(mesh_tags.front().second, "Vertex")) {
                 VertexData vertex{};
                 vertex.position = Float3(Attribute(vertex_tag, "position"), vertex.position);
+                vertex.normal = Float3(Attribute(vertex_tag, "normal"), vertex.normal);
+                vertex.tangent = Float4(Attribute(vertex_tag, "tangent"), vertex.tangent);
+                vertex.texcoord0 = Float2(Attribute(vertex_tag, "texcoord0"), vertex.texcoord0);
+                vertex.texcoord1 = Float2(Attribute(vertex_tag, "texcoord1"), vertex.texcoord1);
                 vertex.color = Float4(Attribute(vertex_tag, "color"), vertex.color);
-                object.mesh.vertices.push_back(vertex);
+                mesh.vertices.push_back(vertex);
             }
+
+            auto index_tags = MatchTagBodies(mesh_tags.front().second, "Indices");
+            if (!index_tags.empty()) {
+                mesh.indices = UIntList(index_tags.front().second);
+            }
+
+            object.components.mesh_renderer = std::move(mesh);
+        }
+
+        auto camera_tags = MatchTags(body, "Camera");
+        if (!camera_tags.empty()) {
+            CameraData camera{};
+            camera.fov = std::stof(Attribute(camera_tags.front(), "fov", std::to_string(camera.fov)));
+            camera.near_plane = std::stof(Attribute(camera_tags.front(), "near", std::to_string(camera.near_plane)));
+            camera.far_plane = std::stof(Attribute(camera_tags.front(), "far", std::to_string(camera.far_plane)));
+            camera.clear_flags = Attribute(camera_tags.front(), "clearFlags", camera.clear_flags);
+            object.components.camera = std::move(camera);
+        }
+
+        auto directional_light_tags = MatchTags(body, "DirectionalLight");
+        if (!directional_light_tags.empty()) {
+            LightData light{};
+            light.type = LightType::Directional;
+            light.color = Float3(Attribute(directional_light_tags.front(), "color"), light.color);
+            light.intensity = std::stof(Attribute(directional_light_tags.front(), "intensity", std::to_string(light.intensity)));
+            light.cast_shadows = Attribute(directional_light_tags.front(), "castShadows", "false") == "true";
+            object.components.light = std::move(light);
+        }
+
+        auto point_light_tags = MatchTags(body, "PointLight");
+        if (!point_light_tags.empty()) {
+            LightData light{};
+            light.type = LightType::Point;
+            light.color = Float3(Attribute(point_light_tags.front(), "color"), light.color);
+            light.intensity = std::stof(Attribute(point_light_tags.front(), "intensity", std::to_string(light.intensity)));
+            light.range = std::stof(Attribute(point_light_tags.front(), "range", std::to_string(light.range)));
+            light.cast_shadows = Attribute(point_light_tags.front(), "castShadows", "false") == "true";
+            object.components.light = std::move(light);
+        }
+
+        auto spot_light_tags = MatchTags(body, "SpotLight");
+        if (!spot_light_tags.empty()) {
+            LightData light{};
+            light.type = LightType::Spot;
+            light.color = Float3(Attribute(spot_light_tags.front(), "color"), light.color);
+            light.intensity = std::stof(Attribute(spot_light_tags.front(), "intensity", std::to_string(light.intensity)));
+            light.range = std::stof(Attribute(spot_light_tags.front(), "range", std::to_string(light.range)));
+            light.inner_angle = std::stof(Attribute(spot_light_tags.front(), "innerAngle", std::to_string(light.inner_angle)));
+            light.outer_angle = std::stof(Attribute(spot_light_tags.front(), "outerAngle", std::to_string(light.outer_angle)));
+            light.cast_shadows = Attribute(spot_light_tags.front(), "castShadows", "false") == "true";
+            object.components.light = std::move(light);
         }
 
         auto script_tags = MatchTags(body, "Script");
         if (!script_tags.empty()) {
-            object.has_script = true;
-            object.script.java_class = Attribute(script_tags.front(), "class");
+            ScriptBindingData script{};
+            script.java_class = Attribute(script_tags.front(), "class");
+            script.method = Attribute(script_tags.front(), "method");
+            script.target_object = object.id;
+            object.components.script = std::move(script);
         }
 
         auto button_tags = MatchTags(body, "Button");
         if (!button_tags.empty()) {
-            object.has_button = true;
-            object.button.target = Attribute(button_tags.front(), "target");
-            object.button.method = Attribute(button_tags.front(), "method");
+            ButtonComponentData button{};
+            button.target = Attribute(button_tags.front(), "target");
+            button.method = Attribute(button_tags.front(), "method");
+            object.components.button = std::move(button);
         }
 
         scene.objects.push_back(std::move(object));
