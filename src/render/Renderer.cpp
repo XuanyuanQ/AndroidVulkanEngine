@@ -3,7 +3,7 @@
 #include "VkContext.hpp"
 #include "VkFrameSync.hpp"
 #include "VkSwapchain.hpp"
-#include "VulkanRasterRenderer.hpp"
+#include "VkRasterRenderer.hpp"
 
 namespace ave::render {
 
