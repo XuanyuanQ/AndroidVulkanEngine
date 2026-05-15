@@ -286,6 +286,102 @@ GameObject / UI / Material
   -> Render Pass / Compute Pass
 ```
 
+### 6.1 Runtime Resource & Pipeline 管理（FrameData 驱动）
+
+> 补充说明：当前 sample 侧以 `project.xml / *.scene.xml` 为主，但整体分层（SharedDataContract → Runtime → Renderer）不依赖具体文件格式。
+
+渲染层每帧接收到的核心数据结构是：`include/ave/core/FrameData.h` 中的 `ave::core::FrameData`。
+
+- `FrameData.renderables`：本帧要画的 draw item 列表（每个元素提供 `mesh_id/material_id/world + draw range + shadow flags`）
+- `FrameData.ui_items`：本帧要画的 UI draw item 列表（提供 `material_id/texture_id + rect`）
+- `FrameData.resources`：本帧“声明式资源需求表”（meshes/materials/textures 的 id 列表，用于资源预取/确保就绪）
+
+渲染层不从 `FrameData` 携带顶点/纹理等大块数据；它只携带 **id**。GPU 资源由 runtime manager 复用与缓存：
+
+```mermaid
+flowchart LR
+    Frame["core::FrameData"]
+
+    MeshMgr["MeshManager<br/>mesh_id -> VB/IB/Range"]
+    TexMgr["TextureManager<br/>texture_id -> VkImage/Sampler"]
+    ShaderMgr["ShaderManager<br/>shader_id -> modules/layouts"]
+    MatMgr["MaterialManager<br/>material_id -> shader + params + textures + state"]
+
+    PipeCache["PipelineCache<br/>PipelineKey -> VkPipeline"]
+    DescSys["Descriptor System<br/>layout cache + alloc + update"]
+
+    Frame -->|"resources.meshes"| MeshMgr
+    Frame -->|"resources.textures"| TexMgr
+    Frame -->|"resources.materials"| MatMgr
+    MatMgr --> ShaderMgr
+    MatMgr --> TexMgr
+
+    ShaderMgr --> DescSys
+    DescSys --> PipeCache
+```
+
+更详细的“Components → ResourceManager → FrameData → Pass 过滤”数据流与字段约定见：`docs/frame_data_contract_zh.md`。
+
+### 6.2 两个关键子模块：Resource System / Pipeline & Descriptor System
+
+**A) Resource System（复用 mesh/material/texture/shader）**
+
+职责：把 `FrameData`/场景里出现的字符串 id 映射成可复用的 runtime 句柄（并进行缓存/热重载/异步加载）。
+
+```mermaid
+flowchart TB
+    Scene["Scene / Components<br/>mesh_id/material_id/texture_id/shader_id"]
+    Build["Build/Ensure Stage<br/>GetOrCreate/EnsureLoaded"]
+
+    MeshMgr["MeshManager"]
+    TexMgr["TextureManager"]
+    ShaderMgr["ShaderManager"]
+    MatMgr["MaterialManager"]
+
+    GPU["GPU Resources<br/>VB/IB, Images, Samplers, ShaderModules"]
+
+    Scene --> Build
+    Build --> MeshMgr --> GPU
+    Build --> TexMgr --> GPU
+    Build --> ShaderMgr --> GPU
+    Build --> MatMgr
+    MatMgr --> MeshMgr
+    MatMgr --> TexMgr
+    MatMgr --> ShaderMgr
+```
+
+**B) Pipeline & Descriptor System（按需创建/复用 VkPipeline + set 布局）**
+
+目标：同一个 pass 内不同 object 允许使用不同 pipeline；相同 key 的 pipeline/layout 可复用。
+
+```mermaid
+flowchart TB
+    Pass["RenderPass (single instance)<br/>Shadow/Depth/Forward/UI"]
+    Renderable["FrameRenderableData<br/>mesh_id + material_id + flags"]
+
+    MatRuntime["MaterialRuntime<br/>shader + render_state + textures"]
+    MeshRuntime["MeshRuntime<br/>vertex_layout + VB/IB"]
+
+    PipeKey["PipelineKey<br/>pass + shader + vertex_layout + state + RT formats"]
+    PipeCache["PipelineCache<br/>PipelineKey -> VkPipeline"]
+
+    SetLayouts["DescriptorSetLayoutCache"]
+    PipeLayouts["PipelineLayoutCache"]
+    Sets["DescriptorAllocator/Pool + Sets<br/>Set0 frame / Set1 material / (Set2 object)"]
+
+    Pass --> Renderable
+    Renderable --> MatRuntime
+    Renderable --> MeshRuntime
+    MatRuntime --> PipeKey
+    MeshRuntime --> PipeKey
+    PipeKey --> PipeCache
+
+    MatRuntime --> SetLayouts --> PipeLayouts
+    PipeLayouts --> PipeCache
+    SetLayouts --> Sets
+    MatRuntime --> Sets
+```
+
 ## 7. Material / PBR 架构
 
 ```mermaid
