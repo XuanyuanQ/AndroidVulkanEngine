@@ -1,16 +1,21 @@
-﻿#pragma once
+#pragma once
 
-#include "ave/core/FrameData.h"
-#include "ave/render/CommandRecorder.h"
-#include "ave/render/FrameGraph.h"
 #include "ave/render/RenderTypes.h"
-#include "ave/resource/GpuUploadQueue.h"
+#include "ave/core/FrameData.h"
+#include "ave/render/FrameGraph.h"
+#include "ave/render/CommandRecorder.h"
+#include "ave/resource/ResourceSystem.h"
+#include "ave/render/PipelineSystem.h"
 
 #include <memory>
 #include <span>
 
-namespace ave::render {
+namespace ave::core {
+class JobSystem;
+}
 
+namespace ave::resource {
+class GpuUploadQueue;
 }
 
 namespace vkfw {
@@ -45,15 +50,20 @@ public:
                            uint32_t& frame_index);
 
     FrameGraph& Graph() noexcept;
-    // rhi::VulkanDevice& Device() noexcept;
+    resource::ResourceSystem& GetResourceSystem() { return resource_system_; }
+    PipelineSystem& GetPipelineSystem() { return pipeline_system_; }
+    void SetVkContext(vkfw::VkContext* ctx);
 
 private:
     class Impl;
     resource::GpuUploadQueue* uploads_ = nullptr;
-    // rhi::VulkanDevice device_;
+    vkfw::VkContext* vk_context_ = nullptr;
     FrameGraph graph_;
     CommandRecorder recorder_;
+    resource::ResourceSystem resource_system_;
+    PipelineSystem pipeline_system_;
     std::unique_ptr<Impl> impl_;
 };
 
 } // namespace ave::render
+

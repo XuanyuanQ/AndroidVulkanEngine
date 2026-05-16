@@ -2,6 +2,8 @@
 #include "VkContext.hpp"
 #include "VkDescriptor.hpp"
 
+#include <unordered_map>
+
 namespace vkfw {
 
 static vk::VertexInputRate GetVertexInputRate(uint32_t stride) {
@@ -39,13 +41,12 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
     // Convert vertex input state
     std::vector<vk::VertexInputBindingDescription> vertex_bindings;
     std::vector<vk::VertexInputAttributeDescription> vertex_attributes;
-    
+
+    std::unordered_map<uint32_t, uint32_t> binding_strides;
+    binding_strides.reserve(info.vertex_input.vertex_inputs.size());
+
     for (auto const& input : info.vertex_input.vertex_inputs) {
-        vk::VertexInputBindingDescription binding{};
-        binding.binding = input.binding;
-        binding.stride = input.stride;
-        binding.inputRate = GetVertexInputRate(input.stride);
-        vertex_bindings.push_back(binding);
+        binding_strides.insert({input.binding, input.stride});
 
         vk::VertexInputAttributeDescription attribute{};
         attribute.location = input.location;
@@ -53,6 +54,15 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
         attribute.format = input.format;
         attribute.offset = input.offset;
         vertex_attributes.push_back(attribute);
+    }
+
+    vertex_bindings.reserve(binding_strides.size());
+    for (auto const& [binding, stride] : binding_strides) {
+        vk::VertexInputBindingDescription binding_desc{};
+        binding_desc.binding = binding;
+        binding_desc.stride = stride;
+        binding_desc.inputRate = GetVertexInputRate(stride);
+        vertex_bindings.push_back(binding_desc);
     }
 
     vk::PipelineVertexInputStateCreateInfo vertex_input_state{};
@@ -126,17 +136,9 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
     color_blend.blendConstants[2] = info.color_blend.blend_constants[2];
     color_blend.blendConstants[3] = info.color_blend.blend_constants[3];
 
-    // Get shader stage info
-    std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
-    for (auto const& shader : info.shaders) {
-        if (shader.IsInitialized()) {
-            shader_stages.push_back(shader.GetPipelineStageInfo());
-        }
-    }
-
     vk::GraphicsPipelineCreateInfo pipeline_info{};
-    pipeline_info.stageCount = static_cast<uint32_t>(shader_stages.size());
-    pipeline_info.pStages = shader_stages.data();
+    pipeline_info.stageCount = static_cast<uint32_t>(info.shader_stages.size());
+    pipeline_info.pStages = info.shader_stages.data();
     pipeline_info.pVertexInputState = &vertex_input_state;
     pipeline_info.pInputAssemblyState = &input_assembly;
     pipeline_info.pViewportState = &viewport_state;

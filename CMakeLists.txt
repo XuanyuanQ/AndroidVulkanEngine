@@ -16,9 +16,15 @@ add_library(ave_engine STATIC
     src/scene/SceneWorld.cpp
     src/resource/AssetManager.cpp
     src/resource/GpuUploadQueue.cpp
+    src/resource/ResourceSystem.cpp
     src/render/CommandRecorder.cpp
     src/render/FrameGraph.cpp
     src/render/Renderer.cpp
+    src/render/RenderWorld.cpp
+    src/render/MaterialSystem.cpp
+    src/render/RenderPasses.cpp
+    src/render/RenderSceneBuilder.cpp
+    src/render/PipelineSystem.cpp
     # src/rhi/VulkanDevice.cpp
 )
 

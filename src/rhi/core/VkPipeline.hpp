@@ -84,7 +84,7 @@ struct PipelineViewportState {
 };
 
 struct PipelineInfo {
-    std::vector<VkShader> shaders;
+    std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
     PipelineVertexInputState vertex_input;
     
     // 关键修复：直接存句柄(Handle)，不要存 RAII 对象的指针

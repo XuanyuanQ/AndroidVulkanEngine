@@ -19,11 +19,45 @@ bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
 {
   Shutdown();
   ctx_ = &ctx;
+  external_vertex_buffer_ = nullptr;
+  external_pipeline_ = nullptr;
+  external_vertex_count_ = 0;
   vertices_.assign(vertices.begin(), vertices.end());
 
   if (!createVertexBuffer(ctx, vertices) ||
       !createRenderPass(ctx, swapchain) ||
       !createPipeline(ctx, swapchain, shaders) ||
+      !createFramebuffers(ctx, swapchain) ||
+      !createCommandPoolAndBuffers(ctx, sync)) {
+    destroyResources();
+    return false;
+  }
+
+  initialized_ = true;
+  return true;
+}
+
+bool VulkanRasterRenderer::InitializeWithExternalResources(vkfw::VkContext& ctx,
+                                                          vkfw::VkSwapchain& swapchain,
+                                                          vkfw::VkFrameSync& sync,
+                                                          vkfw::VkBuffer const* vertex_buffer,
+                                                          uint32_t vertex_count,
+                                                          vkfw::VkPipeline const* pipeline,
+                                                          vkfw::VkRenderPass const* render_pass)
+{
+  Shutdown();
+  ctx_ = &ctx;
+  vertices_.clear();
+  external_vertex_buffer_ = vertex_buffer;
+  external_vertex_count_ = vertex_count;
+  external_pipeline_ = pipeline;
+  external_render_pass_ = render_pass;
+
+  if (external_vertex_buffer_ == nullptr || external_pipeline_ == nullptr || external_vertex_count_ == 0) {
+    return false;
+  }
+
+  if ((external_render_pass_ == nullptr && !createRenderPass(ctx, swapchain)) ||
       !createFramebuffers(ctx, swapchain) ||
       !createCommandPoolAndBuffers(ctx, sync)) {
     destroyResources();
@@ -186,8 +220,8 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
     scissor.extent = extent;
 
     vkfw::PipelineInfo pipeline_info{};
-    pipeline_info.shaders.push_back(std::move(vertex_shader));
-    pipeline_info.shaders.push_back(std::move(fragment_shader));
+    pipeline_info.shader_stages.push_back(vertex_shader.GetPipelineStageInfo());
+    pipeline_info.shader_stages.push_back(fragment_shader.GetPipelineStageInfo());
     pipeline_info.vertex_input.vertex_inputs = {
         vkfw::PipelineVertexInput{
             .binding = 0,
@@ -230,7 +264,8 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
 
 bool VulkanRasterRenderer::createFramebuffers(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain)
 {
-  if (!framebuffers_.Init(ctx, swapchain, render_pass_)) {
+  vkfw::VkRenderPass const& pass = external_render_pass_ != nullptr ? *external_render_pass_ : render_pass_;
+  if (!framebuffers_.Init(ctx, swapchain, pass)) {
     __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createFramebuffers failed");
     return false;
   }
@@ -263,18 +298,23 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
   clear.color.float32[3] = 1.0f;
 
   vk::RenderPassBeginInfo render_pass_info{};
-  render_pass_info.renderPass = render_pass_.Handle();
+  render_pass_info.renderPass = external_render_pass_ != nullptr ? external_render_pass_->Handle() : render_pass_.Handle();
   render_pass_info.framebuffer = framebuffers_.Handle(image_index);
   render_pass_info.renderArea.extent = swapchain.Extent();
   render_pass_info.clearValueCount = 1;
   render_pass_info.pClearValues = &clear;
 
   command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eInline);
-  command_buffer.bindPipeline(pipeline_.BindPoint(), pipeline_.Handle());
+  if (external_pipeline_ != nullptr) {
+    command_buffer.bindPipeline(external_pipeline_->BindPoint(), external_pipeline_->Handle());
+  } else {
+    command_buffer.bindPipeline(pipeline_.BindPoint(), pipeline_.Handle());
+  }
   vk::DeviceSize offset = 0;
-  auto vertex_buffer = vertex_buffer_.Handle();
+  auto vertex_buffer = external_vertex_buffer_ != nullptr ? external_vertex_buffer_->Handle() : vertex_buffer_.Handle();
   command_buffer.bindVertexBuffers(0, vertex_buffer, offset);
-  command_buffer.draw(static_cast<uint32_t>(vertices_.size()), 1, 0, 0);
+  uint32_t vertex_count = external_vertex_buffer_ != nullptr ? external_vertex_count_ : static_cast<uint32_t>(vertices_.size());
+  command_buffer.draw(vertex_count, 1, 0, 0);
   command_buffer.endRenderPass();
   command_buffer.end();
 }
@@ -286,7 +326,9 @@ void VulkanRasterRenderer::destroyResources()
     framebuffers_.Shutdown(*ctx_);
     pipeline_.Shutdown(*ctx_);
     pipeline_layout_.Shutdown(*ctx_);
-    render_pass_.Shutdown(*ctx_);
+    if (external_render_pass_ == nullptr) {
+      render_pass_.Shutdown(*ctx_);
+    }
     if (vertex_buffer_.MappedData() != nullptr) {
       vertex_buffer_.Unmap(*ctx_);
     }
@@ -296,6 +338,10 @@ void VulkanRasterRenderer::destroyResources()
     framebuffers_ = {};
   }
   vertices_.clear();
+  external_vertex_buffer_ = nullptr;
+  external_pipeline_ = nullptr;
+  external_render_pass_ = nullptr;
+  external_vertex_count_ = 0;
 }
 
 } // namespace ave::rhi

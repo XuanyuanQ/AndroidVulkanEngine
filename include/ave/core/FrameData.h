@@ -71,10 +71,11 @@ struct FrameUiData {
     bool interactable = false;
 };
 
-struct FrameResourceTable {
-    std::vector<std::string> meshes;
-    std::vector<std::string> materials;
-    std::vector<std::string> textures;
+struct FrameResources {
+    std::vector<uint32_t> meshes;
+    std::vector<uint32_t> textures;
+    std::vector<uint32_t> shaders;
+    std::vector<uint32_t> materials;
 };
 
 struct FrameData {
@@ -83,7 +84,7 @@ struct FrameData {
     std::vector<FrameRenderableData> renderables;
     std::vector<FrameLightData> lights;
     std::vector<FrameUiData> ui_items;
-    FrameResourceTable resources{};
+    FrameResources resources{};
 };
 
 } // namespace ave::core

@@ -40,6 +40,16 @@ public:
                   vkfw::VkFrameSync& sync,
                   std::span<RasterColorVertex const> vertices,
                   RasterShaderCode const& shaders);
+
+  // External-resource initialization path:
+  // Vertex buffers and pipeline are created by higher-level systems (ResourceSystem / PipelineSystem).
+  bool InitializeWithExternalResources(vkfw::VkContext& ctx,
+                                      vkfw::VkSwapchain& swapchain,
+                                      vkfw::VkFrameSync& sync,
+                                      vkfw::VkBuffer const* vertex_buffer,
+                                      uint32_t vertex_count,
+                                      vkfw::VkPipeline const* pipeline,
+                                      vkfw::VkRenderPass const* render_pass);
   void Shutdown();
 
   bool IsInitialized() const noexcept { return initialized_; }
@@ -64,6 +74,10 @@ private:
   vkfw::VkContext* ctx_ = nullptr;
   bool initialized_ = false;
   std::vector<RasterColorVertex> vertices_{};
+  vkfw::VkBuffer const* external_vertex_buffer_ = nullptr;
+  uint32_t external_vertex_count_ = 0;
+  vkfw::VkPipeline const* external_pipeline_ = nullptr;
+  vkfw::VkRenderPass const* external_render_pass_ = nullptr;
   vkfw::VkRenderPass render_pass_;
   vkfw::VkPipelineLayout pipeline_layout_{};
   vkfw::VkPipeline pipeline_{};
