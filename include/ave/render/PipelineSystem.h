@@ -33,7 +33,9 @@ struct PipelineKey {
     // 3: Set0 frame only
     uint32_t layout_profile = 0;
     uint32_t rt_format = 0;
-    uint64_t render_pass = 0;
+    uint32_t depth_format = 0;
+    uint32_t stencil_format = 0;
+    uint32_t sample_count = 1;
     uint32_t viewport_width = 0;
     uint32_t viewport_height = 0;
     
@@ -44,7 +46,9 @@ struct PipelineKey {
                render_state_id == other.render_state_id &&
                layout_profile == other.layout_profile &&
                rt_format == other.rt_format &&
-               render_pass == other.render_pass &&
+               depth_format == other.depth_format &&
+               stencil_format == other.stencil_format &&
+               sample_count == other.sample_count &&
                viewport_width == other.viewport_width &&
                viewport_height == other.viewport_height;
     }
@@ -53,17 +57,24 @@ struct PipelineKey {
 // Hash for PipelineKey
 struct PipelineKeyHash {
     std::size_t operator()(PipelineKey const& key) const {
-        std::size_t hash = 0;
-        hash ^= static_cast<std::size_t>(key.pass_id);
-        hash ^= static_cast<std::size_t>(key.shader_id) << 8;
-        hash ^= static_cast<std::size_t>(key.vertex_layout_id) << 16;
-        hash ^= static_cast<std::size_t>(key.render_state_id) << 24;
-        hash ^= static_cast<std::size_t>(key.layout_profile) << 28;
-        hash ^= static_cast<std::size_t>(key.rt_format) << 32;
-        hash ^= static_cast<std::size_t>(key.render_pass);
-        hash ^= static_cast<std::size_t>(key.viewport_width) << 48;
-        hash ^= static_cast<std::size_t>(key.viewport_height) << 56;
-        return hash;
+        auto combine = [](std::size_t& seed, std::size_t v) {
+            // 64-bit hash combine (boost-like).
+            seed ^= v + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+        };
+
+        std::size_t seed = 0;
+        combine(seed, key.pass_id);
+        combine(seed, key.shader_id);
+        combine(seed, key.vertex_layout_id);
+        combine(seed, key.render_state_id);
+        combine(seed, key.layout_profile);
+        combine(seed, key.rt_format);
+        combine(seed, key.depth_format);
+        combine(seed, key.stencil_format);
+        combine(seed, key.sample_count);
+        combine(seed, key.viewport_width);
+        combine(seed, key.viewport_height);
+        return seed;
     }
 };
 

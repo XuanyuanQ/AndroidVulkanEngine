@@ -88,8 +88,14 @@ struct PipelineInfo {
     PipelineVertexInputState vertex_input;
     
     // 关键修复：直接存句柄(Handle)，不要存 RAII 对象的指针
-    vk::RenderPass render_pass = nullptr; 
-    vk::PipelineLayout layout = nullptr; 
+    vk::RenderPass render_pass = nullptr;
+    vk::PipelineLayout layout = nullptr;
+
+    // Dynamic rendering (VK_KHR_dynamic_rendering / Vulkan 1.3).
+    bool use_dynamic_rendering = false;
+    std::vector<vk::Format> color_formats{};
+    vk::Format depth_format = vk::Format::eUndefined;
+    vk::Format stencil_format = vk::Format::eUndefined;
     
     PipelineViewportState viewport;
     PipelineRasterizationState rasterization;

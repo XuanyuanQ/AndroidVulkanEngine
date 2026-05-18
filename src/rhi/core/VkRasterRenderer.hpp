@@ -3,11 +3,9 @@
 #include "VkContext.hpp"
 #include "VkSwapchain.hpp"
 #include "VkFrameSync.hpp"
-#include "VkRenderPass.hpp"
 #include "VkPipeline.hpp"
 #include "VkBuffer.hpp"
 #include "VkShader.hpp"
-#include "VkFramebufferSet.hpp"
 #include "VkCommandBuffer.hpp"
 
 #include <array>
@@ -48,8 +46,7 @@ public:
                                       vkfw::VkFrameSync& sync,
                                       vkfw::VkBuffer const* vertex_buffer,
                                       uint32_t vertex_count,
-                                      vkfw::VkPipeline const* pipeline,
-                                      vkfw::VkRenderPass const* render_pass);
+                                      vkfw::VkPipeline const* pipeline);
   void Shutdown();
 
   bool IsInitialized() const noexcept { return initialized_; }
@@ -59,12 +56,10 @@ public:
                    uint32_t& frame_index);
 
 private:
-  bool createRenderPass(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain);
   bool createVertexBuffer(vkfw::VkContext& ctx, std::span<RasterColorVertex const> vertices);
   bool createPipeline(vkfw::VkContext& ctx,
                       vkfw::VkSwapchain& swapchain,
                       RasterShaderCode const& shaders);
-  bool createFramebuffers(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain);
   bool createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
   void recordCommandBuffer(vkfw::VkSwapchain& swapchain,
                            vk::CommandBuffer command_buffer,
@@ -77,13 +72,10 @@ private:
   vkfw::VkBuffer const* external_vertex_buffer_ = nullptr;
   uint32_t external_vertex_count_ = 0;
   vkfw::VkPipeline const* external_pipeline_ = nullptr;
-  vkfw::VkRenderPass const* external_render_pass_ = nullptr;
-  vkfw::VkRenderPass render_pass_;
   vkfw::VkPipelineLayout pipeline_layout_{};
   vkfw::VkPipeline pipeline_{};
   vkfw::VkBuffer vertex_buffer_{};
   vkfw::VkCommandBuffer command_buffers_{};
-  vkfw::VkFramebufferSet framebuffers_{};
 };
 
 } // namespace ave::rhi

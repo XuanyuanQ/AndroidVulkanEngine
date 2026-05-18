@@ -4,7 +4,6 @@
 #include "VkFrameSync.hpp"
 #include "VkSwapchain.hpp"
 #include "VkRasterRenderer.hpp"
-#include "VkRenderPass.hpp"
 #include "ave/resource/GpuUploadQueue.h"
 
 namespace ave::render {
@@ -12,7 +11,6 @@ namespace ave::render {
 class Renderer::Impl {
 public:
     rhi::VulkanRasterRenderer raster_renderer{};
-    vkfw::VkRenderPass raster_render_pass{};
 };
 
 Renderer::Renderer() = default;
@@ -93,27 +91,6 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
     uint32_t const shader_id = resource_system_.GetShaderManager().LoadShaderFromData(
         "raster_demo_shader", shaders.vertex, shaders.fragment, "main");
 
-    // Create a simple swapchain-compatible render pass (same as the legacy raster demo path)
-    vkfw::RenderPassInfo render_pass_info{};
-    vkfw::RenderPassSubpass subpass{};
-    vkfw::RenderPassAttachment color_attachment{};
-    color_attachment.binding = 0;
-    color_attachment.type = vkfw::RenderPassAttachmentType::Color;
-    color_attachment.format = swapchain.Format();
-    color_attachment.samples = vk::SampleCountFlagBits::e1;
-    color_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
-    color_attachment.store_op = vkfw::RenderPassStoreOp::Store;
-    color_attachment.initial_layout = vk::ImageLayout::eUndefined;
-    color_attachment.final_layout = vk::ImageLayout::ePresentSrcKHR;
-    subpass.color_attachments.push_back(color_attachment);
-    render_pass_info.subpasses.push_back(subpass);
-    render_pass_info.final_layout = vk::ImageLayout::ePresentSrcKHR;
-
-    if (!impl_->raster_render_pass.Init(ctx, render_pass_info)) {
-        impl_.reset();
-        return false;
-    }
-
     // Create graphics pipeline via PipelineSystem
     PipelineKey pipeline_key{};
     pipeline_key.pass_id = 0;
@@ -122,7 +99,9 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
     pipeline_key.render_state_id = 1;
     pipeline_key.layout_profile = 0; // demo shader uses no descriptor sets
     pipeline_key.rt_format = static_cast<uint32_t>(swapchain.Format());
-    pipeline_key.render_pass = reinterpret_cast<uint64_t>(static_cast<VkRenderPass>(impl_->raster_render_pass.Handle()));
+    pipeline_key.depth_format = 0;
+    pipeline_key.stencil_format = 0;
+    pipeline_key.sample_count = 1;
     pipeline_key.viewport_width = swapchain.Extent().width;
     pipeline_key.viewport_height = swapchain.Extent().height;
 
@@ -145,8 +124,7 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
             sync,
             mesh->vertex_buffer.get(),
             mesh->vertex_count,
-            pipeline,
-            &impl_->raster_render_pass)) {
+            pipeline)) {
         impl_.reset();
         return false;
     }
@@ -158,9 +136,6 @@ void Renderer::ShutdownRaster()
 {
     if (impl_ != nullptr) {
         impl_->raster_renderer.Shutdown();
-        if (vk_context_ != nullptr) {
-            impl_->raster_render_pass.Shutdown(*vk_context_);
-        }
     }
     impl_.reset();
 }

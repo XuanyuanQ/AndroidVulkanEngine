@@ -329,9 +329,11 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key)
         pipeline_info.viewport.scissors = {scissor};
     }
 
-    // Set render pass/subpass
-    pipeline_info.render_pass = vk::RenderPass{reinterpret_cast<VkRenderPass>(key.render_pass)};
-    pipeline_info.subpass = key.pass_id;
+    // Dynamic rendering: pipeline is keyed by attachment formats (no VkRenderPass).
+    pipeline_info.use_dynamic_rendering = true;
+    pipeline_info.color_formats = {static_cast<vk::Format>(key.rt_format)};
+    pipeline_info.depth_format = static_cast<vk::Format>(key.depth_format);
+    pipeline_info.stencil_format = static_cast<vk::Format>(key.stencil_format);
     
     // Initialize pipeline
     if (!pipeline->Init(*ctx_, pipeline_info)) {

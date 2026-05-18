@@ -147,13 +147,45 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
     pipeline_info.pDepthStencilState = &depth_stencil;
     pipeline_info.pColorBlendState = &color_blend;
     pipeline_info.layout = info.layout;
-    pipeline_info.renderPass = info.render_pass;
     pipeline_info.subpass = info.subpass;
     pipeline_info.basePipelineHandle = info.base_pipeline_handle;
     pipeline_info.basePipelineIndex = info.base_pipeline_index;
 
     try {
-        pipeline_ = std::make_unique<vk::raii::Pipeline>(ctx.Device(), nullptr, pipeline_info);
+        if (info.use_dynamic_rendering) {
+            bool const core_dynamic_rendering =
+                ctx.PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+            if (core_dynamic_rendering) {
+                vk::PipelineRenderingCreateInfo rendering_info{};
+                rendering_info.colorAttachmentCount = static_cast<uint32_t>(info.color_formats.size());
+                rendering_info.pColorAttachmentFormats = info.color_formats.data();
+                rendering_info.depthAttachmentFormat = info.depth_format;
+                rendering_info.stencilAttachmentFormat = info.stencil_format;
+
+                pipeline_info.pNext = &rendering_info;
+                pipeline_info.renderPass = vk::RenderPass{};
+                pipeline_info.subpass = 0;
+
+                pipeline_ = std::make_unique<vk::raii::Pipeline>(ctx.Device(), nullptr, pipeline_info);
+            } else {
+                vk::PipelineRenderingCreateInfoKHR rendering_info{};
+                rendering_info.colorAttachmentCount = static_cast<uint32_t>(info.color_formats.size());
+                rendering_info.pColorAttachmentFormats = info.color_formats.data();
+                rendering_info.depthAttachmentFormat = info.depth_format;
+                rendering_info.stencilAttachmentFormat = info.stencil_format;
+
+                pipeline_info.pNext = &rendering_info;
+                pipeline_info.renderPass = vk::RenderPass{};
+                pipeline_info.subpass = 0;
+
+                pipeline_ = std::make_unique<vk::raii::Pipeline>(ctx.Device(), nullptr, pipeline_info);
+            }
+        } else {
+            pipeline_info.renderPass = info.render_pass;
+            pipeline_ = std::make_unique<vk::raii::Pipeline>(ctx.Device(), nullptr, pipeline_info);
+        }
+
         bind_point_ = vk::PipelineBindPoint::eGraphics;
         return true;
     } catch (vk::SystemError& e) {
