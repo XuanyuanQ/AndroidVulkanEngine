@@ -267,6 +267,23 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.button = std::move(button);
         }
 
+        auto image_tags = MatchTags(body, "Image");
+        if (!image_tags.empty()) {
+            ImageComponentData image{};
+            image.texture = Attribute(image_tags.front(), "texture");
+            image.color = Float4(Attribute(image_tags.front(), "color"), image.color);
+            object.components.image = std::move(image);
+        }
+
+        auto progress_bar_tags = MatchTags(body, "ProgressBar");
+        if (!progress_bar_tags.empty()) {
+            ProgressBarComponentData progress_bar{};
+            progress_bar.value = std::stof(Attribute(progress_bar_tags.front(), "value", std::to_string(progress_bar.value)));
+            progress_bar.min_value = std::stof(Attribute(progress_bar_tags.front(), "min", std::to_string(progress_bar.min_value)));
+            progress_bar.max_value = std::stof(Attribute(progress_bar_tags.front(), "max", std::to_string(progress_bar.max_value)));
+            object.components.progress_bar = std::move(progress_bar);
+        }
+
         scene.objects.push_back(std::move(object));
     }
 
