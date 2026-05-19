@@ -43,6 +43,11 @@ public:
                           vkfw::VkFrameSync& sync,
                           std::span<RasterColorVertex const> vertices,
                           RasterShaderCode const& shaders);
+    bool InitializeRasterModel(vkfw::VkContext& ctx,
+                               vkfw::VkSwapchain& swapchain,
+                               vkfw::VkFrameSync& sync,
+                               std::span<resource::ObjMeshVertex const> vertices,
+                               RasterShaderCode const& shaders);
     void ShutdownRaster();
     void RenderRasterFrame(vkfw::VkContext& ctx,
                            vkfw::VkSwapchain& swapchain,
@@ -66,4 +71,3 @@ private:
 };
 
 } // namespace ave::render
-

@@ -13,6 +13,14 @@
 
 namespace ave::resource {
 
+struct ObjMeshVertex {
+    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
+    std::array<float, 2> texcoord{0.0f, 0.0f};
+    bool has_texcoord = false;
+};
+
+bool ParseObjMeshText(std::string const& text, std::vector<ObjMeshVertex>& out_vertices);
+
 // Mesh runtime data
 struct MeshRuntime {
     uint32_t id = 0;

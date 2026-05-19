@@ -102,6 +102,7 @@ GLFWwindow* window = nullptr;
   vk::raii::Device device{nullptr};
   uint32_t graphics_queue_family_index = 0;
   vk::raii::Queue graphics_queue{nullptr};
+  bool supports_dynamic_rendering = false;
 };
 
 VkContext::VkContext() : impl_(new Impl()) {}
@@ -132,12 +133,6 @@ static bool DeviceSuitable(vk::raii::PhysicalDevice const& pd, vk::SurfaceKHR su
   auto exts = pd.enumerateDeviceExtensionProperties();
   for (auto const* req : RequiredDeviceExtensions()) {
     if (!HasExtension(exts, req))
-      return false;
-  }
-
-  // Dynamic rendering support (core in Vulkan 1.3, or VK_KHR_dynamic_rendering).
-  if (pd.getProperties().apiVersion < VK_API_VERSION_1_3) {
-    if (!HasExtension(exts, vk::KHRDynamicRenderingExtensionName))
       return false;
   }
 
@@ -247,7 +242,10 @@ bool VkContext::Init(ContextCreateInfo const& info)
 
   auto dev_exts = RequiredDeviceExtensions();
   bool const use_core_dynamic_rendering = impl_->physical_device.getProperties().apiVersion >= VK_API_VERSION_1_3;
-  if (!use_core_dynamic_rendering) {
+  auto const device_exts = impl_->physical_device.enumerateDeviceExtensionProperties();
+  bool const has_khr_dynamic_rendering = HasExtension(device_exts, vk::KHRDynamicRenderingExtensionName);
+  impl_->supports_dynamic_rendering = use_core_dynamic_rendering || has_khr_dynamic_rendering;
+  if (!use_core_dynamic_rendering && has_khr_dynamic_rendering) {
     dev_exts.push_back(vk::KHRDynamicRenderingExtensionName);
   }
 
@@ -256,7 +254,7 @@ bool VkContext::Init(ContextCreateInfo const& info)
   vk::PhysicalDeviceDynamicRenderingFeaturesKHR dyn_rendering_features{};
   if (use_core_dynamic_rendering) {
     vk13_features.dynamicRendering = VK_TRUE;
-  } else {
+  } else if (has_khr_dynamic_rendering) {
     dyn_rendering_features.dynamicRendering = VK_TRUE;
   }
 
@@ -265,8 +263,13 @@ bool VkContext::Init(ContextCreateInfo const& info)
   dci.pQueueCreateInfos = &qci;
   dci.enabledExtensionCount = static_cast<uint32_t>(dev_exts.size());
   dci.ppEnabledExtensionNames = dev_exts.data();
-  dci.pNext = use_core_dynamic_rendering ? static_cast<void*>(&vk13_features)
-                                        : static_cast<void*>(&dyn_rendering_features);
+  if (use_core_dynamic_rendering) {
+    dci.pNext = &vk13_features;
+  } else if (has_khr_dynamic_rendering) {
+    dci.pNext = &dyn_rendering_features;
+  } else {
+    dci.pNext = nullptr;
+  }
   impl_->device = vk::raii::Device{impl_->physical_device, dci};
   VULKAN_HPP_DEFAULT_DISPATCHER.init(*impl_->device);
 
@@ -304,5 +307,6 @@ vk::raii::PhysicalDevice& VkContext::PhysicalDevice() const { return impl_->phys
 vk::raii::Device& VkContext::Device() const { return impl_->device; }
 vk::raii::Queue& VkContext::GraphicsQueue() const { return impl_->graphics_queue; }
 uint32_t VkContext::GraphicsQueueFamilyIndex() const noexcept { return impl_->graphics_queue_family_index; }
+bool VkContext::SupportsDynamicRendering() const noexcept { return impl_->supports_dynamic_rendering; }
 
 } // namespace vkfw

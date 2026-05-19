@@ -3,9 +3,11 @@
 #include "minimal_vulkan_triangle.h"
 
 #include "ave/project/XmlSceneLoader.h"
+#include "ave/resource/ResourceSystem.h"
 
 #include <android/log.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <stdexcept>
 
@@ -80,7 +82,10 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
         readShaderAsset("compiled_shaders/solid_triangle.frag.spv"),
     };
-    if (!renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders)) {
+    bool const raster_ready = !model_vertices_.empty()
+        ? renderer_.InitializeRasterModel(ctx_, swapchainWrap_, sync_, model_vertices_, shaders)
+        : renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders);
+    if (!raster_ready) {
         logError("Failed to initialize Vulkan triangle renderer.");
         return;
     }
@@ -126,6 +131,7 @@ void MinimalVulkanTriangle::resize(int width, int height)
 bool MinimalVulkanTriangle::loadSceneMesh()
 {
     vertices_.clear();
+    model_vertices_.clear();
 
     ave::project::XmlSceneLoader loader;
     auto const project_text = readTextAsset(project_path_.c_str());
@@ -138,7 +144,39 @@ bool MinimalVulkanTriangle::loadSceneMesh()
             continue;
         }
 
-        for (auto const& source : object.components.mesh_renderer->vertices) {
+        auto const& mesh = *object.components.mesh_renderer;
+        if (!mesh.mesh.empty()) {
+            auto const text = readTextAsset(mesh.mesh.c_str());
+            if (text.empty()) {
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset not found or empty: %s", mesh.mesh.c_str());
+                return false;
+            }
+
+            std::vector<ave::resource::ObjMeshVertex> obj_vertices;
+            if (!ave::resource::ParseObjMeshText(text, obj_vertices)) {
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset has no usable geometry: %s", mesh.mesh.c_str());
+                return false;
+            }
+            size_t texcoord_count = 0;
+            for (auto const& vertex : obj_vertices) {
+                if (vertex.has_texcoord) {
+                    ++texcoord_count;
+                }
+            }
+            model_vertices_.insert(model_vertices_.end(), obj_vertices.begin(), obj_vertices.end());
+            __android_log_print(ANDROID_LOG_INFO,
+                                kLogTag,
+                                "Loaded OBJ mesh %s with %zu expanded vertices (%zu with UVs)",
+                                mesh.mesh.c_str(),
+                                obj_vertices.size(),
+                                texcoord_count);
+            __android_log_print(ANDROID_LOG_INFO,
+                                kLogTag,
+                                "Texture asset staged for future sampling: textures/viking_room.png");
+            continue;
+        }
+
+        for (auto const& source : mesh.vertices) {
             ave::render::RasterColorVertex vertex{};
             vertex.position = source.position;
             vertex.color = source.color;
@@ -146,12 +184,17 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         }
     }
 
-    if (vertices_.size() < 3) {
-        logError("Scene XML must define at least three <Vertex> entries.");
+    if (vertices_.size() < 3 && model_vertices_.size() < 3) {
+        logError("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
         return false;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded %zu XML-defined vertices from %s", vertices_.size(), project.entry_scene.c_str());
+    __android_log_print(ANDROID_LOG_INFO,
+                        kLogTag,
+                        "Loaded scene mesh data from %s (%zu inline preview vertices, %zu model vertices)",
+                        project.entry_scene.c_str(),
+                        vertices_.size(),
+                        model_vertices_.size());
     return true;
 }
 

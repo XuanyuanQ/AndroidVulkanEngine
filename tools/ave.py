@@ -62,7 +62,7 @@ def package_project_data(project_dir: Path, output_dir: Path) -> None:
         shutil.rmtree(assets_dir)
     assets_dir.mkdir(parents=True)
 
-    for name in ["project.xml", "scenes", "materials", "assets", "shaders"]:
+    for name in ["project.xml", "scenes", "materials", "assets", "shaders", "meshes", "textures"]:
         src = project_dir / name
         if src.is_dir():
             shutil.copytree(src, assets_dir / name)

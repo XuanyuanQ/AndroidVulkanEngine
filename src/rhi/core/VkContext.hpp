@@ -55,6 +55,7 @@ public:
   vk::raii::Device& Device() const;
   vk::raii::Queue& GraphicsQueue() const;
   uint32_t GraphicsQueueFamilyIndex() const noexcept;
+  bool SupportsDynamicRendering() const noexcept;
 
 private:
   class Impl;

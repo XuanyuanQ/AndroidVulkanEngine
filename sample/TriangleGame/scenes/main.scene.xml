@@ -4,15 +4,14 @@
         <Camera fov="60" />
     </GameObject>
 
-    <GameObject id="triangle" name="Hello Triangle">
+    <GameObject id="room" name="Viking Room">
         <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
-        <MeshRenderer material="materials/triangle.material.xml">
-            <Vertices>
-                <Vertex position="0,-0.55,0" color="1,0.2,0.1,1" />
-                <Vertex position="0.55,0.45,0" color="0.2,1,0.3,1" />
-                <Vertex position="-0.55,0.45,0" color="0.2,0.4,1,1" />
-            </Vertices>
-        </MeshRenderer>
+        <MeshRenderer mesh="meshes/viking_room.obj" material="materials/triangle.material.xml" />
         <Script class="com.example.trianglegame.PlayerController" />
+    </GameObject>
+
+    <GameObject id="room_texture" name="Viking Room Texture">
+        <Transform position="-0.85,-0.75,0" rotation="0,0,0" scale="1,1,1" />
+        <Image texture="textures/viking_room.png" color="1,1,1,1" />
     </GameObject>
 </Scene>

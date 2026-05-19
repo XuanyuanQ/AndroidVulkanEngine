@@ -6,7 +6,22 @@
 #include "VkRasterRenderer.hpp"
 #include "ave/resource/GpuUploadQueue.h"
 
+#include <algorithm>
+
 namespace ave::render {
+
+namespace {
+
+std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
+{
+    return {
+        position[0],
+        position[2],
+        -position[1],
+    };
+}
+
+} // namespace
 
 class Renderer::Impl {
 public:
@@ -63,73 +78,95 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
     ShutdownRaster();
     impl_ = std::make_unique<Impl>();
 
-    // Ensure context is wired (ResourceSystem/PipelineSystem depend on this)
-    SetVkContext(&ctx);
-
-    // Upload mesh through ResourceSystem so the demo path matches the engine architecture.
-    std::vector<float> packed_vertices;
-    packed_vertices.reserve(vertices.size() * 7);
-    for (auto const& v : vertices) {
-        packed_vertices.push_back(v.position[0]);
-        packed_vertices.push_back(v.position[1]);
-        packed_vertices.push_back(v.position[2]);
-        packed_vertices.push_back(v.color[0]);
-        packed_vertices.push_back(v.color[1]);
-        packed_vertices.push_back(v.color[2]);
-        packed_vertices.push_back(v.color[3]);
-    }
-    std::vector<uint32_t> indices; // non-indexed draw for the demo
-    uint32_t const mesh_id = resource_system_.GetMeshManager().LoadMeshFromData(
-        "raster_demo_mesh", packed_vertices, indices, /*vertex_stride*/ 7);
-    auto const* mesh = resource_system_.GetMeshManager().GetMesh(mesh_id);
-    if (!mesh || !mesh->vertex_buffer) {
-        impl_.reset();
-        return false;
+    std::vector<rhi::RasterColorVertex> raster_vertices;
+    raster_vertices.reserve(vertices.size());
+    for (auto const& vertex : vertices) {
+        raster_vertices.push_back(rhi::RasterColorVertex{
+            .position = vertex.position,
+            .color = vertex.color,
+        });
     }
 
-    // Upload shaders through ResourceSystem
-    uint32_t const shader_id = resource_system_.GetShaderManager().LoadShaderFromData(
-        "raster_demo_shader", shaders.vertex, shaders.fragment, "main");
-
-    // Create graphics pipeline via PipelineSystem
-    PipelineKey pipeline_key{};
-    pipeline_key.pass_id = 0;
-    pipeline_key.shader_id = shader_id;
-    pipeline_key.vertex_layout_id = 1; // RasterColorVertex (position/color)
-    pipeline_key.render_state_id = 1;
-    pipeline_key.layout_profile = 0; // demo shader uses no descriptor sets
-    pipeline_key.rt_format = static_cast<uint32_t>(swapchain.Format());
-    pipeline_key.depth_format = 0;
-    pipeline_key.stencil_format = 0;
-    pipeline_key.sample_count = 1;
-    pipeline_key.viewport_width = swapchain.Extent().width;
-    pipeline_key.viewport_height = swapchain.Extent().height;
-
-    uint32_t const pipeline_id = pipeline_system_.GetPipelineCache().GetOrCreatePipeline(pipeline_key);
-    if (pipeline_id == 0) {
-        impl_.reset();
-        return false;
-    }
-    auto const* pipeline = pipeline_system_.GetPipelineCache().GetPipeline(pipeline_id);
-    if (!pipeline) {
-        impl_.reset();
-        return false;
-    }
-
-    // Let the raster renderer manage swapchain/renderpass/framebuffers/command buffers,
-    // but use external mesh/pipeline resources.
-    if (!impl_->raster_renderer.InitializeWithExternalResources(
+    if (!impl_->raster_renderer.Initialize(
             ctx,
             swapchain,
             sync,
-            mesh->vertex_buffer.get(),
-            mesh->vertex_count,
-            pipeline)) {
+            raster_vertices,
+            {
+                shaders.vertex,
+                shaders.fragment,
+            })) {
         impl_.reset();
         return false;
     }
 
     return true;
+}
+
+bool Renderer::InitializeRasterModel(vkfw::VkContext& ctx,
+                                     vkfw::VkSwapchain& swapchain,
+                                     vkfw::VkFrameSync& sync,
+                                     std::span<resource::ObjMeshVertex const> vertices,
+                                     RasterShaderCode const& shaders)
+{
+    std::vector<RasterColorVertex> preview_vertices;
+    if (vertices.empty()) {
+        return false;
+    }
+
+    preview_vertices.reserve(vertices.size());
+
+    std::vector<std::array<float, 3>> positions;
+    positions.reserve(vertices.size());
+    for (auto const& vertex : vertices) {
+        positions.push_back(TransformPreviewPosition(vertex.position));
+    }
+
+    auto min_pos = positions.front();
+    auto max_pos = positions.front();
+    for (auto const& position : positions) {
+        for (int i = 0; i < 3; ++i) {
+            min_pos[i] = std::min(min_pos[i], position[i]);
+            max_pos[i] = std::max(max_pos[i], position[i]);
+        }
+    }
+
+    std::array<float, 3> center{
+        (min_pos[0] + max_pos[0]) * 0.5f,
+        (min_pos[1] + max_pos[1]) * 0.5f,
+        (min_pos[2] + max_pos[2]) * 0.5f,
+    };
+    float const extent_x = max_pos[0] - min_pos[0];
+    float const extent_y = max_pos[1] - min_pos[1];
+    float const extent_z = max_pos[2] - min_pos[2];
+    float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
+    float const scale = 1.6f / max_extent;
+
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        RasterColorVertex raster_vertex{};
+        auto const& position = positions[i];
+        raster_vertex.position = {
+            (position[0] - center[0]) * scale,
+            (position[1] - center[1]) * scale,
+            (position[2] - center[2]) * scale,
+        };
+
+        if (vertices[i].has_texcoord) {
+            auto const& uv = vertices[i].texcoord;
+            raster_vertex.color = {
+                std::clamp(uv[0], 0.0f, 1.0f),
+                std::clamp(uv[1], 0.0f, 1.0f),
+                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
+                1.0f,
+            };
+        } else {
+            raster_vertex.color = {0.85f, 0.82f, 0.78f, 1.0f};
+        }
+
+        preview_vertices.push_back(raster_vertex);
+    }
+
+    return InitializeRaster(ctx, swapchain, sync, preview_vertices, shaders);
 }
 
 void Renderer::ShutdownRaster()

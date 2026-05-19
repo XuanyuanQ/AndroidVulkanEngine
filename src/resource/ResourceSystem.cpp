@@ -3,7 +3,131 @@
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
 
+#include <sstream>
+
 namespace ave::resource {
+
+namespace {
+
+struct ObjVertexRef {
+    int position_index = 0;
+    int texcoord_index = 0;
+};
+
+ObjVertexRef ParseObjVertexRef(std::string const& token)
+{
+    ObjVertexRef ref{};
+
+    auto const first_slash = token.find('/');
+    if (first_slash == std::string::npos) {
+        ref.position_index = std::stoi(token);
+        return ref;
+    }
+
+    ref.position_index = std::stoi(token.substr(0, first_slash));
+
+    auto const second_slash = token.find('/', first_slash + 1);
+    auto const texcoord_text = token.substr(first_slash + 1, second_slash == std::string::npos
+                                                                 ? std::string::npos
+                                                                 : second_slash - first_slash - 1);
+    if (!texcoord_text.empty()) {
+        ref.texcoord_index = std::stoi(texcoord_text);
+    }
+
+    return ref;
+}
+
+int ResolveObjIndex(int index, int count)
+{
+    if (index > 0) {
+        return index - 1;
+    }
+    if (index < 0) {
+        return count + index;
+    }
+    return -1;
+}
+
+} // namespace
+
+bool ParseObjMeshText(std::string const& text, std::vector<ObjMeshVertex>& out_vertices)
+{
+    out_vertices.clear();
+
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 2>> texcoords;
+    std::vector<ObjVertexRef> expanded_vertices;
+
+    std::stringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.size() < 2) {
+            continue;
+        }
+
+        if (line.rfind("v ", 0) == 0) {
+            std::stringstream line_stream(line.substr(2));
+            std::array<float, 3> position{};
+            line_stream >> position[0] >> position[1] >> position[2];
+            positions.push_back(position);
+            continue;
+        }
+
+        if (line.rfind("vt ", 0) == 0) {
+            std::stringstream line_stream(line.substr(3));
+            std::array<float, 2> texcoord{};
+            line_stream >> texcoord[0] >> texcoord[1];
+            texcoords.push_back(texcoord);
+            continue;
+        }
+
+        if (line.rfind("f ", 0) == 0) {
+            std::stringstream line_stream(line.substr(2));
+            std::vector<ObjVertexRef> polygon;
+            std::string token;
+            while (line_stream >> token) {
+                polygon.push_back(ParseObjVertexRef(token));
+            }
+
+            if (polygon.size() < 3) {
+                continue;
+            }
+
+            for (size_t i = 1; i + 1 < polygon.size(); ++i) {
+                expanded_vertices.push_back(polygon[0]);
+                expanded_vertices.push_back(polygon[i]);
+                expanded_vertices.push_back(polygon[i + 1]);
+            }
+        }
+    }
+
+    if (positions.empty() || expanded_vertices.empty()) {
+        return false;
+    }
+
+    out_vertices.reserve(expanded_vertices.size());
+    for (auto const& ref : expanded_vertices) {
+        int const pos_index = ResolveObjIndex(ref.position_index, static_cast<int>(positions.size()));
+        if (pos_index < 0 || pos_index >= static_cast<int>(positions.size())) {
+            continue;
+        }
+
+        ObjMeshVertex vertex{};
+        vertex.position = positions[static_cast<size_t>(pos_index)];
+
+        if (ref.texcoord_index != 0) {
+            int const tex_index = ResolveObjIndex(ref.texcoord_index, static_cast<int>(texcoords.size()));
+            if (tex_index >= 0 && tex_index < static_cast<int>(texcoords.size())) {
+                vertex.texcoord = texcoords[static_cast<size_t>(tex_index)];
+                vertex.has_texcoord = true;
+            }
+        }
+
+        out_vertices.push_back(vertex);
+    }
+
+    return !out_vertices.empty();
+}
 
 // Mesh Manager
 MeshManager::MeshManager() = default;

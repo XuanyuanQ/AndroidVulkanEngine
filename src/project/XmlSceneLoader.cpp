@@ -181,26 +181,37 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         }
 
         auto mesh_tags = MatchTagBodies(body, "MeshRenderer");
-        if (!mesh_tags.empty()) {
+        auto mesh_inline_tags = MatchTags(body, "MeshRenderer");
+        if (!mesh_tags.empty() || !mesh_inline_tags.empty()) {
             MeshRendererData mesh{};
-            mesh.mesh = Attribute(mesh_tags.front().first, "mesh");
-            mesh.material = Attribute(mesh_tags.front().first, "material");
-            mesh.topology = Attribute(mesh_tags.front().first, "topology", mesh.topology);
-
-            for (auto const& vertex_tag : MatchTags(mesh_tags.front().second, "Vertex")) {
-                VertexData vertex{};
-                vertex.position = Float3(Attribute(vertex_tag, "position"), vertex.position);
-                vertex.normal = Float3(Attribute(vertex_tag, "normal"), vertex.normal);
-                vertex.tangent = Float4(Attribute(vertex_tag, "tangent"), vertex.tangent);
-                vertex.texcoord0 = Float2(Attribute(vertex_tag, "texcoord0"), vertex.texcoord0);
-                vertex.texcoord1 = Float2(Attribute(vertex_tag, "texcoord1"), vertex.texcoord1);
-                vertex.color = Float4(Attribute(vertex_tag, "color"), vertex.color);
-                mesh.vertices.push_back(vertex);
+            std::string tag_text;
+            std::string tag_body;
+            if (!mesh_tags.empty()) {
+                tag_text = mesh_tags.front().first;
+                tag_body = mesh_tags.front().second;
+            } else {
+                tag_text = mesh_inline_tags.front();
             }
+            mesh.mesh = Attribute(tag_text, "mesh");
+            mesh.material = Attribute(tag_text, "material");
+            mesh.topology = Attribute(tag_text, "topology", mesh.topology);
 
-            auto index_tags = MatchTagBodies(mesh_tags.front().second, "Indices");
-            if (!index_tags.empty()) {
-                mesh.indices = UIntList(index_tags.front().second);
+            if (!tag_body.empty()) {
+                for (auto const& vertex_tag : MatchTags(tag_body, "Vertex")) {
+                    VertexData vertex{};
+                    vertex.position = Float3(Attribute(vertex_tag, "position"), vertex.position);
+                    vertex.normal = Float3(Attribute(vertex_tag, "normal"), vertex.normal);
+                    vertex.tangent = Float4(Attribute(vertex_tag, "tangent"), vertex.tangent);
+                    vertex.texcoord0 = Float2(Attribute(vertex_tag, "texcoord0"), vertex.texcoord0);
+                    vertex.texcoord1 = Float2(Attribute(vertex_tag, "texcoord1"), vertex.texcoord1);
+                    vertex.color = Float4(Attribute(vertex_tag, "color"), vertex.color);
+                    mesh.vertices.push_back(vertex);
+                }
+
+                auto index_tags = MatchTagBodies(tag_body, "Indices");
+                if (!index_tags.empty()) {
+                    mesh.indices = UIntList(index_tags.front().second);
+                }
             }
 
             object.components.mesh_renderer = std::move(mesh);

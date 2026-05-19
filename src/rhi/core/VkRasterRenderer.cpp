@@ -23,8 +23,10 @@ bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
   external_pipeline_ = nullptr;
   external_vertex_count_ = 0;
   vertices_.assign(vertices.begin(), vertices.end());
+  use_dynamic_rendering_ = ctx.SupportsDynamicRendering();
 
   if (!createVertexBuffer(ctx, vertices) ||
+      !createRenderTargets(ctx, swapchain) ||
       !createPipeline(ctx, swapchain, shaders) ||
       !createCommandPoolAndBuffers(ctx, sync)) {
     destroyResources();
@@ -48,12 +50,14 @@ bool VulkanRasterRenderer::InitializeWithExternalResources(vkfw::VkContext& ctx,
   external_vertex_buffer_ = vertex_buffer;
   external_vertex_count_ = vertex_count;
   external_pipeline_ = pipeline;
+  use_dynamic_rendering_ = ctx.SupportsDynamicRendering();
 
   if (external_vertex_buffer_ == nullptr || external_pipeline_ == nullptr || external_vertex_count_ == 0) {
     return false;
   }
 
-  if (!createCommandPoolAndBuffers(ctx, sync)) {
+  if (!createRenderTargets(ctx, swapchain) ||
+      !createCommandPoolAndBuffers(ctx, sync)) {
     destroyResources();
     return false;
   }
@@ -207,8 +211,12 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
     };
     pipeline_info.vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
     pipeline_info.layout = pipeline_layout_.Handle();
-    pipeline_info.use_dynamic_rendering = true;
-    pipeline_info.color_formats = {swapchain.Format()};
+    pipeline_info.use_dynamic_rendering = use_dynamic_rendering_;
+    if (use_dynamic_rendering_) {
+      pipeline_info.color_formats = {swapchain.Format()};
+    } else {
+      pipeline_info.render_pass = render_pass_.Handle();
+    }
     pipeline_info.viewport.viewports = {viewport};
     pipeline_info.viewport.scissors = {scissor};
     pipeline_info.rasterization.polygon_mode = vk::PolygonMode::eFill;
@@ -230,6 +238,43 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
   }
 }
 
+bool VulkanRasterRenderer::createRenderTargets(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain)
+{
+  if (use_dynamic_rendering_) {
+    return true;
+  }
+
+  vkfw::RenderPassAttachment color_attachment{};
+  color_attachment.binding = 0;
+  color_attachment.type = vkfw::RenderPassAttachmentType::Color;
+  color_attachment.format = swapchain.Format();
+  color_attachment.samples = vk::SampleCountFlagBits::e1;
+  color_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
+  color_attachment.store_op = vkfw::RenderPassStoreOp::Store;
+  color_attachment.initial_layout = vk::ImageLayout::eColorAttachmentOptimal;
+  color_attachment.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+  vkfw::RenderPassSubpass subpass{};
+  subpass.color_attachments.push_back(color_attachment);
+
+  vkfw::RenderPassInfo render_pass_info{};
+  render_pass_info.subpasses.push_back(subpass);
+  render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+  if (!render_pass_.Init(ctx, render_pass_info)) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createRenderTargets failed: render pass init");
+    return false;
+  }
+
+  if (!framebuffers_.Init(ctx, swapchain, render_pass_)) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createRenderTargets failed: framebuffer init");
+    render_pass_.Shutdown(ctx);
+    return false;
+  }
+
+  return true;
+}
+
 bool VulkanRasterRenderer::createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync)
 {
   if (!command_buffers_.Init(ctx, vkfw::CommandBufferInfo{
@@ -248,8 +293,6 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
                                                uint32_t image_index)
 {
   command_buffer.begin(vk::CommandBufferBeginInfo{});
-  bool const core_dynamic_rendering =
-      ctx_ != nullptr && ctx_->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
   vk::Image const swap_img = swapchain.Image(image_index);
   vk::ImageSubresourceRange const range{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
@@ -275,36 +318,48 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
   clear.color.float32[2] = 0.06f;
   clear.color.float32[3] = 1.0f;
 
-  if (core_dynamic_rendering) {
+  if (use_dynamic_rendering_) {
+    bool const core_dynamic_rendering =
+        ctx_ != nullptr && ctx_->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
     vk::RenderingAttachmentInfo color_attachment{};
-    color_attachment.imageView = swapchain.ImageView(image_index);
-    color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-    color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-    color_attachment.clearValue = clear;
+    if (core_dynamic_rendering) {
+      color_attachment.imageView = swapchain.ImageView(image_index);
+      color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+      color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+      color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+      color_attachment.clearValue = clear;
 
-    vk::RenderingInfo rendering_info{};
-    rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
-    rendering_info.layerCount = 1;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachments = &color_attachment;
+      vk::RenderingInfo rendering_info{};
+      rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
+      rendering_info.layerCount = 1;
+      rendering_info.colorAttachmentCount = 1;
+      rendering_info.pColorAttachments = &color_attachment;
 
-    command_buffer.beginRendering(rendering_info);
+      command_buffer.beginRendering(rendering_info);
+    } else {
+      vk::RenderingAttachmentInfoKHR color_attachment_khr{};
+      color_attachment_khr.imageView = swapchain.ImageView(image_index);
+      color_attachment_khr.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+      color_attachment_khr.loadOp = vk::AttachmentLoadOp::eClear;
+      color_attachment_khr.storeOp = vk::AttachmentStoreOp::eStore;
+      color_attachment_khr.clearValue = clear;
+
+      vk::RenderingInfoKHR rendering_info{};
+      rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
+      rendering_info.layerCount = 1;
+      rendering_info.colorAttachmentCount = 1;
+      rendering_info.pColorAttachments = &color_attachment_khr;
+
+      command_buffer.beginRenderingKHR(rendering_info);
+    }
   } else {
-    vk::RenderingAttachmentInfoKHR color_attachment{};
-    color_attachment.imageView = swapchain.ImageView(image_index);
-    color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-    color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-    color_attachment.clearValue = clear;
-
-    vk::RenderingInfoKHR rendering_info{};
-    rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
-    rendering_info.layerCount = 1;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachments = &color_attachment;
-
-    command_buffer.beginRenderingKHR(rendering_info);
+    vk::RenderPassBeginInfo render_pass_begin{};
+    render_pass_begin.renderPass = render_pass_.Handle();
+    render_pass_begin.framebuffer = framebuffers_.Handle(image_index);
+    render_pass_begin.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
+    render_pass_begin.clearValueCount = 1;
+    render_pass_begin.pClearValues = &clear;
+    command_buffer.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
   }
   if (external_pipeline_ != nullptr) {
     command_buffer.bindPipeline(external_pipeline_->BindPoint(), external_pipeline_->Handle());
@@ -316,10 +371,16 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
   command_buffer.bindVertexBuffers(0, vertex_buffer, offset);
   uint32_t vertex_count = external_vertex_buffer_ != nullptr ? external_vertex_count_ : static_cast<uint32_t>(vertices_.size());
   command_buffer.draw(vertex_count, 1, 0, 0);
-  if (core_dynamic_rendering) {
-    command_buffer.endRendering();
+  if (use_dynamic_rendering_) {
+    bool const core_dynamic_rendering =
+        ctx_ != nullptr && ctx_->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    if (core_dynamic_rendering) {
+      command_buffer.endRendering();
+    } else {
+      command_buffer.endRenderingKHR();
+    }
   } else {
-    command_buffer.endRenderingKHR();
+    command_buffer.endRenderPass();
   }
 
   vk::ImageMemoryBarrier to_present{};
@@ -341,6 +402,8 @@ void VulkanRasterRenderer::destroyResources()
 {
   if (ctx_ != nullptr) {
     command_buffers_.Shutdown(*ctx_);
+    framebuffers_.Shutdown(*ctx_);
+    render_pass_.Shutdown(*ctx_);
     pipeline_.Shutdown(*ctx_);
     pipeline_layout_.Shutdown(*ctx_);
     if (vertex_buffer_.MappedData() != nullptr) {

@@ -7,6 +7,8 @@
 #include "VkBuffer.hpp"
 #include "VkShader.hpp"
 #include "VkCommandBuffer.hpp"
+#include "VkRenderPass.hpp"
+#include "VkFramebufferSet.hpp"
 
 #include <array>
 #include <cstdint>
@@ -60,6 +62,7 @@ private:
   bool createPipeline(vkfw::VkContext& ctx,
                       vkfw::VkSwapchain& swapchain,
                       RasterShaderCode const& shaders);
+  bool createRenderTargets(vkfw::VkContext& ctx, vkfw::VkSwapchain& swapchain);
   bool createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
   void recordCommandBuffer(vkfw::VkSwapchain& swapchain,
                            vk::CommandBuffer command_buffer,
@@ -76,6 +79,9 @@ private:
   vkfw::VkPipeline pipeline_{};
   vkfw::VkBuffer vertex_buffer_{};
   vkfw::VkCommandBuffer command_buffers_{};
+  vkfw::VkRenderPass render_pass_{};
+  vkfw::VkFramebufferSet framebuffers_{};
+  bool use_dynamic_rendering_ = false;
 };
 
 } // namespace ave::rhi

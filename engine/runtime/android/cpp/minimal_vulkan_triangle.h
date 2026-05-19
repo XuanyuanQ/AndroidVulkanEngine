@@ -42,6 +42,7 @@ private:
     uint32_t frame_index_ = 0;
     ave::render::Renderer renderer_{};
     std::vector<ave::render::RasterColorVertex> vertices_{};
+    std::vector<ave::resource::ObjMeshVertex> model_vertices_{};
 };
 
 } // namespace ave::android
