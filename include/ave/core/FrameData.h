@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include "ave/core/RenderTags.h"
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -25,6 +27,11 @@ struct FrameRenderableData {
     std::string material_id;
 
     float world[16]{};
+
+    // Routing/state (see docs/frame_data_contract_zh.md).
+    uint32_t layer_mask = ToMask(RenderLayer::World);
+    uint32_t pass_mask = DefaultWorldPassMask();
+    uint32_t render_queue = kQueueOpaque;
 
     uint32_t index_count = 0;
     uint32_t vertex_count = 0;
@@ -53,6 +60,7 @@ struct FrameLightData {
     float outer_angle = 35.0f;
 
     bool cast_shadows = false;
+    uint32_t light_group = 0;
 };
 
 struct FrameUiData {
@@ -69,6 +77,10 @@ struct FrameUiData {
     float depth = 0.0f;
     bool visible = true;
     bool interactable = false;
+
+    uint32_t layer_mask = ToMask(RenderLayer::UI);
+    uint32_t pass_mask = DefaultUiPassMask();
+    uint32_t render_queue = kQueueOverlay;
 };
 
 struct FrameResourceTable {

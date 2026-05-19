@@ -6,6 +6,12 @@
 #include <unordered_map>
 #include <memory>
 
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
+#include <vulkan/vulkan_raii.hpp>
+#else
+import vulkan_hpp;
+#endif
+
 namespace ave::resource {
 class ResourceSystem;
 }
@@ -216,8 +222,10 @@ public:
     
     uint32_t AllocateDescriptorSet(uint32_t layout_id);
     void FreeDescriptorSet(uint32_t set_id);
-    void UpdateDescriptorSet(uint32_t set_id, std::vector<DescriptorBinding> const& bindings);
-    // vk::DescriptorSet GetHandle(uint32_t set_id) const;
+
+    vk::DescriptorSet GetHandle(uint32_t set_id) const;
+    bool UpdateUniformBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
+    bool UpdateStorageBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
     void Clear();
     
 private:
@@ -225,6 +233,7 @@ private:
     DescriptorSetLayoutCache* desc_set_layout_cache_ = nullptr;
     std::unique_ptr<vkfw::VkDescriptorPool> pool_;
     std::vector<uint32_t> free_sets_;
+    std::unordered_map<uint32_t, vk::raii::DescriptorSet> sets_;
     //暂未实现 需要考虑下直接用VkDescriptorSet
     // std::unordered_map<uint32_t, vk::DescriptorSet> sets_;
     uint32_t next_set_id_ = 1;

@@ -9,6 +9,7 @@
 #include <memory>
 #include <unordered_map>
 #include <string>
+#include <optional>
 
 namespace ave::render {
 
@@ -35,7 +36,7 @@ struct MaterialConfig {
 struct RenderPassConfig {
     std::string type; // "DepthPrepass", "ShadowPass", "PBRPass", "ComputePass", "UIPass", "ToneMappingPass"
     uint32_t layer_mask = 0xFFFFFFFF;
-    uint32_t material_id_filter = 0;
+    std::optional<std::string> material_id_filter{};
     uint32_t light_group = 0;
     bool opaque_only = false;
     bool transparent_only = false;

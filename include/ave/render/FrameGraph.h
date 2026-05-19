@@ -10,11 +10,18 @@ namespace ave::render {
 class FrameGraph {
 public:
     void AddPass(std::unique_ptr<RenderPass> pass);
+    void AddPass(std::unique_ptr<RenderPass> pass, PassDataFilter const& filter_override);
     void Execute(RenderPassContext const& context);
     size_t PassCount() const noexcept;
 
 private:
-    std::vector<std::unique_ptr<RenderPass>> passes_;
+    struct PassNode {
+        std::unique_ptr<RenderPass> pass{};
+        PassDataFilter filter_override{};
+        bool has_filter_override = false;
+    };
+
+    std::vector<PassNode> passes_;
 };
 
 } // namespace ave::render

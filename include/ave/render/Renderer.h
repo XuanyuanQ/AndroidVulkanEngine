@@ -54,6 +54,15 @@ public:
                            vkfw::VkFrameSync& sync,
                            uint32_t& frame_index);
 
+    // FrameGraph Vulkan backend (ForwardOpaque bring-up).
+    bool InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
+    void ShutdownFrameGraphBackend();
+    void RenderFrameGraphFrame(core::FrameData const& frame,
+                               vkfw::VkContext& ctx,
+                               vkfw::VkSwapchain& swapchain,
+                               vkfw::VkFrameSync& sync,
+                               uint32_t& frame_index);
+
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }
     PipelineSystem& GetPipelineSystem() { return pipeline_system_; }

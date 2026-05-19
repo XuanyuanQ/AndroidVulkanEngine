@@ -187,6 +187,7 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
         }
 
         bind_point_ = vk::PipelineBindPoint::eGraphics;
+        layout_ = info.layout;
         return true;
     } catch (vk::SystemError& e) {
         return false;
@@ -196,6 +197,7 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
 void VkPipeline::Shutdown(VkContext& ctx) {
     pipeline_.reset();
     bind_point_ = vk::PipelineBindPoint::eGraphics;
+    layout_ = nullptr;
 }
 
 } // namespace vkfw

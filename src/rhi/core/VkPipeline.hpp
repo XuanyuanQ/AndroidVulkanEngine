@@ -147,10 +147,12 @@ public:
     
     vk::Pipeline Handle() const noexcept { return *pipeline_; }
     vk::PipelineBindPoint BindPoint() const noexcept { return bind_point_; }
+    vk::PipelineLayout Layout() const noexcept { return layout_; }
 
 private:
     std::unique_ptr<vk::raii::Pipeline> pipeline_;
     vk::PipelineBindPoint bind_point_ = vk::PipelineBindPoint::eGraphics;
+    vk::PipelineLayout layout_ = nullptr;
 };
 
 } // namespace vkfw

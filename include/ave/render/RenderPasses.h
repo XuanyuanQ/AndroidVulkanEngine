@@ -1,108 +1,63 @@
 #pragma once
 
 #include "ave/render/RenderPass.h"
-#include "ave/render/RenderWorld.h"
-#include "ave/render/MaterialSystem.h"
 
-#include <memory>
+#include <unordered_map>
+
+#include "VkBuffer.hpp"
 
 namespace ave::render {
 
-// Depth Prepass
-class DepthPrepass : public RenderPass {
+class DepthPrepass final : public RenderPass {
 public:
-    DepthPrepass();
-    ~DepthPrepass() override = default;
-
-    std::string Name() const override { return "DepthPrepass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        filter.opaque_only = true; // Only opaque objects
-        return filter;
-    }
+    std::string_view Name() const override { return "DepthPrepass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };
 
-// Shadow Pass
-class ShadowPass : public RenderPass {
+class ShadowPass final : public RenderPass {
 public:
-    ShadowPass();
-    ~ShadowPass() override = default;
-
-    std::string Name() const override { return "ShadowPass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        filter.opaque_only = true;
-        filter.light_group = 1; // Only shadow-casting lights
-        return filter;
-    }
+    std::string_view Name() const override { return "ShadowPass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };
 
-// PBR Pass
-class PBRPass : public RenderPass {
+class PBRPass final : public RenderPass {
 public:
-    PBRPass();
-    ~PBRPass() override = default;
+    std::string_view Name() const override { return "PBRPass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
-    std::string Name() const override { return "PBRPass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        filter.layer_mask = 0xFFFFFFFF;
-        return filter;
-    }
+private:
+    struct MaterialBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    vkfw::VkBuffer frame_ubo_{};
+    uint32_t frame_set_id_ = 0;
+    std::unordered_map<uint32_t, MaterialBinding> material_bindings_{};
 };
 
-// Compute Pass (for particle systems or bloom)
-class ComputePass : public RenderPass {
+class ComputePass final : public RenderPass {
 public:
-    ComputePass();
-    ~ComputePass() override = default;
-
-    std::string Name() const override { return "ComputePass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        // Compute pass doesn't need renderable data
-        return filter;
-    }
+    std::string_view Name() const override { return "ComputePass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };
 
-// UI Pass
-class UIPass : public RenderPass {
+class UIPass final : public RenderPass {
 public:
-    UIPass();
-    ~UIPass() override = default;
-
-    std::string Name() const override { return "UIPass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        filter.layer_mask = 0x00000001; // UI layer only
-        return filter;
-    }
+    std::string_view Name() const override { return "UIPass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };
 
-// Tone Mapping Pass
-class ToneMappingPass : public RenderPass {
+class ToneMappingPass final : public RenderPass {
 public:
-    ToneMappingPass();
-    ~ToneMappingPass() override = default;
-
-    std::string Name() const override { return "ToneMappingPass"; }
-    void Execute(RenderPassContext const& context) override;
-    
-    PassDataFilter GetDataFilter() const override {
-        PassDataFilter filter;
-        // Tone mapping only needs the rendered texture, no scene data
-        return filter;
-    }
+    std::string_view Name() const override { return "ToneMappingPass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };
 
 } // namespace ave::render

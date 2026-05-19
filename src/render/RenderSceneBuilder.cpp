@@ -5,8 +5,6 @@
 namespace ave::render {
 
 RenderSceneBuilder::RenderSceneBuilder() {
-    frame_graph_.SetRenderWorld(&render_world_);
-    frame_graph_.SetMaterialSystem(&material_system_);
 }
 
 void RenderSceneBuilder::BuildFromScene(project::SceneDocument const& scene, RenderSceneConfig const& config) {
@@ -35,23 +33,25 @@ void RenderSceneBuilder::ConvertGameObject(project::GameObjectData const& obj) {
         render_obj.world_matrix[i] = (i % 5 == 0) ? 1.0f : 0.0f;
     }
     
-    // Set position from transform
-    render_obj.world_matrix[12] = obj.transform.position[0];
-    render_obj.world_matrix[13] = obj.transform.position[1];
-    render_obj.world_matrix[14] = obj.transform.position[2];
+    // Set position from transform (if present)
+    if (obj.components.transform.has_value()) {
+        render_obj.world_matrix[12] = obj.components.transform->position[0];
+        render_obj.world_matrix[13] = obj.components.transform->position[1];
+        render_obj.world_matrix[14] = obj.components.transform->position[2];
+    }
     
     // Set layer mask based on object type
     render_obj.layer_mask = 0xFFFFFFFF; // Default: all layers
-    if (obj.has_button) {
-        render_obj.layer_mask = 0x00000001; // UI layer
+    if (obj.components.button.has_value() || obj.components.image.has_value()) {
+        render_obj.layer_mask = 0x00000001; // UI layer (legacy builder)
     }
     
     // Determine material ID
     std::string material_name;
-    if (obj.has_mesh) {
-        material_name = obj.mesh.material;
-    } else if (obj.has_triangle) {
-        material_name = obj.triangle.material;
+    if (obj.components.mesh_renderer.has_value()) {
+        material_name = obj.components.mesh_renderer->material;
+    } else if (obj.components.triangle_renderer.has_value()) {
+        material_name = obj.components.triangle_renderer->material;
     }
     
     if (!material_name.empty()) {
@@ -67,7 +67,7 @@ void RenderSceneBuilder::ConvertGameObject(project::GameObjectData const& obj) {
     }
     
     render_obj.visible = true;
-    render_obj.cast_shadows = true;
+    render_obj.cast_shadows = obj.components.light.has_value() ? obj.components.light->cast_shadows : true;
     
     render_world_.AddRenderObject(render_obj);
 }
@@ -117,7 +117,7 @@ void RenderSceneBuilder::ConfigureRenderPass(RenderPassConfig const& config) {
 PassDataFilter RenderSceneBuilder::CreateFilterFromConfig(RenderPassConfig const& config) {
     PassDataFilter filter;
     filter.layer_mask = config.layer_mask;
-    filter.material_id_filter = config.material_id_filter;
+    filter.material_id = config.material_id_filter;
     filter.light_group = config.light_group;
     filter.opaque_only = config.opaque_only;
     filter.transparent_only = config.transparent_only;

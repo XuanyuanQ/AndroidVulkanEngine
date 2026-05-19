@@ -38,7 +38,7 @@ add_library(ave_runtime SHARED
     "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
     "${AVE_ENGINE_ROOT}/src/resource/GpuUploadQueue.cpp"
     "${AVE_ENGINE_ROOT}/src/resource/ResourceSystem.cpp"
-    "${AVE_ENGINE_ROOT}/src/render/CommandRecorder.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/PassDataView.cpp"
     "${AVE_ENGINE_ROOT}/src/render/FrameGraph.cpp"
     "${AVE_ENGINE_ROOT}/src/render/PipelineSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/render/Renderer.cpp"

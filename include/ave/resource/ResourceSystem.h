@@ -176,11 +176,13 @@ public:
     bool SetTexture(uint32_t material_id, std::string const& slot, uint32_t texture_id);
     bool SetParameter(uint32_t material_id, std::string const& param, float value);
     MaterialRuntime const* GetMaterial(uint32_t id) const;
+    MaterialRuntime const* GetMaterialByName(std::string const& name) const;
     void RemoveMaterial(uint32_t id);
     void Clear();
     
 private:
     std::unordered_map<uint32_t, MaterialRuntime> materials_;
+    std::unordered_map<std::string, uint32_t> name_to_id_;
     uint32_t next_id_ = 1;
 };
 

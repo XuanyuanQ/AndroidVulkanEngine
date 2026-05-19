@@ -187,6 +187,7 @@ uint32_t MeshManager::LoadMeshFromData(std::string const& name, std::vector<floa
     
     mesh.is_loaded = true;
     meshes_[id] = std::move(mesh);
+    path_to_id_[name] = id;
     
     return id;
 }
@@ -288,6 +289,7 @@ uint32_t TextureManager::LoadTextureFromData(std::string const& name, uint32_t w
     
     texture.is_loaded = true;
     textures_[id] = std::move(texture);
+    path_to_id_[name] = id;
     
     return id;
 }
@@ -353,10 +355,10 @@ uint32_t ShaderManager::LoadShader(std::string const& path)
     return 0;
 }
 
-uint32_t ShaderManager::LoadShaderFromData(std::string const& name,
-                                           std::vector<uint32_t> const& vertex_spirv,
-                                           std::vector<uint32_t> const& fragment_spirv,
-                                           std::string const& entry_point)
+uint32_t ShaderManager::LoadShaderFromData(std::string const& name, 
+                                std::vector<uint32_t> const& vertex_spirv,
+                                std::vector<uint32_t> const& fragment_spirv,
+                                std::string const& entry_point)
 {
     if (!ctx_) {
         return 0;
@@ -391,6 +393,7 @@ uint32_t ShaderManager::LoadShaderFromData(std::string const& name,
     
     shader.is_loaded = true;
     shaders_[id] = std::move(shader);
+    path_to_id_[name] = id;
     
     return id;
 }
@@ -498,6 +501,7 @@ uint32_t MaterialManager::CreateMaterial(std::string const& name, uint32_t shade
     
     material.is_loaded = true;
     materials_[id] = std::move(material);
+    name_to_id_[name] = id;
     
     return id;
 }
@@ -545,6 +549,15 @@ MaterialRuntime const* MaterialManager::GetMaterial(uint32_t id) const
     return nullptr;
 }
 
+MaterialRuntime const* MaterialManager::GetMaterialByName(std::string const& name) const
+{
+    auto it = name_to_id_.find(name);
+    if (it == name_to_id_.end()) {
+        return nullptr;
+    }
+    return GetMaterial(it->second);
+}
+
 void MaterialManager::RemoveMaterial(uint32_t id)
 {
     materials_.erase(id);
@@ -553,6 +566,7 @@ void MaterialManager::RemoveMaterial(uint32_t id)
 void MaterialManager::Clear()
 {
     materials_.clear();
+    name_to_id_.clear();
     next_id_ = 1;
 }
 

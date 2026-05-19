@@ -17,12 +17,15 @@ class Light;
 
 // Render object representing a drawable entity
 struct RenderObject {
+    std::string id;
+    std::string name;
     uint32_t mesh_id = 0;
     uint32_t material_id = 0;
     uint32_t instance_count = 1;
     std::array<float, 16> world_matrix{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}; // Identity matrix
     bool visible = true;
     uint32_t layer_mask = 0xFFFFFFFF;
+    bool cast_shadows = false;
 };
 
 // Light data for rendering

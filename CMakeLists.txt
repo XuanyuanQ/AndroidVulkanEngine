@@ -23,6 +23,7 @@ add_library(ave_engine STATIC
     src/render/RenderWorld.cpp
     src/render/MaterialSystem.cpp
     src/render/RenderPasses.cpp
+    src/render/PassDataView.cpp
     src/render/RenderSceneBuilder.cpp
     src/render/PipelineSystem.cpp
     # src/rhi/VulkanDevice.cpp
@@ -45,6 +46,22 @@ target_link_libraries(ave_engine
 if (Vulkan_FOUND)
     target_compile_definitions(ave_engine PUBLIC AVE_HAS_VULKAN=1)
     target_link_libraries(ave_engine PUBLIC Vulkan::Vulkan)
+    target_sources(ave_engine PRIVATE
+        src/rhi/core/VkBuffer.cpp
+        src/rhi/core/VkCommandBuffer.cpp
+        src/rhi/core/VkContext.cpp
+        src/rhi/core/VkDescriptor.cpp
+        src/rhi/core/VkFrameSync.cpp
+        src/rhi/core/VkMemory.cpp
+        src/rhi/core/VkPipeline.cpp
+        src/rhi/core/VkRasterRenderer.cpp
+        src/rhi/core/VkRenderPass.cpp
+        src/rhi/core/VkShader.cpp
+        src/rhi/core/VkSwapchain.cpp
+        src/rhi/core/VkTexture.cpp
+        src/rhi/core/VkFramebufferSet.cpp
+        src/rhi/core/vk_dispatch.cpp
+    )
 else()
     target_compile_definitions(ave_engine PUBLIC AVE_HAS_VULKAN=0)
 endif()

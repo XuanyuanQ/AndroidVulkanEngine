@@ -3,6 +3,7 @@
 #include "ave/resource/ResourceSystem.h"
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
+#include "VkContext.hpp"
 
 namespace ave::render {
 namespace {
@@ -385,15 +386,28 @@ uint32_t DescriptorAllocator::AllocateDescriptorSet(uint32_t layout_id)
     
     // Create descriptor pool if not exists
     if (!pool_) {
-        vkfw::DescriptorBinding pool_binding;
-        pool_binding.binding = 0;
-        pool_binding.type = vkfw::DescriptorType::UniformBuffer;
-        pool_binding.descriptor_count = 1000;
-        pool_binding.stage_flags = vk::ShaderStageFlagBits::eAll;
-        
+        std::vector<vkfw::DescriptorBinding> pool_bindings;
+        pool_bindings.push_back(vkfw::DescriptorBinding{
+            .binding = 0,
+            .type = vkfw::DescriptorType::UniformBuffer,
+            .descriptor_count = 1,
+            .stage_flags = vk::ShaderStageFlagBits::eAll,
+        });
+        pool_bindings.push_back(vkfw::DescriptorBinding{
+            .binding = 0,
+            .type = vkfw::DescriptorType::CombinedImageSampler,
+            .descriptor_count = 1,
+            .stage_flags = vk::ShaderStageFlagBits::eAll,
+        });
+        pool_bindings.push_back(vkfw::DescriptorBinding{
+            .binding = 0,
+            .type = vkfw::DescriptorType::StorageBuffer,
+            .descriptor_count = 1,
+            .stage_flags = vk::ShaderStageFlagBits::eAll,
+        });
+
         pool_ = std::make_unique<vkfw::VkDescriptorPool>();
-        std::vector<vkfw::DescriptorBinding> pool_bindings = {pool_binding};
-        pool_->Init(*ctx_, pool_bindings, 100);
+        pool_->Init(*ctx_, pool_bindings, 1000);
     }
     
     if (desc_set_layout_cache_) {
@@ -404,8 +418,7 @@ uint32_t DescriptorAllocator::AllocateDescriptorSet(uint32_t layout_id)
                 if (sets.empty()) {
                     return 0;
                 }
-                // Keep raw handle; RAII wrapper is short-lived here.
-                // sets_[id] = *sets[0];
+                sets_.emplace(id, std::move(sets[0]));
             } catch (...) {
                 return 0;
             }
@@ -417,29 +430,87 @@ uint32_t DescriptorAllocator::AllocateDescriptorSet(uint32_t layout_id)
 
 void DescriptorAllocator::FreeDescriptorSet(uint32_t set_id)
 {
-    // sets_.erase(set_id);
+    sets_.erase(set_id);
     free_sets_.push_back(set_id);
 }
 
-void DescriptorAllocator::UpdateDescriptorSet(uint32_t set_id, std::vector<DescriptorBinding> const& bindings)
+vk::DescriptorSet DescriptorAllocator::GetHandle(uint32_t set_id) const
 {
-    if (!ctx_ || !pool_) {
-        return;
+    auto it = sets_.find(set_id);
+    if (it == sets_.end()) {
+        return {};
     }
-    
-    // Update descriptor set using vkfw
-    // Note: This requires the actual VkDescriptorSet handle and buffer/image resources
-    // For now, this is a placeholder - the actual implementation would:
-    // 1. Get the VkDescriptorSet handle from the set_id
-    // 2. Build vk::WriteDescriptorSet structures from the bindings
-    // 3. Call vkUpdateDescriptorSets with the write structures
-    // This requires storing the actual descriptor set handles and resource references
+    return *it->second;
+}
+
+bool DescriptorAllocator::UpdateUniformBuffer(uint32_t set_id,
+                                             uint32_t binding,
+                                             vk::Buffer buffer,
+                                             vk::DeviceSize offset,
+                                             vk::DeviceSize range)
+{
+    if (!ctx_) {
+        return false;
+    }
+
+    auto it = sets_.find(set_id);
+    if (it == sets_.end()) {
+        return false;
+    }
+
+    vk::DescriptorBufferInfo buf{};
+    buf.buffer = buffer;
+    buf.offset = offset;
+    buf.range = range;
+
+    vk::WriteDescriptorSet write{};
+    write.dstSet = *it->second;
+    write.dstBinding = binding;
+    write.dstArrayElement = 0;
+    write.descriptorCount = 1;
+    write.descriptorType = vk::DescriptorType::eUniformBuffer;
+    write.pBufferInfo = &buf;
+
+    ctx_->Device().updateDescriptorSets(write, {});
+    return true;
+}
+
+bool DescriptorAllocator::UpdateStorageBuffer(uint32_t set_id,
+                                             uint32_t binding,
+                                             vk::Buffer buffer,
+                                             vk::DeviceSize offset,
+                                             vk::DeviceSize range)
+{
+    if (!ctx_) {
+        return false;
+    }
+
+    auto it = sets_.find(set_id);
+    if (it == sets_.end()) {
+        return false;
+    }
+
+    vk::DescriptorBufferInfo buf{};
+    buf.buffer = buffer;
+    buf.offset = offset;
+    buf.range = range;
+
+    vk::WriteDescriptorSet write{};
+    write.dstSet = *it->second;
+    write.dstBinding = binding;
+    write.dstArrayElement = 0;
+    write.descriptorCount = 1;
+    write.descriptorType = vk::DescriptorType::eStorageBuffer;
+    write.pBufferInfo = &buf;
+
+    ctx_->Device().updateDescriptorSets(write, {});
+    return true;
 }
 
 void DescriptorAllocator::Clear()
 {
     free_sets_.clear();
-    // sets_.clear();
+    sets_.clear();
     next_set_id_ = 1;
 }
 
