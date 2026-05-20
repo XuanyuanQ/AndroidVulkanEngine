@@ -25,6 +25,7 @@ struct FrameRenderableData {
 
     std::string mesh_id;
     std::string material_id;
+    std::string shader_id;// For bring-up, shader is specified directly on renderable. Extend to support material-specified shader and shader variants.
 
     float world[16]{};
 

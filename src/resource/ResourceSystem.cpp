@@ -232,6 +232,7 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
     if (positions.empty() || out_mesh.indices.empty() || out_mesh.vertices.empty()) {
         return false;
     }
+
     return true;
 }
 
@@ -534,6 +535,9 @@ uint32_t ShaderManager::LoadShaderFromData(std::string const& name,
     if (!ctx_) {
         return 0;
     }
+    if(path_to_id_.find(name) != path_to_id_.end()) {
+        return path_to_id_[name];
+    }   
     
     uint32_t id = next_id_++;
     
@@ -624,6 +628,15 @@ ShaderRuntime const* ShaderManager::GetShader(uint32_t id) const
     return nullptr;
 }
 
+ShaderRuntime const* ShaderManager::GetShaderByPath(std::string const& path) const
+{
+    auto it = path_to_id_.find(path);
+    if (it != path_to_id_.end()) {
+        return GetShader(it->second);
+    }
+    return nullptr;
+}
+
 void ShaderManager::UnloadShader(uint32_t id)
 {
     auto it = shaders_.find(id);
@@ -663,6 +676,7 @@ MaterialManager::MaterialManager() = default;
 
 uint32_t MaterialManager::CreateMaterial(std::string const& name, uint32_t shader_id)
 {
+    
     uint32_t id = next_id_++;
     
     MaterialRuntime material;

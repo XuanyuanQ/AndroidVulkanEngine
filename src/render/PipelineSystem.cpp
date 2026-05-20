@@ -4,6 +4,7 @@
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
 #include "VkContext.hpp"
+#include <cstddef>
 
 namespace ave::render {
 namespace {
@@ -256,6 +257,24 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key)
                 .stride = 7u * sizeof(float),
                 .format = vk::Format::eR32G32B32A32Sfloat,
                 .offset = 3u * sizeof(float),
+            },
+        };
+    } else if (key.vertex_layout_id == 2) {
+        // project::VertexData: position(float3) + normal(float3) + tangent(float4) + texcoord0(float2) + texcoord1(float2) + color(float4)
+        vertex_input.vertex_inputs = {
+            vkfw::PipelineVertexInput{
+                .binding = 0,
+                .location = 0,
+                .stride = sizeof(ave::project::VertexData),
+                .format = vk::Format::eR32G32B32Sfloat,
+                .offset = offsetof(ave::project::VertexData, position),
+            },
+            vkfw::PipelineVertexInput{
+                .binding = 0,
+                .location = 1,
+                .stride = sizeof(ave::project::VertexData),
+                .format = vk::Format::eR32G32B32A32Sfloat,
+                .offset = offsetof(ave::project::VertexData, color),
             },
         };
     }

@@ -7,3 +7,4 @@ adb shell am start -n com.example.trianglegame/com.ave.engine.AveActivity
 adb shell am force-stop com.example.trianglegame
 
 taskkill /F /IM emulator.exe /T 
+adb logcat *:E

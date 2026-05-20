@@ -6,6 +6,9 @@
 #include "VkRasterRenderer.hpp"
 #include "VkCommandBuffer.hpp"
 #include "ave/resource/GpuUploadQueue.h"
+#include "ave/render/RenderPasses.h"
+#include "ave/render/RenderPass.h"
+#include <android/log.h>
 
 namespace ave::render {
 
@@ -100,6 +103,14 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
                                             uint32_t mesh_id,
                                             RasterShaderCode const& shaders)
 {
+     InitializeFrameGraphBackend(ctx, sync);
+     graph_.AddPass(std::make_unique<PBRPass>());
+     graph_.AddPass(std::make_unique<ShadowPass>());
+     graph_.AddPass(std::make_unique<DepthPrepass>());
+     graph_.AddPass(std::make_unique<UIPass>());
+    //  graph_.AddPass(std::make_unique<ComputePass>());
+     resource_system_.GetShaderManager().LoadShaderFromData("mesh_shader", shaders.vertex, shaders.fragment);
+     return true;
     auto const* mesh = resource_system_.GetMeshManager().GetMesh(mesh_id);
     if (mesh == nullptr) {
         return false;
@@ -111,7 +122,7 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
 
     ShutdownRaster();
     impl_ = std::make_unique<Impl>();
-
+   
     return impl_->raster_renderer.InitializeWithExternalBuffers(
         ctx,
         swapchain,
@@ -125,6 +136,7 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
             shaders.vertex,
             shaders.fragment,
         });
+
 }
 
 void Renderer::ShutdownRaster()
@@ -140,11 +152,27 @@ void Renderer::RenderRasterFrame(vkfw::VkContext& ctx,
                                  vkfw::VkFrameSync& sync,
                                  uint32_t& frame_index)
 {
-    if (impl_ == nullptr) {
-        return;
-    }
+    // if (impl_ == nullptr) {
+    //     return;
+    // }
+    // impl_->raster_renderer.RenderFrame(ctx, swapchain, sync, frame_index);
+    // return;
+    core::FrameData empty_frame{};
+    empty_frame.frame_index = frame_index;
+    empty_frame.renderables.push_back(core::FrameRenderableData{
+        .mesh_id = "meshes/viking_room.obj", // Mesh data is provided directly via external buffers, so mesh_id is not used.
+        .material_id = "", // For bring-up, material is not used. Extend to support material-specified shader and shader variants.
+        .shader_id ="mesh_shader", // For bring-up, shader is specified directly on renderable. Extend to support material-specified shader and shader variants.
+        .world = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        },
+    });
 
-    impl_->raster_renderer.RenderFrame(ctx, swapchain, sync, frame_index);
+    RenderFrameGraphFrame(empty_frame, ctx, swapchain, sync, frame_index);
+    
 }
 
 bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync)
@@ -183,6 +211,7 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     SetVkContext(&ctx);
 
     sync.WaitForFrame(ctx, frame_index);
+    __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %u", frame_index);
     auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
     if (acq_result == vk::Result::eErrorOutOfDateKHR) {
         return;

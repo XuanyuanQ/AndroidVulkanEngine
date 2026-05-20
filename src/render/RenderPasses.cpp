@@ -2,8 +2,11 @@
 
 #include "ave/render/PipelineSystem.h"
 #include "ave/resource/ResourceSystem.h"
+#include "VkDescriptor.hpp"
+#include "VkPipeline.hpp"
 
 #include "VkSwapchain.hpp"
+#include <android/log.h>
 
 #include <string>
 #include <vector>
@@ -22,8 +25,11 @@ uint32_t VertexLayoutIdFromMesh(ave::resource::MeshRuntime const& mesh)
 {
     // Convention (see README): vertex_layout_id describes attribute layout.
     // For bring-up we key by stride; extend this when multiple layouts share stride.
-    if (mesh.vertex_stride == 7) {
+    if (mesh.vertex_stride == 7 * sizeof(float)) {
         return 1; // RasterColorVertex (pos3 + color4)
+    }
+    if (mesh.vertex_stride == sizeof(ave::project::VertexData)) {
+        return 2; // project::VertexData
     }
     return 0;
 }
@@ -155,6 +161,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
     auto& mesh_mgr = context.resources->GetMeshManager();
     auto& mat_mgr = context.resources->GetMaterialManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
 
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
@@ -193,20 +200,38 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         if (!renderable) {
             continue;
         }
-
+        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %llu", context.frame->frame_index);
+        static ave::resource::MaterialRuntime default_material{
+            .id = 999999,
+            .name = "default_fallback",
+            .shader_id = 0,
+            .base_color_texture = 0,
+            .normal_texture = 0,
+            .metallic_roughness_texture = 0,
+            .base_color = {1.0f, 1.0f, 1.0f, 1.0f},
+            .metallic = 0.0f,
+            .roughness = 0.5f,
+            .is_loaded = true
+        };
         auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
-            Emit(context, "  skip: missing material '" + renderable->material_id + "'");
-            continue;
-        }
+            Emit(context, "  skip: missing material '" + renderable->material_id + "', using default");
+            material = &default_material;
+        }   
+        
 
         auto const* mesh = mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
             Emit(context, "  skip: missing mesh '" + renderable->mesh_id + "'");
             continue;
         }
+        auto const* shader = shader_mgr.GetShaderByPath(renderable->shader_id); //for bring-up,loading shader no via material
+        if (!shader) {
+            Emit(context, "  skip: missing shader '" + renderable->shader_id + "'");
+            continue;
+        }
 
-        PipelineKey key = MakePipelineKey(context, /*pass_id*/ 0, material->shader_id, *mesh);
+        PipelineKey key = MakePipelineKey(context, /*pass_id*/ 0, shader->id, *mesh);
         if (has_vk) {
             key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
             key.viewport_width = context.swapchain->Extent().width;
