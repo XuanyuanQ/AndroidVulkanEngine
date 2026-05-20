@@ -4,6 +4,7 @@
 
 #include "ave/project/XmlSceneLoader.h"
 #include "ave/resource/ResourceSystem.h"
+#include "ave/render/MaterialSystem.h"
 
 #include <android/log.h>
 #include <algorithm>
@@ -71,6 +72,15 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         [this](std::string const& path) {
             return readTextAsset(path.c_str());
         });
+    renderer_.GetMaterialSystem().SetTextAssetLoader(
+        [this](std::string const& path) {
+            return readTextAsset(path.c_str());
+        });
+    
+renderer_.GetMaterialSystem().SetShaderAssetLoader(
+    [this](std::string const& path) -> std::vector<uint32_t> {
+        return readShaderAsset(path.c_str());
+    });
 
     sync_.Init(ctx_, kFramesInFlight);
 
@@ -162,6 +172,22 @@ bool MinimalVulkanTriangle::loadSceneMesh()
             }
             __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded mesh resource %s as mesh id %u", mesh.mesh.c_str(), model_mesh_id_);
             __android_log_print(ANDROID_LOG_INFO, kLogTag, "Texture asset staged for future sampling: textures/viking_room.png");
+            
+            if (!mesh.material.empty()) {
+                uint32_t mat_id = renderer_.GetMaterialSystem().LoadMaterial(mesh.material);
+                if (mat_id != 0) {
+                    auto const* mat = renderer_.GetMaterialSystem().GetMaterial(mat_id);
+                    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Parsed and registered logical material %s %swith color (%.2f, %.2f, %.2f, %.2f)",
+                                        mesh.material.c_str(),
+                                        mat->shader_name.c_str(),
+                                        mat->params.base_color[0],
+                                        mat->params.base_color[1],
+                                        mat->params.base_color[2],
+                                        mat->params.base_color[3]);
+                } else {
+                    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to load material for %s", mesh.material.c_str());
+                }
+            }
             continue;
         }
 

@@ -6,6 +6,7 @@
 #include "ave/render/CommandRecorder.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/PipelineSystem.h"
+#include "ave/render/MaterialSystem.h"
 
 #include <memory>
 #include <span>
@@ -66,6 +67,7 @@ public:
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }
     PipelineSystem& GetPipelineSystem() { return pipeline_system_; }
+    MaterialSystem& GetMaterialSystem() { return material_system_; }
     void SetVkContext(vkfw::VkContext* ctx);
 
 private:
@@ -76,6 +78,7 @@ private:
     CommandRecorder recorder_;
     resource::ResourceSystem resource_system_;
     PipelineSystem pipeline_system_;
+    MaterialSystem material_system_;
     std::unique_ptr<Impl> impl_;
 };
 

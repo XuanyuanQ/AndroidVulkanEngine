@@ -8,6 +8,11 @@
 #include <vector>
 #include <cstdint>
 #include <optional>
+#include <functional>
+
+namespace ave::resource {
+class ResourceSystem;
+}
 
 namespace ave::render {
 
@@ -59,8 +64,18 @@ struct MaterialInstance {
 // Material system manages all materials and instances in the scene
 class MaterialSystem {
 public:
+    using TextAssetLoader = std::function<std::string(std::string const&)>;
+    using ShaderAssetLoader = std::function<std::vector<uint32_t>(std::string const&)>; 
+
     MaterialSystem();
-    ~MaterialSystem() = default;
+    ~MaterialSystem() = default ;
+
+    void Initialize(resource::ResourceSystem* resource_system);
+    void SetTextAssetLoader(TextAssetLoader loader) { text_asset_loader_ = std::move(loader); }
+    void SetShaderAssetLoader(ShaderAssetLoader loader) { shader_asset_loader_ = std::move(loader); }
+
+    // Automatically load material from XML asset
+    uint32_t LoadMaterial(std::string const& path);
 
     // Create base material from definition
     uint32_t CreateMaterial(Material const& material);
@@ -94,10 +109,20 @@ public:
     // Clear all materials and instances
     void Clear();
 
+    // Get all registered logical materials
+    std::vector<Material> const& GetMaterials() const { return materials_; }
+
 private:
+    void SyncLogicalToGpu(Material const& logical_mat);
+
     std::vector<Material> materials_;
     std::unordered_map<std::string, uint32_t> name_to_id_;
+    std::unordered_map<uint32_t, MaterialInstance> material_instances_;
+    resource::ResourceSystem* resource_system_ = nullptr;
+    TextAssetLoader text_asset_loader_{};
+    ShaderAssetLoader shader_asset_loader_{};
     uint32_t next_id_ = 1;
+    uint32_t next_instance_id_ = 10000;
 };
 
 } // namespace ave::render

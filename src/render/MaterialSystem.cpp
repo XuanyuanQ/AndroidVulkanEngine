@@ -1,15 +1,61 @@
 #include "ave/render/MaterialSystem.h"
+#include "ave/resource/ResourceSystem.h"
+#include "ave/project/XmlSceneLoader.h"
+#include <android/log.h>
 
 namespace ave::render {
 
 MaterialSystem::MaterialSystem() = default;
 
+void MaterialSystem::Initialize(resource::ResourceSystem* resource_system)
+{
+    resource_system_ = resource_system;
+}
+
+uint32_t MaterialSystem::LoadMaterial(std::string const& path)
+{
+    // Check if already loaded
+    auto it = name_to_id_.find(path);
+    if (it != name_to_id_.end()) {
+        return it->second;
+    }
+
+    if (!text_asset_loader_) {
+        return 0;
+    }
+
+    std::string text = text_asset_loader_(path);
+    if (text.empty()) {
+        return 0;
+    }
+
+    ave::project::XmlSceneLoader loader;
+    auto const mat_doc = loader.LoadMaterialText(text);
+
+    Material logical_mat{};
+    logical_mat.name = path;
+    logical_mat.shader_name = mat_doc.shader;
+    logical_mat.params.base_color = mat_doc.base_color;
+    logical_mat.params.metallic = mat_doc.metallic;
+    logical_mat.params.roughness = mat_doc.roughness;
+
+    return CreateMaterial(logical_mat);
+}
+
 uint32_t MaterialSystem::CreateMaterial(Material const& material)
 {
-    uint32_t id = next_id_++;
+    if(name_to_id_.find(material.name) != name_to_id_.end()) {
+        return name_to_id_[material.name];
+    }
+    uint32_t id = next_id_++;   
     materials_.push_back(material);
     materials_.back().id = id;
     name_to_id_[material.name] = id;
+
+    if (resource_system_ != nullptr) {
+        SyncLogicalToGpu(materials_.back());
+    }
+
     return id;
 }
 
@@ -41,6 +87,11 @@ bool MaterialSystem::UpdateMaterial(uint32_t id, Material const& material)
     materials_[id] = material;
     materials_[id].id = id;
     name_to_id_[material.name] = id;
+
+    if (resource_system_ != nullptr) {
+        SyncLogicalToGpu(materials_[id]);
+    }
+
     return true;
 }
 
@@ -65,16 +116,15 @@ Material const* MaterialSystem::GetMaterial(uint32_t id) const
             // Create a copy of the base material with overrides applied
             static thread_local Material temp_material;
             temp_material = materials_[base_id - 1];
-            
             // Apply texture overrides
-            if (!instance_it->second.texture_overrides.base_color_texture.empty()) {
-                temp_material.textures.base_color = instance_it->second.texture_overrides.base_color_texture;
+            if (instance_it->second.texture_overrides.base_color_texture != 0) {
+                temp_material.textures.base_color_texture = instance_it->second.texture_overrides.base_color_texture;
             }
-            if (!instance_it->second.texture_overrides.normal_texture.empty()) {
-                temp_material.textures.normal = instance_it->second.texture_overrides.normal_texture;
+            if (instance_it->second.texture_overrides.normal_texture != 0) {
+                temp_material.textures.normal_texture = instance_it->second.texture_overrides.normal_texture;
             }
-            if (!instance_it->second.texture_overrides.metallic_roughness_texture.empty()) {
-                temp_material.textures.metallic_roughness = instance_it->second.texture_overrides.metallic_roughness_texture;
+            if (instance_it->second.texture_overrides.metallic_roughness_texture != 0) {
+                temp_material.textures.metallic_roughness_texture = instance_it->second.texture_overrides.metallic_roughness_texture;
             }
             
             // Apply parameter overrides
@@ -134,50 +184,50 @@ void MaterialSystem::Clear()
     next_instance_id_ = 10000;
 }
 
-void MaterialSystem::SetBaseColor(uint32_t material_id, std::array<float, 4> const& color) {
-    auto* material = GetMaterial(material_id);
-    if (material) {
-        material->params.base_color = color;
-    }
-}
+#define SHADER_PATH_PREFIX "compiled_shaders/"
+#define VERTEX_SHADER_SUFFIX ".vert.spv"
+#define FRAGMENT_SHADER_SUFFIX ".frag.spv"
 
-void MaterialSystem::SetMetallic(uint32_t material_id, float metallic) {
-    auto* material = GetMaterial(material_id);
-    if (material) {
-        material->params.metallic = metallic;
-    }
-}
-
-void MaterialSystem::SetRoughness(uint32_t material_id, float roughness) {
-    auto* material = GetMaterial(material_id);
-    if (material) {
-        material->params.roughness = roughness;
-    }
-}
-
-void MaterialSystem::SetTexture(uint32_t material_id, std::string const& texture_type, uint32_t texture_id) {
-    auto* material = GetMaterial(material_id);
-    if (!material) {
+void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
+{
+    if (resource_system_ == nullptr) {
         return;
     }
 
-    if (texture_type == "base_color") {
-        material->textures.base_color_texture = texture_id;
-    } else if (texture_type == "metallic_roughness") {
-        material->textures.metallic_roughness_texture = texture_id;
-    } else if (texture_type == "normal") {
-        material->textures.normal_texture = texture_id;
-    } else if (texture_type == "occlusion") {
-        material->textures.occlusion_texture = texture_id;
-    } else if (texture_type == "emissive") {
-        material->textures.emissive_texture = texture_id;
-    }
-}
+    auto& gpu_mat_mgr = resource_system_->GetMaterialManager();
+    auto& shader_mgr = resource_system_->GetShaderManager();
 
-void MaterialSystem::Clear() {
-    materials_.clear();
-    name_to_id_.clear();
-    next_id_ = 1;
+    auto const* gpu_mat = gpu_mat_mgr.GetMaterialByName(logical_mat.name);
+    uint32_t gpu_mat_id = 0;
+    if (gpu_mat == nullptr) {
+        uint32_t shader_id = 0;
+        auto const* shader = shader_mgr.GetShaderByPath(logical_mat.shader_name);
+        if (shader != nullptr) {
+            shader_id = shader->id;
+        } else {
+            std::string vertex_shader_path = SHADER_PATH_PREFIX + logical_mat.shader_name + VERTEX_SHADER_SUFFIX;
+            std::string fragment_shader_path = SHADER_PATH_PREFIX + logical_mat.shader_name + FRAGMENT_SHADER_SUFFIX;
+            std::vector<uint32_t> vertex_shader_data = shader_asset_loader_(vertex_shader_path);
+            std::vector<uint32_t> fragment_shader_data = shader_asset_loader_(fragment_shader_path);
+            auto  id = shader_mgr.LoadShaderFromData(logical_mat.shader_name, vertex_shader_data, fragment_shader_data);
+            // auto const* fallback_shader = shader_mgr.GetShaderByPath("mesh_shader");
+            if (id != 0) {
+                shader_id = id;
+            }else {
+                __android_log_print(ANDROID_LOG_ERROR, "MaterialSystem", "Failed to load shader for material %s: %s", logical_mat.name.c_str(), logical_mat.shader_name.c_str());
+                // Failed to load shader, cannot create material
+                return;
+            }
+        }
+        gpu_mat_id = gpu_mat_mgr.CreateMaterial(logical_mat.name, shader_id);
+    } else {
+        gpu_mat_id = gpu_mat->id;
+    }
+
+    // Sync base color and parameters
+    gpu_mat_mgr.SetBaseColor(gpu_mat_id, logical_mat.params.base_color);
+    gpu_mat_mgr.SetParameter(gpu_mat_id, "metallic", logical_mat.params.metallic);
+    gpu_mat_mgr.SetParameter(gpu_mat_id, "roughness", logical_mat.params.roughness);
 }
 
 } // namespace ave::render

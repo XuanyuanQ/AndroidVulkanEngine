@@ -677,6 +677,9 @@ MaterialManager::MaterialManager() = default;
 uint32_t MaterialManager::CreateMaterial(std::string const& name, uint32_t shader_id)
 {
     
+    if(name_to_id_.find(name) != name_to_id_.end()) {
+        return name_to_id_[name];
+    }
     uint32_t id = next_id_++;
     
     MaterialRuntime material;
@@ -722,6 +725,16 @@ bool MaterialManager::SetParameter(uint32_t material_id, std::string const& para
         it->second.roughness = value;
     }
     
+    return true;
+}
+
+bool MaterialManager::SetBaseColor(uint32_t material_id, std::array<float, 4> const& color)
+{
+    auto it = materials_.find(material_id);
+    if (it == materials_.end()) {
+        return false;
+    }
+    it->second.base_color = color;
     return true;
 }
 

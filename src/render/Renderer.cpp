@@ -18,7 +18,11 @@ public:
     vkfw::VkCommandBuffer framegraph_command_buffers{};
 };
 
-Renderer::Renderer() = default;
+Renderer::Renderer()
+{
+    material_system_.Initialize(&resource_system_);
+}
+
 Renderer::~Renderer() = default;
 
 bool Renderer::Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads)
@@ -109,33 +113,8 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
      graph_.AddPass(std::make_unique<DepthPrepass>());
      graph_.AddPass(std::make_unique<UIPass>());
     //  graph_.AddPass(std::make_unique<ComputePass>());
-     resource_system_.GetShaderManager().LoadShaderFromData("mesh_shader", shaders.vertex, shaders.fragment);
+    //  resource_system_.GetShaderManager().LoadShaderFromData("mesh_shader", shaders.vertex, shaders.fragment);
      return true;
-    auto const* mesh = resource_system_.GetMeshManager().GetMesh(mesh_id);
-    if (mesh == nullptr) {
-        return false;
-    }
-
-    if (mesh->vertex_buffer == nullptr || mesh->vertex_count == 0) {
-        return false;
-    }
-
-    ShutdownRaster();
-    impl_ = std::make_unique<Impl>();
-   
-    return impl_->raster_renderer.InitializeWithExternalBuffers(
-        ctx,
-        swapchain,
-        sync,
-        mesh->vertex_buffer.get(),
-        mesh->vertex_count,
-        mesh->vertex_stride,
-        mesh->index_buffer.get(),
-        mesh->index_count,
-        {
-            shaders.vertex,
-            shaders.fragment,
-        });
 
 }
 
@@ -152,26 +131,20 @@ void Renderer::RenderRasterFrame(vkfw::VkContext& ctx,
                                  vkfw::VkFrameSync& sync,
                                  uint32_t& frame_index)
 {
-    // if (impl_ == nullptr) {
-    //     return;
-    // }
-    // impl_->raster_renderer.RenderFrame(ctx, swapchain, sync, frame_index);
-    // return;
-    core::FrameData empty_frame{};
-    empty_frame.frame_index = frame_index;
-    empty_frame.renderables.push_back(core::FrameRenderableData{
-        .mesh_id = "meshes/viking_room.obj", // Mesh data is provided directly via external buffers, so mesh_id is not used.
-        .material_id = "", // For bring-up, material is not used. Extend to support material-specified shader and shader variants.
-        .shader_id ="mesh_shader", // For bring-up, shader is specified directly on renderable. Extend to support material-specified shader and shader variants.
-        .world = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f,
-        },
-    });
-
-    RenderFrameGraphFrame(empty_frame, ctx, swapchain, sync, frame_index);
+        core::FrameData empty_frame{};
+        empty_frame.frame_index = frame_index;
+        empty_frame.renderables.push_back(core::FrameRenderableData{
+            .mesh_id = "meshes/viking_room.obj",
+            .material_id = "materials/triangle.material.xml",
+            .shader_id = "solid_triangle",
+            .world = {
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 1.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f,
+            },
+        });
+        RenderFrameGraphFrame(empty_frame, ctx, swapchain, sync, frame_index);
     
 }
 

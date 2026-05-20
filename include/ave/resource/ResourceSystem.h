@@ -175,6 +175,7 @@ public:
     uint32_t CreateMaterial(std::string const& name, uint32_t shader_id);
     bool SetTexture(uint32_t material_id, std::string const& slot, uint32_t texture_id);
     bool SetParameter(uint32_t material_id, std::string const& param, float value);
+    bool SetBaseColor(uint32_t material_id, std::array<float, 4> const& color);
     MaterialRuntime const* GetMaterial(uint32_t id) const;
     MaterialRuntime const* GetMaterialByName(std::string const& name) const;
     void RemoveMaterial(uint32_t id);

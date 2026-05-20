@@ -43,6 +43,7 @@ add_library(ave_runtime SHARED
     "${AVE_ENGINE_ROOT}/src/render/FrameGraph.cpp"
     "${AVE_ENGINE_ROOT}/src/render/PipelineSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/render/Renderer.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/MaterialSystem.cpp"
     "${RHI_SOURCES}"
 )
 

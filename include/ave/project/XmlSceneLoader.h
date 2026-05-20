@@ -8,12 +8,21 @@
 
 namespace ave::project {
 
+struct MaterialDocument {
+    std::string name;
+    std::string shader;
+    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    float metallic = 0.0f;
+    float roughness = 0.5f;
+};
+
 class XmlSceneLoader {
 public:
     ProjectConfig LoadProject(std::filesystem::path const& project_xml) const;
     SceneDocument LoadScene(std::filesystem::path const& scene_xml) const;
     ProjectConfig LoadProjectText(std::string const& text) const;
     SceneDocument LoadSceneText(std::string const& text) const;
+    MaterialDocument LoadMaterialText(std::string const& text) const;
 
 private:
     static std::string ReadText(std::filesystem::path const& path);

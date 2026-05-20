@@ -301,4 +301,38 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
     return scene;
 }
 
+MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
+{
+    std::regex const pattern(R"(<Material\b[^>]*>)");
+    std::smatch match;
+    if (!std::regex_search(text, match, pattern)) {
+        throw std::runtime_error("Material XML must contain a <Material> root tag.");
+    }
+
+    auto const tag = match[0].str();
+    MaterialDocument doc;
+    doc.name = Attribute(tag, "name");
+    doc.shader = Attribute(tag, "shader");
+
+    auto color_tags = MatchTags(text, "Color");
+    for (auto const& color_tag : color_tags) {
+        auto name = Attribute(color_tag, "name");
+        if (name == "baseColor") {
+            doc.base_color = Float4(Attribute(color_tag, "value"), doc.base_color);
+        }
+    }
+
+    auto float_tags = MatchTags(text, "Float");
+    for (auto const& float_tag : float_tags) {
+        auto name = Attribute(float_tag, "name");
+        if (name == "metallic") {
+            doc.metallic = std::stof(Attribute(float_tag, "value", std::to_string(doc.metallic)));
+        } else if (name == "roughness") {
+            doc.roughness = std::stof(Attribute(float_tag, "value", std::to_string(doc.roughness)));
+        }
+    }
+
+    return doc;
+}
+
 } // namespace ave::project
