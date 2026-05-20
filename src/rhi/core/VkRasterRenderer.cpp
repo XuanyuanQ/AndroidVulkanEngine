@@ -22,6 +22,8 @@ bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
   external_vertex_buffer_ = nullptr;
   external_pipeline_ = nullptr;
   external_vertex_count_ = 0;
+  external_index_buffer_ = nullptr;
+  external_index_count_ = 0;
   vertices_.assign(vertices.begin(), vertices.end());
   use_dynamic_rendering_ = ctx.SupportsDynamicRendering();
 
@@ -49,6 +51,8 @@ bool VulkanRasterRenderer::InitializeWithExternalResources(vkfw::VkContext& ctx,
   vertices_.clear();
   external_vertex_buffer_ = vertex_buffer;
   external_vertex_count_ = vertex_count;
+  external_index_buffer_ = nullptr;
+  external_index_count_ = 0;
   external_pipeline_ = pipeline;
   use_dynamic_rendering_ = ctx.SupportsDynamicRendering();
 
@@ -66,11 +70,50 @@ bool VulkanRasterRenderer::InitializeWithExternalResources(vkfw::VkContext& ctx,
   return true;
 }
 
+bool VulkanRasterRenderer::InitializeWithExternalBuffers(vkfw::VkContext& ctx,
+                                                         vkfw::VkSwapchain& swapchain,
+                                                         vkfw::VkFrameSync& sync,
+                                                         vkfw::VkBuffer const* vertex_buffer,
+                                                         uint32_t vertex_count,
+                                                         vkfw::VkBuffer const* index_buffer,
+                                                         uint32_t index_count,
+                                                         RasterShaderCode const& shaders)
+{
+  Shutdown();
+  ctx_ = &ctx;
+  vertices_.clear();
+  external_vertex_buffer_ = vertex_buffer;
+  external_vertex_count_ = vertex_count;
+  external_index_buffer_ = index_buffer;
+  external_index_count_ = index_count;
+  external_pipeline_ = nullptr;
+  use_dynamic_rendering_ = ctx.SupportsDynamicRendering();
+
+  if (external_vertex_buffer_ == nullptr || external_vertex_count_ == 0) {
+    return false;
+  }
+
+  if (!createRenderTargets(ctx, swapchain) ||
+      !createPipeline(ctx, swapchain, shaders) ||
+      !createCommandPoolAndBuffers(ctx, sync)) {
+    destroyResources();
+    return false;
+  }
+
+  initialized_ = true;
+  return true;
+}
+
 void VulkanRasterRenderer::Shutdown()
 {
   destroyResources();
   ctx_ = nullptr;
   initialized_ = false;
+  external_vertex_buffer_ = nullptr;
+  external_vertex_count_ = 0;
+  external_index_buffer_ = nullptr;
+  external_index_count_ = 0;
+  external_pipeline_ = nullptr;
 }
 
 void VulkanRasterRenderer::RenderFrame(vkfw::VkContext& ctx,
@@ -369,8 +412,13 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
   vk::DeviceSize offset = 0;
   auto vertex_buffer = external_vertex_buffer_ != nullptr ? external_vertex_buffer_->Handle() : vertex_buffer_.Handle();
   command_buffer.bindVertexBuffers(0, vertex_buffer, offset);
-  uint32_t vertex_count = external_vertex_buffer_ != nullptr ? external_vertex_count_ : static_cast<uint32_t>(vertices_.size());
-  command_buffer.draw(vertex_count, 1, 0, 0);
+  if (external_index_buffer_ != nullptr && external_index_count_ > 0) {
+    command_buffer.bindIndexBuffer(external_index_buffer_->Handle(), 0, vk::IndexType::eUint32);
+    command_buffer.drawIndexed(external_index_count_, 1, 0, 0, 0);
+  } else {
+    uint32_t vertex_count = external_vertex_buffer_ != nullptr ? external_vertex_count_ : static_cast<uint32_t>(vertices_.size());
+    command_buffer.draw(vertex_count, 1, 0, 0);
+  }
   if (use_dynamic_rendering_) {
     bool const core_dynamic_rendering =
         ctx_ != nullptr && ctx_->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;

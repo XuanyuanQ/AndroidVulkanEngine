@@ -30,6 +30,91 @@ void logError(char const* message)
     __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s", message);
 }
 
+std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
+{
+    return {
+        position[0],
+        position[2],
+        -position[1],
+    };
+}
+
+void BuildPreviewMeshBuffers(ave::project::MeshData const& source_mesh,
+                             std::vector<float>& out_vertex_data,
+                             std::vector<uint32_t>& out_indices)
+{
+    out_vertex_data.clear();
+    out_indices.clear();
+    if (source_mesh.vertices.empty()) {
+        return;
+    }
+
+    std::vector<std::array<float, 3>> positions;
+    positions.reserve(source_mesh.vertices.size());
+    for (auto const& vertex : source_mesh.vertices) {
+        positions.push_back(TransformPreviewPosition(vertex.position));
+    }
+
+    auto min_pos = positions.front();
+    auto max_pos = positions.front();
+    for (auto const& position : positions) {
+        for (int i = 0; i < 3; ++i) {
+            min_pos[i] = std::min(min_pos[i], position[i]);
+            max_pos[i] = std::max(max_pos[i], position[i]);
+        }
+    }
+
+    std::array<float, 3> const center{
+        (min_pos[0] + max_pos[0]) * 0.5f,
+        (min_pos[1] + max_pos[1]) * 0.5f,
+        (min_pos[2] + max_pos[2]) * 0.5f,
+    };
+    float const extent_x = max_pos[0] - min_pos[0];
+    float const extent_y = max_pos[1] - min_pos[1];
+    float const extent_z = max_pos[2] - min_pos[2];
+    float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
+    float const scale = 1.6f / max_extent;
+    bool const has_any_uv = std::any_of(
+        source_mesh.vertices.begin(),
+        source_mesh.vertices.end(),
+        [](ave::project::VertexData const& vertex) {
+            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
+        });
+
+    out_vertex_data.reserve(source_mesh.vertices.size() * 7);
+    for (size_t i = 0; i < source_mesh.vertices.size(); ++i) {
+        auto const& position = positions[i];
+        auto const& source_vertex = source_mesh.vertices[i];
+        std::array<float, 4> color{0.85f, 0.82f, 0.78f, 1.0f};
+        if (has_any_uv) {
+            auto const& uv = source_vertex.texcoord0;
+            color = {
+                std::clamp(uv[0], 0.0f, 1.0f),
+                std::clamp(uv[1], 0.0f, 1.0f),
+                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
+                1.0f,
+            };
+        }
+
+        out_vertex_data.push_back((position[0] - center[0]) * scale);
+        out_vertex_data.push_back((position[1] - center[1]) * scale);
+        out_vertex_data.push_back((position[2] - center[2]) * scale);
+        out_vertex_data.push_back(color[0]);
+        out_vertex_data.push_back(color[1]);
+        out_vertex_data.push_back(color[2]);
+        out_vertex_data.push_back(color[3]);
+    }
+
+    if (!source_mesh.indices.empty()) {
+        out_indices = source_mesh.indices;
+    } else {
+        out_indices.resize(source_mesh.vertices.size());
+        for (uint32_t i = 0; i < out_indices.size(); ++i) {
+            out_indices[i] = i;
+        }
+    }
+}
+
 } // namespace
 
 bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_path)
@@ -66,6 +151,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         ci.enable_validation = false;
     #endif
     ctx_.Init(ci);
+    renderer_.SetVkContext(&ctx_);
 
     sync_.Init(ctx_, kFramesInFlight);
 
@@ -82,8 +168,8 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
         readShaderAsset("compiled_shaders/solid_triangle.frag.spv"),
     };
-    bool const raster_ready = !model_mesh_.vertices.empty()
-        ? renderer_.InitializeRasterModel(ctx_, swapchainWrap_, sync_, model_mesh_, shaders)
+    bool const raster_ready = model_mesh_id_ != 0
+        ? renderer_.InitializeRasterMeshResource(ctx_, swapchainWrap_, sync_, model_mesh_id_, shaders)
         : renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders);
     if (!raster_ready) {
         logError("Failed to initialize Vulkan triangle renderer.");
@@ -109,6 +195,8 @@ void MinimalVulkanTriangle::clearSurface()
             if (ctx_.Device() != nullptr) {
                 ctx_.Device().waitIdle();
             }
+            renderer_.ShutdownRaster();
+            renderer_.GetResourceSystem().Clear();
             swapchainWrap_.Shutdown(ctx_);
             sync_.Shutdown(ctx_);
             ctx_.Shutdown();
@@ -116,6 +204,7 @@ void MinimalVulkanTriangle::clearSurface()
             // Ignore exceptions during cleanup
         }
     }
+    model_mesh_id_ = 0;
 }
 
 void MinimalVulkanTriangle::resize(int width, int height)
@@ -131,14 +220,14 @@ void MinimalVulkanTriangle::resize(int width, int height)
 bool MinimalVulkanTriangle::loadSceneMesh()
 {
     vertices_.clear();
-    model_mesh_ = {};
-    model_mesh_.topology = "triangleList";
+    model_mesh_id_ = 0;
 
     ave::project::XmlSceneLoader loader;
     auto const project_text = readTextAsset(project_path_.c_str());
     auto const project = loader.LoadProjectText(project_text);
     auto const scene_text = readTextAsset(project.entry_scene.c_str());
     auto const scene = loader.LoadSceneText(scene_text);
+    auto& mesh_manager = renderer_.GetResourceSystem().GetMeshManager();
 
     for (auto const& object : scene.objects) {
         if (!object.components.mesh_renderer.has_value()) {
@@ -153,20 +242,12 @@ bool MinimalVulkanTriangle::loadSceneMesh()
                 return false;
             }
 
-            ave::resource::MeshManager mesh_manager;
             ave::project::MeshData obj_mesh{};
             obj_mesh.id = mesh.mesh;
             obj_mesh.source = mesh.mesh;
             if (!mesh_manager.ParseObjMeshText(text, obj_mesh)) {
                 __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset has no usable geometry: %s", mesh.mesh.c_str());
                 return false;
-            }
-
-            size_t const base_vertex = model_mesh_.vertices.size();
-            model_mesh_.vertices.insert(model_mesh_.vertices.end(), obj_mesh.vertices.begin(), obj_mesh.vertices.end());
-            model_mesh_.indices.reserve(model_mesh_.indices.size() + obj_mesh.indices.size());
-            for (uint32_t index : obj_mesh.indices) {
-                model_mesh_.indices.push_back(static_cast<uint32_t>(base_vertex) + index);
             }
 
             size_t texcoord_count = 0;
@@ -185,6 +266,15 @@ bool MinimalVulkanTriangle::loadSceneMesh()
             __android_log_print(ANDROID_LOG_INFO,
                                 kLogTag,
                                 "Texture asset staged for future sampling: textures/viking_room.png");
+
+            std::vector<float> preview_vertex_data;
+            std::vector<uint32_t> preview_indices;
+            BuildPreviewMeshBuffers(obj_mesh, preview_vertex_data, preview_indices);
+            model_mesh_id_ = mesh_manager.LoadMeshFromData(mesh.mesh, preview_vertex_data, preview_indices, 7);
+            if (model_mesh_id_ == 0) {
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to create preview mesh buffers for %s", mesh.mesh.c_str());
+                return false;
+            }
             continue;
         }
 
@@ -196,18 +286,17 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         }
     }
 
-    if (vertices_.size() < 3 && model_mesh_.indices.size() < 3 && model_mesh_.vertices.size() < 3) {
+    if (vertices_.size() < 3 && model_mesh_id_ == 0) {
         logError("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
         return false;
     }
 
     __android_log_print(ANDROID_LOG_INFO,
                         kLogTag,
-                        "Loaded scene mesh data from %s (%zu inline preview vertices, %zu model vertices, %zu model indices)",
+                        "Loaded scene mesh data from %s (%zu inline preview vertices, model mesh id %u)",
                         project.entry_scene.c_str(),
                         vertices_.size(),
-                        model_mesh_.vertices.size(),
-                        model_mesh_.indices.size());
+                        model_mesh_id_);
     return true;
 }
 

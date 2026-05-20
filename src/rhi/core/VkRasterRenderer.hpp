@@ -49,6 +49,14 @@ public:
                                       vkfw::VkBuffer const* vertex_buffer,
                                       uint32_t vertex_count,
                                       vkfw::VkPipeline const* pipeline);
+  bool InitializeWithExternalBuffers(vkfw::VkContext& ctx,
+                                     vkfw::VkSwapchain& swapchain,
+                                     vkfw::VkFrameSync& sync,
+                                     vkfw::VkBuffer const* vertex_buffer,
+                                     uint32_t vertex_count,
+                                     vkfw::VkBuffer const* index_buffer,
+                                     uint32_t index_count,
+                                     RasterShaderCode const& shaders);
   void Shutdown();
 
   bool IsInitialized() const noexcept { return initialized_; }
@@ -74,6 +82,8 @@ private:
   std::vector<RasterColorVertex> vertices_{};
   vkfw::VkBuffer const* external_vertex_buffer_ = nullptr;
   uint32_t external_vertex_count_ = 0;
+  vkfw::VkBuffer const* external_index_buffer_ = nullptr;
+  uint32_t external_index_count_ = 0;
   vkfw::VkPipeline const* external_pipeline_ = nullptr;
   vkfw::VkPipelineLayout pipeline_layout_{};
   vkfw::VkPipeline pipeline_{};

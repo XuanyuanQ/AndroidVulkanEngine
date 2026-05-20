@@ -7,22 +7,7 @@
 #include "VkCommandBuffer.hpp"
 #include "ave/resource/GpuUploadQueue.h"
 
-#include <algorithm>
-
 namespace ave::render {
-
-namespace {
-
-std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
-{
-    return {
-        position[0],
-        position[2],
-        -position[1],
-    };
-}
-
-} // namespace
 
 class Renderer::Impl {
 public:
@@ -109,91 +94,36 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
     return true;
 }
 
-bool Renderer::InitializeRasterModel(vkfw::VkContext& ctx,
-                                     vkfw::VkSwapchain& swapchain,
-                                     vkfw::VkFrameSync& sync,
-                                     project::MeshData const& mesh,
-                                     RasterShaderCode const& shaders)
+bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
+                                            vkfw::VkSwapchain& swapchain,
+                                            vkfw::VkFrameSync& sync,
+                                            uint32_t mesh_id,
+                                            RasterShaderCode const& shaders)
 {
-    std::vector<RasterColorVertex> preview_vertices;
-    if (mesh.vertices.empty()) {
+    auto const* mesh = resource_system_.GetMeshManager().GetMesh(mesh_id);
+    if (mesh == nullptr) {
         return false;
     }
 
-    std::vector<uint32_t> draw_indices;
-    if (!mesh.indices.empty()) {
-        draw_indices = mesh.indices;
-    } else {
-        draw_indices.resize(mesh.vertices.size());
-        for (uint32_t i = 0; i < draw_indices.size(); ++i) {
-            draw_indices[i] = i;
-        }
+    if (mesh->vertex_buffer == nullptr || mesh->vertex_count == 0) {
+        return false;
     }
 
-    preview_vertices.reserve(draw_indices.size());
+    ShutdownRaster();
+    impl_ = std::make_unique<Impl>();
 
-    std::vector<std::array<float, 3>> positions;
-    positions.reserve(mesh.vertices.size());
-    for (auto const& vertex : mesh.vertices) {
-        positions.push_back(TransformPreviewPosition(vertex.position));
-    }
-    bool const has_any_uv = std::any_of(
-        mesh.vertices.begin(),
-        mesh.vertices.end(),
-        [](project::VertexData const& vertex) {
-            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
+    return impl_->raster_renderer.InitializeWithExternalBuffers(
+        ctx,
+        swapchain,
+        sync,
+        mesh->vertex_buffer.get(),
+        mesh->vertex_count,
+        mesh->index_buffer.get(),
+        mesh->index_count,
+        {
+            shaders.vertex,
+            shaders.fragment,
         });
-
-    auto min_pos = positions.front();
-    auto max_pos = positions.front();
-    for (auto const& position : positions) {
-        for (int i = 0; i < 3; ++i) {
-            min_pos[i] = std::min(min_pos[i], position[i]);
-            max_pos[i] = std::max(max_pos[i], position[i]);
-        }
-    }
-
-    std::array<float, 3> center{
-        (min_pos[0] + max_pos[0]) * 0.5f,
-        (min_pos[1] + max_pos[1]) * 0.5f,
-        (min_pos[2] + max_pos[2]) * 0.5f,
-    };
-    float const extent_x = max_pos[0] - min_pos[0];
-    float const extent_y = max_pos[1] - min_pos[1];
-    float const extent_z = max_pos[2] - min_pos[2];
-    float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
-    float const scale = 1.6f / max_extent;
-
-    for (uint32_t vertex_index : draw_indices) {
-        if (vertex_index >= mesh.vertices.size()) {
-            continue;
-        }
-
-        RasterColorVertex raster_vertex{};
-        auto const& position = positions[vertex_index];
-        raster_vertex.position = {
-            (position[0] - center[0]) * scale,
-            (position[1] - center[1]) * scale,
-            (position[2] - center[2]) * scale,
-        };
-
-        auto const& source_vertex = mesh.vertices[vertex_index];
-        if (has_any_uv) {
-            auto const& uv = source_vertex.texcoord0;
-            raster_vertex.color = {
-                std::clamp(uv[0], 0.0f, 1.0f),
-                std::clamp(uv[1], 0.0f, 1.0f),
-                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
-                1.0f,
-            };
-        } else {
-            raster_vertex.color = {0.85f, 0.82f, 0.78f, 1.0f};
-        }
-
-        preview_vertices.push_back(raster_vertex);
-    }
-
-    return InitializeRaster(ctx, swapchain, sync, preview_vertices, shaders);
 }
 
 void Renderer::ShutdownRaster()

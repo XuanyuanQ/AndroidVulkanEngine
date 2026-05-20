@@ -43,11 +43,11 @@ public:
                           vkfw::VkFrameSync& sync,
                           std::span<RasterColorVertex const> vertices,
                           RasterShaderCode const& shaders);
-    bool InitializeRasterModel(vkfw::VkContext& ctx,
-                               vkfw::VkSwapchain& swapchain,
-                               vkfw::VkFrameSync& sync,
-                               project::MeshData const& mesh,
-                               RasterShaderCode const& shaders);
+    bool InitializeRasterMeshResource(vkfw::VkContext& ctx,
+                                      vkfw::VkSwapchain& swapchain,
+                                      vkfw::VkFrameSync& sync,
+                                      uint32_t mesh_id,
+                                      RasterShaderCode const& shaders);
     void ShutdownRaster();
     void RenderRasterFrame(vkfw::VkContext& ctx,
                            vkfw::VkSwapchain& swapchain,
