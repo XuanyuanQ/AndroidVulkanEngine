@@ -112,21 +112,37 @@ bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
 bool Renderer::InitializeRasterModel(vkfw::VkContext& ctx,
                                      vkfw::VkSwapchain& swapchain,
                                      vkfw::VkFrameSync& sync,
-                                     std::span<resource::ObjMeshVertex const> vertices,
+                                     project::MeshData const& mesh,
                                      RasterShaderCode const& shaders)
 {
     std::vector<RasterColorVertex> preview_vertices;
-    if (vertices.empty()) {
+    if (mesh.vertices.empty()) {
         return false;
     }
 
-    preview_vertices.reserve(vertices.size());
+    std::vector<uint32_t> draw_indices;
+    if (!mesh.indices.empty()) {
+        draw_indices = mesh.indices;
+    } else {
+        draw_indices.resize(mesh.vertices.size());
+        for (uint32_t i = 0; i < draw_indices.size(); ++i) {
+            draw_indices[i] = i;
+        }
+    }
+
+    preview_vertices.reserve(draw_indices.size());
 
     std::vector<std::array<float, 3>> positions;
-    positions.reserve(vertices.size());
-    for (auto const& vertex : vertices) {
+    positions.reserve(mesh.vertices.size());
+    for (auto const& vertex : mesh.vertices) {
         positions.push_back(TransformPreviewPosition(vertex.position));
     }
+    bool const has_any_uv = std::any_of(
+        mesh.vertices.begin(),
+        mesh.vertices.end(),
+        [](project::VertexData const& vertex) {
+            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
+        });
 
     auto min_pos = positions.front();
     auto max_pos = positions.front();
@@ -148,17 +164,22 @@ bool Renderer::InitializeRasterModel(vkfw::VkContext& ctx,
     float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
     float const scale = 1.6f / max_extent;
 
-    for (size_t i = 0; i < vertices.size(); ++i) {
+    for (uint32_t vertex_index : draw_indices) {
+        if (vertex_index >= mesh.vertices.size()) {
+            continue;
+        }
+
         RasterColorVertex raster_vertex{};
-        auto const& position = positions[i];
+        auto const& position = positions[vertex_index];
         raster_vertex.position = {
             (position[0] - center[0]) * scale,
             (position[1] - center[1]) * scale,
             (position[2] - center[2]) * scale,
         };
 
-        if (vertices[i].has_texcoord) {
-            auto const& uv = vertices[i].texcoord;
+        auto const& source_vertex = mesh.vertices[vertex_index];
+        if (has_any_uv) {
+            auto const& uv = source_vertex.texcoord0;
             raster_vertex.color = {
                 std::clamp(uv[0], 0.0f, 1.0f),
                 std::clamp(uv[1], 0.0f, 1.0f),

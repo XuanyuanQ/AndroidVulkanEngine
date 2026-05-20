@@ -7,19 +7,12 @@
 #include <cstdint>
 #include <array>
 
+#include "ave/project/SharedDataContract.h"
 #include "VkBuffer.hpp"
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
 
 namespace ave::resource {
-
-struct ObjMeshVertex {
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 2> texcoord{0.0f, 0.0f};
-    bool has_texcoord = false;
-};
-
-bool ParseObjMeshText(std::string const& text, std::vector<ObjMeshVertex>& out_vertices);
 
 // Mesh runtime data
 struct MeshRuntime {
@@ -100,6 +93,7 @@ public:
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     
     uint32_t LoadMesh(std::string const& path);
+    bool ParseObjMeshText(std::string const& text, project::MeshData& out_mesh) const;
     uint32_t LoadMeshFromData(std::string const& name, std::vector<float> const& vertices, 
                               std::vector<uint32_t> const& indices, uint32_t vertex_stride);
     MeshRuntime const* GetMesh(uint32_t id) const;

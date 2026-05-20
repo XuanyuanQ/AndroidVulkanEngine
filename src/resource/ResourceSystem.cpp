@@ -3,7 +3,11 @@
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
 
+#include <cstddef>
+#include <functional>
+#include <string>
 #include <sstream>
+#include <unordered_map>
 
 namespace ave::resource {
 
@@ -12,6 +16,21 @@ namespace {
 struct ObjVertexRef {
     int position_index = 0;
     int texcoord_index = 0;
+
+    bool operator==(ObjVertexRef const& other) const
+    {
+        return position_index == other.position_index
+            && texcoord_index == other.texcoord_index;
+    }
+};
+
+struct ObjVertexRefHash {
+    size_t operator()(ObjVertexRef const& value) const
+    {
+        size_t seed = std::hash<int>{}(value.position_index);
+        seed ^= std::hash<int>{}(value.texcoord_index) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+        return seed;
+    }
 };
 
 ObjVertexRef ParseObjVertexRef(std::string const& token)
@@ -50,13 +69,14 @@ int ResolveObjIndex(int index, int count)
 
 } // namespace
 
-bool ParseObjMeshText(std::string const& text, std::vector<ObjMeshVertex>& out_vertices)
+bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& out_mesh) const
 {
-    out_vertices.clear();
+    out_mesh = {};
+    out_mesh.topology = "triangleList";
 
     std::vector<std::array<float, 3>> positions;
     std::vector<std::array<float, 2>> texcoords;
-    std::vector<ObjVertexRef> expanded_vertices;
+    std::unordered_map<ObjVertexRef, uint32_t, ObjVertexRefHash> vertex_cache;
 
     std::stringstream stream(text);
     std::string line;
@@ -94,39 +114,47 @@ bool ParseObjMeshText(std::string const& text, std::vector<ObjMeshVertex>& out_v
             }
 
             for (size_t i = 1; i + 1 < polygon.size(); ++i) {
-                expanded_vertices.push_back(polygon[0]);
-                expanded_vertices.push_back(polygon[i]);
-                expanded_vertices.push_back(polygon[i + 1]);
+                std::array<ObjVertexRef, 3> const triangle{
+                    polygon[0],
+                    polygon[i],
+                    polygon[i + 1],
+                };
+
+                for (auto const& ref : triangle) {
+                    auto cache_it = vertex_cache.find(ref);
+                    if (cache_it != vertex_cache.end()) {
+                        out_mesh.indices.push_back(cache_it->second);
+                        continue;
+                    }
+
+                    int const pos_index = ResolveObjIndex(ref.position_index, static_cast<int>(positions.size()));
+                    if (pos_index < 0 || pos_index >= static_cast<int>(positions.size())) {
+                        continue;
+                    }
+
+                    project::VertexData vertex{};
+                    vertex.position = positions[static_cast<size_t>(pos_index)];
+
+                    if (ref.texcoord_index != 0) {
+                        int const tex_index = ResolveObjIndex(ref.texcoord_index, static_cast<int>(texcoords.size()));
+                        if (tex_index >= 0 && tex_index < static_cast<int>(texcoords.size())) {
+                            vertex.texcoord0 = texcoords[static_cast<size_t>(tex_index)];
+                        }
+                    }
+
+                    uint32_t const new_index = static_cast<uint32_t>(out_mesh.vertices.size());
+                    out_mesh.vertices.push_back(vertex);
+                    out_mesh.indices.push_back(new_index);
+                    vertex_cache.emplace(ref, new_index);
+                }
             }
         }
     }
 
-    if (positions.empty() || expanded_vertices.empty()) {
+    if (positions.empty() || out_mesh.indices.empty() || out_mesh.vertices.empty()) {
         return false;
     }
-
-    out_vertices.reserve(expanded_vertices.size());
-    for (auto const& ref : expanded_vertices) {
-        int const pos_index = ResolveObjIndex(ref.position_index, static_cast<int>(positions.size()));
-        if (pos_index < 0 || pos_index >= static_cast<int>(positions.size())) {
-            continue;
-        }
-
-        ObjMeshVertex vertex{};
-        vertex.position = positions[static_cast<size_t>(pos_index)];
-
-        if (ref.texcoord_index != 0) {
-            int const tex_index = ResolveObjIndex(ref.texcoord_index, static_cast<int>(texcoords.size()));
-            if (tex_index >= 0 && tex_index < static_cast<int>(texcoords.size())) {
-                vertex.texcoord = texcoords[static_cast<size_t>(tex_index)];
-                vertex.has_texcoord = true;
-            }
-        }
-
-        out_vertices.push_back(vertex);
-    }
-
-    return !out_vertices.empty();
+    return true;
 }
 
 // Mesh Manager

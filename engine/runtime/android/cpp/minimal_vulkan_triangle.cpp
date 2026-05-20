@@ -82,8 +82,8 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
         readShaderAsset("compiled_shaders/solid_triangle.frag.spv"),
     };
-    bool const raster_ready = !model_vertices_.empty()
-        ? renderer_.InitializeRasterModel(ctx_, swapchainWrap_, sync_, model_vertices_, shaders)
+    bool const raster_ready = !model_mesh_.vertices.empty()
+        ? renderer_.InitializeRasterModel(ctx_, swapchainWrap_, sync_, model_mesh_, shaders)
         : renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders);
     if (!raster_ready) {
         logError("Failed to initialize Vulkan triangle renderer.");
@@ -131,7 +131,8 @@ void MinimalVulkanTriangle::resize(int width, int height)
 bool MinimalVulkanTriangle::loadSceneMesh()
 {
     vertices_.clear();
-    model_vertices_.clear();
+    model_mesh_ = {};
+    model_mesh_.topology = "triangleList";
 
     ave::project::XmlSceneLoader loader;
     auto const project_text = readTextAsset(project_path_.c_str());
@@ -152,23 +153,34 @@ bool MinimalVulkanTriangle::loadSceneMesh()
                 return false;
             }
 
-            std::vector<ave::resource::ObjMeshVertex> obj_vertices;
-            if (!ave::resource::ParseObjMeshText(text, obj_vertices)) {
+            ave::resource::MeshManager mesh_manager;
+            ave::project::MeshData obj_mesh{};
+            obj_mesh.id = mesh.mesh;
+            obj_mesh.source = mesh.mesh;
+            if (!mesh_manager.ParseObjMeshText(text, obj_mesh)) {
                 __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset has no usable geometry: %s", mesh.mesh.c_str());
                 return false;
             }
+
+            size_t const base_vertex = model_mesh_.vertices.size();
+            model_mesh_.vertices.insert(model_mesh_.vertices.end(), obj_mesh.vertices.begin(), obj_mesh.vertices.end());
+            model_mesh_.indices.reserve(model_mesh_.indices.size() + obj_mesh.indices.size());
+            for (uint32_t index : obj_mesh.indices) {
+                model_mesh_.indices.push_back(static_cast<uint32_t>(base_vertex) + index);
+            }
+
             size_t texcoord_count = 0;
-            for (auto const& vertex : obj_vertices) {
-                if (vertex.has_texcoord) {
+            for (auto const& vertex : obj_mesh.vertices) {
+                if (vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f}) {
                     ++texcoord_count;
                 }
             }
-            model_vertices_.insert(model_vertices_.end(), obj_vertices.begin(), obj_vertices.end());
             __android_log_print(ANDROID_LOG_INFO,
                                 kLogTag,
-                                "Loaded OBJ mesh %s with %zu expanded vertices (%zu with UVs)",
+                                "Loaded OBJ mesh %s with %zu unique vertices and %zu indices (%zu with UVs)",
                                 mesh.mesh.c_str(),
-                                obj_vertices.size(),
+                                obj_mesh.vertices.size(),
+                                obj_mesh.indices.size(),
                                 texcoord_count);
             __android_log_print(ANDROID_LOG_INFO,
                                 kLogTag,
@@ -184,17 +196,18 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         }
     }
 
-    if (vertices_.size() < 3 && model_vertices_.size() < 3) {
+    if (vertices_.size() < 3 && model_mesh_.indices.size() < 3 && model_mesh_.vertices.size() < 3) {
         logError("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
         return false;
     }
 
     __android_log_print(ANDROID_LOG_INFO,
                         kLogTag,
-                        "Loaded scene mesh data from %s (%zu inline preview vertices, %zu model vertices)",
+                        "Loaded scene mesh data from %s (%zu inline preview vertices, %zu model vertices, %zu model indices)",
                         project.entry_scene.c_str(),
                         vertices_.size(),
-                        model_vertices_.size());
+                        model_mesh_.vertices.size(),
+                        model_mesh_.indices.size());
     return true;
 }
 

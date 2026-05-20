@@ -46,7 +46,7 @@ public:
     bool InitializeRasterModel(vkfw::VkContext& ctx,
                                vkfw::VkSwapchain& swapchain,
                                vkfw::VkFrameSync& sync,
-                               std::span<resource::ObjMeshVertex const> vertices,
+                               project::MeshData const& mesh,
                                RasterShaderCode const& shaders);
     void ShutdownRaster();
     void RenderRasterFrame(vkfw::VkContext& ctx,

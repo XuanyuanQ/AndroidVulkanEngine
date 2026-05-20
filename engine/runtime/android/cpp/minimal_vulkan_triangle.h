@@ -3,6 +3,7 @@
 #include "VkContext.hpp"
 #include "VkSwapchain.hpp"
 #include "VkFrameSync.hpp"
+#include "ave/project/SharedDataContract.h"
 #include "ave/render/Renderer.h"
 
 #include <android/asset_manager.h>
@@ -42,7 +43,7 @@ private:
     uint32_t frame_index_ = 0;
     ave::render::Renderer renderer_{};
     std::vector<ave::render::RasterColorVertex> vertices_{};
-    std::vector<ave::resource::ObjMeshVertex> model_vertices_{};
+    ave::project::MeshData model_mesh_{};
 };
 
 } // namespace ave::android
