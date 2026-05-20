@@ -22,6 +22,7 @@ bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
   external_vertex_buffer_ = nullptr;
   external_pipeline_ = nullptr;
   external_vertex_count_ = 0;
+  external_vertex_stride_ = 0;
   external_index_buffer_ = nullptr;
   external_index_count_ = 0;
   vertices_.assign(vertices.begin(), vertices.end());
@@ -51,6 +52,7 @@ bool VulkanRasterRenderer::InitializeWithExternalResources(vkfw::VkContext& ctx,
   vertices_.clear();
   external_vertex_buffer_ = vertex_buffer;
   external_vertex_count_ = vertex_count;
+  external_vertex_stride_ = static_cast<uint32_t>(sizeof(RasterColorVertex));
   external_index_buffer_ = nullptr;
   external_index_count_ = 0;
   external_pipeline_ = pipeline;
@@ -75,6 +77,7 @@ bool VulkanRasterRenderer::InitializeWithExternalBuffers(vkfw::VkContext& ctx,
                                                          vkfw::VkFrameSync& sync,
                                                          vkfw::VkBuffer const* vertex_buffer,
                                                          uint32_t vertex_count,
+                                                         uint32_t vertex_stride,
                                                          vkfw::VkBuffer const* index_buffer,
                                                          uint32_t index_count,
                                                          RasterShaderCode const& shaders)
@@ -84,6 +87,7 @@ bool VulkanRasterRenderer::InitializeWithExternalBuffers(vkfw::VkContext& ctx,
   vertices_.clear();
   external_vertex_buffer_ = vertex_buffer;
   external_vertex_count_ = vertex_count;
+  external_vertex_stride_ = vertex_stride;
   external_index_buffer_ = index_buffer;
   external_index_count_ = index_count;
   external_pipeline_ = nullptr;
@@ -236,20 +240,28 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
     vkfw::PipelineInfo pipeline_info{};
     pipeline_info.shader_stages.push_back(vertex_shader.GetPipelineStageInfo());
     pipeline_info.shader_stages.push_back(fragment_shader.GetPipelineStageInfo());
+    uint32_t vertex_stride = static_cast<uint32_t>(sizeof(RasterColorVertex));
+    uint32_t position_offset = static_cast<uint32_t>(offsetof(RasterColorVertex, position));
+    uint32_t color_offset = static_cast<uint32_t>(offsetof(RasterColorVertex, color));
+    if (external_vertex_buffer_ != nullptr && external_vertex_stride_ == sizeof(project::VertexData)) {
+      vertex_stride = static_cast<uint32_t>(sizeof(project::VertexData));
+      position_offset = static_cast<uint32_t>(offsetof(project::VertexData, position));
+      color_offset = static_cast<uint32_t>(offsetof(project::VertexData, color));
+    }
     pipeline_info.vertex_input.vertex_inputs = {
         vkfw::PipelineVertexInput{
             .binding = 0,
             .location = 0,
-            .stride = static_cast<uint32_t>(sizeof(RasterColorVertex)),
+            .stride = vertex_stride,
             .format = vk::Format::eR32G32B32Sfloat,
-            .offset = static_cast<uint32_t>(offsetof(RasterColorVertex, position)),
+            .offset = position_offset,
         },
         vkfw::PipelineVertexInput{
             .binding = 0,
             .location = 1,
-            .stride = static_cast<uint32_t>(sizeof(RasterColorVertex)),
+            .stride = vertex_stride,
             .format = vk::Format::eR32G32B32A32Sfloat,
-            .offset = static_cast<uint32_t>(offsetof(RasterColorVertex, color)),
+            .offset = color_offset,
         },
     };
     pipeline_info.vertex_input.topology = vk::PrimitiveTopology::eTriangleList;

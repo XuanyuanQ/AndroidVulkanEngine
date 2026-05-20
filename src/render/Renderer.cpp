@@ -118,6 +118,7 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
         sync,
         mesh->vertex_buffer.get(),
         mesh->vertex_count,
+        mesh->vertex_stride,
         mesh->index_buffer.get(),
         mesh->index_count,
         {

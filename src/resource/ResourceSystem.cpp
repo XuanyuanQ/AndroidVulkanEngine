@@ -177,6 +177,51 @@ uint32_t MeshManager::LoadMesh(std::string const& path)
     return 0;
 }
 
+uint32_t MeshManager::LoadMeshFromData(std::string const& name, project::MeshData const& mesh_data)
+{
+    if (!ctx_ || mesh_data.vertices.empty()) {
+        return 0;
+    }
+
+    auto it = path_to_id_.find(name);
+    if (it != path_to_id_.end()) {
+        return it->second;
+    }
+
+    uint32_t id = next_id_++;
+
+    MeshRuntime mesh;
+    mesh.id = id;
+    mesh.name = name;
+    mesh.vertex_count = static_cast<uint32_t>(mesh_data.vertices.size());
+    mesh.index_count = static_cast<uint32_t>(mesh_data.indices.size());
+    mesh.vertex_stride = static_cast<uint32_t>(sizeof(project::VertexData));
+
+    mesh.vertex_buffer = std::make_unique<vkfw::VkBuffer>();
+    vkfw::BufferInfo vertex_buffer_info;
+    vertex_buffer_info.size = mesh_data.vertices.size() * sizeof(project::VertexData);
+    vertex_buffer_info.usage = vkfw::BufferUsage::Vertex;
+    if (mesh.vertex_buffer->Init(*ctx_, vertex_buffer_info)) {
+        mesh.vertex_buffer->UpdateData(*ctx_, mesh_data.vertices.data(), vertex_buffer_info.size);
+    }
+
+    if (!mesh_data.indices.empty()) {
+        mesh.index_buffer = std::make_unique<vkfw::VkBuffer>();
+        vkfw::BufferInfo index_buffer_info;
+        index_buffer_info.size = mesh_data.indices.size() * sizeof(uint32_t);
+        index_buffer_info.usage = vkfw::BufferUsage::Index;
+        if (mesh.index_buffer->Init(*ctx_, index_buffer_info)) {
+            mesh.index_buffer->UpdateData(*ctx_, mesh_data.indices.data(), index_buffer_info.size);
+        }
+    }
+
+    mesh.is_loaded = true;
+    meshes_[id] = std::move(mesh);
+    path_to_id_[name] = id;
+
+    return id;
+}
+
 uint32_t MeshManager::LoadMeshFromData(std::string const& name, std::vector<float> const& vertices, 
                                         std::vector<uint32_t> const& indices, uint32_t vertex_stride)
 {
@@ -191,7 +236,7 @@ uint32_t MeshManager::LoadMeshFromData(std::string const& name, std::vector<floa
     mesh.name = name;
     mesh.vertex_count = static_cast<uint32_t>(vertices.size()) / vertex_stride;
     mesh.index_count = static_cast<uint32_t>(indices.size());
-    mesh.vertex_stride = vertex_stride;
+    mesh.vertex_stride = vertex_stride * static_cast<uint32_t>(sizeof(float));
     
     // Create vertex buffer
     mesh.vertex_buffer = std::make_unique<vkfw::VkBuffer>();

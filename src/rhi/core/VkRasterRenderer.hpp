@@ -9,6 +9,7 @@
 #include "VkCommandBuffer.hpp"
 #include "VkRenderPass.hpp"
 #include "VkFramebufferSet.hpp"
+#include "ave/project/SharedDataContract.h"
 
 #include <array>
 #include <cstdint>
@@ -54,6 +55,7 @@ public:
                                      vkfw::VkFrameSync& sync,
                                      vkfw::VkBuffer const* vertex_buffer,
                                      uint32_t vertex_count,
+                                     uint32_t vertex_stride,
                                      vkfw::VkBuffer const* index_buffer,
                                      uint32_t index_count,
                                      RasterShaderCode const& shaders);
@@ -82,6 +84,7 @@ private:
   std::vector<RasterColorVertex> vertices_{};
   vkfw::VkBuffer const* external_vertex_buffer_ = nullptr;
   uint32_t external_vertex_count_ = 0;
+  uint32_t external_vertex_stride_ = 0;
   vkfw::VkBuffer const* external_index_buffer_ = nullptr;
   uint32_t external_index_count_ = 0;
   vkfw::VkPipeline const* external_pipeline_ = nullptr;

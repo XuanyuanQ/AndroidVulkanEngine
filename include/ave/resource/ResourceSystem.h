@@ -94,6 +94,7 @@ public:
     
     uint32_t LoadMesh(std::string const& path);
     bool ParseObjMeshText(std::string const& text, project::MeshData& out_mesh) const;
+    uint32_t LoadMeshFromData(std::string const& name, project::MeshData const& mesh_data);
     uint32_t LoadMeshFromData(std::string const& name, std::vector<float> const& vertices, 
                               std::vector<uint32_t> const& indices, uint32_t vertex_stride);
     MeshRuntime const* GetMesh(uint32_t id) const;
