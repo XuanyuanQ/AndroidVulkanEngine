@@ -3,6 +3,7 @@
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -65,6 +66,83 @@ int ResolveObjIndex(int index, int count)
         return count + index;
     }
     return -1;
+}
+
+std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
+{
+    return {
+        position[0],
+        position[2],
+        -position[1],
+    };
+}
+
+void PreparePreviewMeshData(project::MeshData& mesh)
+{
+    if (mesh.vertices.empty()) {
+        return;
+    }
+
+    std::vector<std::array<float, 3>> positions;
+    positions.reserve(mesh.vertices.size());
+    for (auto const& vertex : mesh.vertices) {
+        positions.push_back(TransformPreviewPosition(vertex.position));
+    }
+
+    auto min_pos = positions.front();
+    auto max_pos = positions.front();
+    for (auto const& position : positions) {
+        for (int i = 0; i < 3; ++i) {
+            min_pos[i] = std::min(min_pos[i], position[i]);
+            max_pos[i] = std::max(max_pos[i], position[i]);
+        }
+    }
+
+    std::array<float, 3> const center{
+        (min_pos[0] + max_pos[0]) * 0.5f,
+        (min_pos[1] + max_pos[1]) * 0.5f,
+        (min_pos[2] + max_pos[2]) * 0.5f,
+    };
+    float const extent_x = max_pos[0] - min_pos[0];
+    float const extent_y = max_pos[1] - min_pos[1];
+    float const extent_z = max_pos[2] - min_pos[2];
+    float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
+    float const scale = 1.6f / max_extent;
+    bool const has_any_uv = std::any_of(
+        mesh.vertices.begin(),
+        mesh.vertices.end(),
+        [](project::VertexData const& vertex) {
+            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
+        });
+
+    for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+        auto& vertex = mesh.vertices[i];
+        auto const& position = positions[i];
+        std::array<float, 4> color{0.85f, 0.82f, 0.78f, 1.0f};
+        if (has_any_uv) {
+            auto const& uv = vertex.texcoord0;
+            color = {
+                std::clamp(uv[0], 0.0f, 1.0f),
+                std::clamp(uv[1], 0.0f, 1.0f),
+                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
+                1.0f,
+            };
+        }
+
+        vertex.position = {
+            (position[0] - center[0]) * scale,
+            (position[1] - center[1]) * scale,
+            (position[2] - center[2]) * scale,
+        };
+        vertex.color = color;
+    }
+
+    if (mesh.indices.empty()) {
+        mesh.indices.resize(mesh.vertices.size());
+        for (uint32_t i = 0; i < mesh.indices.size(); ++i) {
+            mesh.indices[i] = i;
+        }
+    }
 }
 
 } // namespace
@@ -171,9 +249,29 @@ uint32_t MeshManager::LoadMesh(std::string const& path)
     if (it != path_to_id_.end()) {
         return it->second;
     }
-    
-    // TODO: Load mesh from file (e.g., .obj, .gltf)
-    // For now, return 0 to indicate not implemented
+
+    if (!text_asset_loader_) {
+        return 0;
+    }
+
+    auto const text = text_asset_loader_(path);
+    if (text.empty()) {
+        return 0;
+    }
+
+    project::MeshData mesh_data{};
+    mesh_data.id = path;
+    mesh_data.source = path;
+
+    if (path.size() >= 4 && path.substr(path.size() - 4) == ".obj") {
+        if (!ParseObjMeshText(text, mesh_data)) {
+            return 0;
+        }
+        PreparePreviewMeshData(mesh_data);
+        return LoadMeshFromData(path, mesh_data);
+    }
+
+    // TODO: Support .gltf/.glb and other mesh formats.
     return 0;
 }
 

@@ -30,83 +30,6 @@ void logError(char const* message)
     __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s", message);
 }
 
-std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
-{
-    return {
-        position[0],
-        position[2],
-        -position[1],
-    };
-}
-
-void PreparePreviewMeshData(ave::project::MeshData& mesh)
-{
-    if (mesh.vertices.empty()) {
-        return;
-    }
-
-    std::vector<std::array<float, 3>> positions;
-    positions.reserve(mesh.vertices.size());
-    for (auto const& vertex : mesh.vertices) {
-        positions.push_back(TransformPreviewPosition(vertex.position));
-    }
-
-    auto min_pos = positions.front();
-    auto max_pos = positions.front();
-    for (auto const& position : positions) {
-        for (int i = 0; i < 3; ++i) {
-            min_pos[i] = std::min(min_pos[i], position[i]);
-            max_pos[i] = std::max(max_pos[i], position[i]);
-        }
-    }
-
-    std::array<float, 3> const center{
-        (min_pos[0] + max_pos[0]) * 0.5f,
-        (min_pos[1] + max_pos[1]) * 0.5f,
-        (min_pos[2] + max_pos[2]) * 0.5f,
-    };
-    float const extent_x = max_pos[0] - min_pos[0];
-    float const extent_y = max_pos[1] - min_pos[1];
-    float const extent_z = max_pos[2] - min_pos[2];
-    float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
-    float const scale = 1.6f / max_extent;
-    bool const has_any_uv = std::any_of(
-        mesh.vertices.begin(),
-        mesh.vertices.end(),
-        [](ave::project::VertexData const& vertex) {
-            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
-        });
-
-    for (size_t i = 0; i < mesh.vertices.size(); ++i) {
-        auto& vertex = mesh.vertices[i];
-        auto const& position = positions[i];
-        std::array<float, 4> color{0.85f, 0.82f, 0.78f, 1.0f};
-        if (has_any_uv) {
-            auto const& uv = vertex.texcoord0;
-            color = {
-                std::clamp(uv[0], 0.0f, 1.0f),
-                std::clamp(uv[1], 0.0f, 1.0f),
-                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
-                1.0f,
-            };
-        }
-
-        vertex.position = {
-            (position[0] - center[0]) * scale,
-            (position[1] - center[1]) * scale,
-            (position[2] - center[2]) * scale,
-        };
-        vertex.color = color;
-    }
-
-    if (mesh.indices.empty()) {
-        mesh.indices.resize(mesh.vertices.size());
-        for (uint32_t i = 0; i < mesh.indices.size(); ++i) {
-            mesh.indices[i] = i;
-        }
-    }
-}
-
 } // namespace
 
 bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_path)
@@ -144,6 +67,10 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
     #endif
     ctx_.Init(ci);
     renderer_.SetVkContext(&ctx_);
+    renderer_.GetResourceSystem().GetMeshManager().SetTextAssetLoader(
+        [this](std::string const& path) {
+            return readTextAsset(path.c_str());
+        });
 
     sync_.Init(ctx_, kFramesInFlight);
 
@@ -228,43 +155,13 @@ bool MinimalVulkanTriangle::loadSceneMesh()
 
         auto const& mesh = *object.components.mesh_renderer;
         if (!mesh.mesh.empty()) {
-            auto const text = readTextAsset(mesh.mesh.c_str());
-            if (text.empty()) {
-                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset not found or empty: %s", mesh.mesh.c_str());
-                return false;
-            }
-
-            ave::project::MeshData obj_mesh{};
-            obj_mesh.id = mesh.mesh;
-            obj_mesh.source = mesh.mesh;
-            if (!mesh_manager.ParseObjMeshText(text, obj_mesh)) {
-                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "OBJ asset has no usable geometry: %s", mesh.mesh.c_str());
-                return false;
-            }
-
-            size_t texcoord_count = 0;
-            for (auto const& vertex : obj_mesh.vertices) {
-                if (vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f}) {
-                    ++texcoord_count;
-                }
-            }
-            __android_log_print(ANDROID_LOG_INFO,
-                                kLogTag,
-                                "Loaded OBJ mesh %s with %zu unique vertices and %zu indices (%zu with UVs)",
-                                mesh.mesh.c_str(),
-                                obj_mesh.vertices.size(),
-                                obj_mesh.indices.size(),
-                                texcoord_count);
-            __android_log_print(ANDROID_LOG_INFO,
-                                kLogTag,
-                                "Texture asset staged for future sampling: textures/viking_room.png");
-
-            PreparePreviewMeshData(obj_mesh);
-            model_mesh_id_ = mesh_manager.LoadMeshFromData(mesh.mesh, obj_mesh);
+            model_mesh_id_ = mesh_manager.LoadMesh(mesh.mesh);
             if (model_mesh_id_ == 0) {
-                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to create preview mesh buffers for %s", mesh.mesh.c_str());
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to load mesh resource %s", mesh.mesh.c_str());
                 return false;
             }
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded mesh resource %s as mesh id %u", mesh.mesh.c_str(), model_mesh_id_);
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "Texture asset staged for future sampling: textures/viking_room.png");
             continue;
         }
 

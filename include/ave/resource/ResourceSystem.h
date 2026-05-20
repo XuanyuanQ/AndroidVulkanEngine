@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstdint>
 #include <array>
+#include <functional>
 
 #include "ave/project/SharedDataContract.h"
 #include "VkBuffer.hpp"
@@ -87,10 +88,13 @@ struct FrameResources {
 // Mesh Manager
 class MeshManager {
 public:
+    using TextAssetLoader = std::function<std::string(std::string const&)>;
+
     MeshManager();
     ~MeshManager() = default;
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
+    void SetTextAssetLoader(TextAssetLoader loader) { text_asset_loader_ = std::move(loader); }
     
     uint32_t LoadMesh(std::string const& path);
     bool ParseObjMeshText(std::string const& text, project::MeshData& out_mesh) const;
@@ -104,6 +108,7 @@ public:
     
 private:
     vkfw::VkContext* ctx_ = nullptr;
+    TextAssetLoader text_asset_loader_{};
     std::unordered_map<uint32_t, MeshRuntime> meshes_;
     std::unordered_map<std::string, uint32_t> path_to_id_;
     uint32_t next_id_ = 1;
