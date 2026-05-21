@@ -22,6 +22,8 @@ public:
     void setSurface(ANativeWindow* window);
     void clearSurface();
     void resize(int width, int height);
+    void setKeyState(int32_t key_code, bool pressed);
+    void setMotionState(float dx, float dy);
 
 private:
     bool loadSceneMesh();
@@ -48,6 +50,18 @@ private:
     std::vector<ave::render::RasterColorVertex> vertices_{};
     uint32_t model_mesh_id_ = 0;
     bool use_frame_data_path_ = false;
+
+private:
+    void renderLoop(); // 👈 渲染线程的死循环函数
+
+    // 线程控制变量
+    std::thread m_render_thread;
+    std::atomic<bool> m_running{false};
+    
+    // 保护 Surface 的互斥锁（因为 Java 线程会异步传进来 Surface）
+    std::mutex m_surface_mutex;
+    ANativeWindow* m_window{nullptr};
+    bool m_surface_changed{false};
 };
 
 } // namespace ave::android

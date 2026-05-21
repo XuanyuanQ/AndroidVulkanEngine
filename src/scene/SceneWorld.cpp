@@ -1,5 +1,7 @@
 ﻿#include "ave/scene/SceneWorld.h"
 #include "ave/project/SharedDataContract.h"
+#include <android/input.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
 #include <algorithm>
@@ -132,6 +134,78 @@ bool ComputeVisibility(glm::vec3 const& camera_position,
 }
 
 } // namespace
+
+#ifdef ENABLE_CAMERA_DEBUG
+void SceneWorld::ConsumeMouseMovement(float& out_dx, float& out_dy) {
+    if (g_mouse_dirty) {
+        out_dx = g_mouse_dx;
+        out_dy = g_mouse_dy;
+        
+        // 核心：用完必须清零，否则鼠标停下后相机还会由于老数据一直自转
+        g_mouse_dx = 0.0f; 
+        g_mouse_dy = 0.0f;
+        g_mouse_dirty = false;
+    } else {
+        out_dx = 0.0f;
+        out_dy = 0.0f;
+    }
+}
+
+void SceneWorld::UpdateDebugCamera(float delta_time)
+{
+    // ────────────────────────────────────────────────────────
+    // 部分 A：处理鼠标右键旋转
+    // ────────────────────────────────────────────────────────
+    float dx = 0.0f, dy = 0.0f;
+    ConsumeMouseMovement(dx, dy); // 拿出当前帧积攒的鼠标位移
+
+    if (glm::abs(dx) > 0.0f || glm::abs(dy) > 0.0f) {
+        // 运用灵敏度更新欧拉角
+        g_debug_camera.yaw   += dx * g_debug_camera.sensitivity;
+        g_debug_camera.pitch -= dy * g_debug_camera.sensitivity; // 减法防止视角反转
+
+        // 限制俯仰角，防止抬头低头看翻过去
+        if (g_debug_camera.pitch > 89.0f)  g_debug_camera.pitch = 89.0f;
+        if (g_debug_camera.pitch < -89.0f) g_debug_camera.pitch = -89.0f;
+
+        // 根据新的角度，通过三角函数重新计算相机的朝向向量 (矩阵更新的核心)
+        glm::vec3 front;
+        front.x = cos(glm::radians(g_debug_camera.yaw)) * cos(glm::radians(g_debug_camera.pitch));
+        front.y = sin(glm::radians(g_debug_camera.pitch));
+        front.z = sin(glm::radians(g_debug_camera.yaw)) * cos(glm::radians(g_debug_camera.pitch));
+        
+        g_debug_camera.forward = glm::normalize(front);
+        // 重新计算右向量
+        g_debug_camera.right   = glm::normalize(glm::cross(g_debug_camera.forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    }
+
+    // ────────────────────────────────────────────────────────
+    // 部分 B：处理 WASD 键盘移动
+    // ────────────────────────────────────────────────────────
+    glm::vec3 movement(0.0f);
+    if (IsKeyPressed(AKEYCODE_W)) movement += g_debug_camera.forward;
+    if (IsKeyPressed(AKEYCODE_S)) movement -= g_debug_camera.forward;
+    if (IsKeyPressed(AKEYCODE_A)) movement -= g_debug_camera.right;
+    if (IsKeyPressed(AKEYCODE_D)) movement += g_debug_camera.right;
+
+    // ────────────────────────────────────────────────────────
+    // 部分 C：矩阵生效与同步 (只要移动或者旋转了，就更新 View 矩阵)
+    // ────────────────────────────────────────────────────────
+    bool has_moved = glm::length(movement) > 0.0f;
+    bool has_rotated = (glm::abs(dx) > 0.0f || glm::abs(dy) > 0.0f);
+
+    if (has_moved) {
+        g_debug_camera.position += glm::normalize(movement) * g_debug_camera.speed * delta_time;
+    }
+
+    if (has_moved || has_rotated) {
+        view_.world_position = g_debug_camera.position;
+        // 用最新的位置和最新的 forward 重新构造 LookAt 矩阵
+        view_.view = glm::lookAt(g_debug_camera.position, g_debug_camera.position + g_debug_camera.forward, glm::vec3(0, 1, 0));
+        view_.view_projection = view_.projection * view_.view;
+    }
+}
+#endif
 
 uint32_t SceneWorld::AddRenderable(std::string object_id, std::string debug_name, std::string mesh_id, std::string material_id)
 {
@@ -275,6 +349,7 @@ void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame
 {
     out_frame.frame_index = frame_index;
     out_frame.view = view_;
+
     out_frame.renderables = renderables_;
     out_frame.lights = lights_;
     out_frame.ui_items = ui_items_;

@@ -50,10 +50,6 @@ public:
                                       uint32_t mesh_id,
                                       RasterShaderCode const& shaders);
     void ShutdownRaster();
-    void RenderRasterFrame(vkfw::VkContext& ctx,
-                           vkfw::VkSwapchain& swapchain,
-                           vkfw::VkFrameSync& sync,
-                           uint32_t& frame_index);
 
     // FrameGraph Vulkan backend (ForwardOpaque bring-up).
     bool InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
