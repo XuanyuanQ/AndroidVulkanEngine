@@ -123,7 +123,7 @@ PassDataFilter DepthPrepass::GetDataFilter() const
 
 void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: DepthPrepass");
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: DepthPrepass");
     (void)view;
 }
 
@@ -138,8 +138,93 @@ PassDataFilter ShadowPass::GetDataFilter() const
 
 void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: ShadowPass");
-    (void)view;
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ShadowPass");
+
+    if (context.resources == nullptr || context.pipelines == nullptr) {
+        return;
+    }
+
+    // Vulkan backend detection
+    bool const has_vk =
+        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+
+    auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& mat_mgr = context.resources->GetMaterialManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
+
+    auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
+    auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+
+    // For shadow pass we only need material (if any) and mesh data.
+    // No frame UBO is required.
+
+    for (auto const* renderable : view.renderables) {
+        if (!renderable) continue;
+
+        // Resolve material
+        auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
+        if (!material) {
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing material %s", renderable->material_id.c_str());
+            continue;
+        }
+
+        // Resolve mesh
+        auto const* mesh = mesh_mgr.GetMeshByPath(renderable->mesh_id);
+        if (!mesh) {
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing mesh %s", renderable->mesh_id.c_str());
+            continue;
+        }
+
+        // Resolve shader (fallback to material's shader)
+        ave::resource::ShaderRuntime const* shader = nullptr;
+        if (material != nullptr && material->shader_id != 0) {
+            shader = shader_mgr.GetShader(material->shader_id);
+        }
+        if (!shader) {
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing shader for material %s", material->name.c_str());
+            continue;
+        }
+
+        // Create pipeline key. Use pass_id = 1 for shadow (arbitrary distinct value).
+        PipelineKey key = MakePipelineKey(context, /*pass_id*/ 1, shader->id, *mesh);
+        // Shadow pass does not require any descriptor sets, keep layout_profile = 0.
+        if (has_vk) {
+            key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
+            key.viewport_width = context.swapchain->Extent().width;
+            key.viewport_height = context.swapchain->Extent().height;
+        }
+        uint32_t const pipeline_id =
+            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+        if (pipeline_id == 0) {
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: pipeline create failed for %s", renderable->debug_name.c_str());
+            continue;
+        }
+
+        if (has_vk) {
+            auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
+            if (!pipeline) continue;
+
+            // Bind pipeline
+            context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+            // Bind vertex and index buffers
+            vk::DeviceSize offset = 0;
+            context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
+            if (mesh->index_buffer && mesh->index_buffer->IsInitialized() && mesh->index_count > 0) {
+                context.command_buffer.bindIndexBuffer(mesh->index_buffer->Handle(), 0, vk::IndexType::eUint32);
+                uint32_t const index_count = renderable->index_count != 0 ? renderable->index_count : mesh->index_count;
+                uint32_t const first_index = renderable->first_index;
+                int32_t const vertex_offset = static_cast<int32_t>(renderable->first_vertex);
+                context.command_buffer.drawIndexed(index_count, 1, first_index, vertex_offset, 0);
+            } else {
+                uint32_t const vertex_count = renderable->vertex_count != 0 ? renderable->vertex_count : mesh->vertex_count;
+                uint32_t const first_vertex = renderable->first_vertex;
+                context.command_buffer.draw(vertex_count, 1, first_vertex, 0);
+            }
+        }
+
+        __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
+    }
 }
 
 PassDataFilter PBRPass::GetDataFilter() const
@@ -152,7 +237,7 @@ PassDataFilter PBRPass::GetDataFilter() const
 
 void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: PBRPass");
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: PBRPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -203,14 +288,14 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %llu", context.frame->frame_index);
         auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
-            Emit(context, "  skip: missing material '" + renderable->material_id + "', using default");
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing material %s, using default", renderable->material_id.c_str());
             continue;
         }   
         
 
         auto const* mesh = mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
-            Emit(context, "  skip: missing mesh '" + renderable->mesh_id + "'");
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing mesh %s", renderable->mesh_id.c_str());
             continue;
         }
         ave::resource::ShaderRuntime const* shader = nullptr;
@@ -220,7 +305,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
 
         if (!shader) {
-            Emit(context, "  skip: missing shader  ");
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing shader");
             continue;
         }
 
@@ -233,7 +318,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         uint32_t const pipeline_id =
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
-            Emit(context, "  skip: pipeline create failed for '" + renderable->debug_name + "'");
+            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: pipeline create failed for %s", renderable->debug_name.c_str());
             continue;
         }
 
@@ -271,7 +356,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             }
         }
 
-        Emit(context, "  draw: " + renderable->debug_name);
+        __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
     }
 }
 
@@ -284,7 +369,7 @@ PassDataFilter ComputePass::GetDataFilter() const
 
 void ComputePass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: ComputePass");
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ComputePass");
     (void)view;
 }
 
@@ -298,12 +383,12 @@ PassDataFilter UIPass::GetDataFilter() const
 
 void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: UIPass");
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: UIPass");
     for (auto const* item : view.ui_items) {
         if (!item) {
             continue;
         }
-        Emit(context, "  ui: " + item->debug_name);
+        __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  ui: %s", item->debug_name.c_str());
     }
 }
 
@@ -316,7 +401,7 @@ PassDataFilter ToneMappingPass::GetDataFilter() const
 
 void ToneMappingPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    Emit(context, "Pass: ToneMappingPass");
+    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ToneMappingPass");
     (void)view;
 }
 
