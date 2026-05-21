@@ -135,20 +135,20 @@ void Renderer::RenderRasterFrame(vkfw::VkContext& ctx,
                                  vkfw::VkFrameSync& sync,
                                  uint32_t& frame_index)
 {
-        core::FrameData empty_frame{};
-        empty_frame.frame_index = frame_index;
-        empty_frame.renderables.push_back(core::FrameRenderableData{
-            .mesh_id = "meshes/viking_room.obj",
-            .material_id = "materials/triangle.material.xml",
-            .shader_id = "solid_triangle",
-            .world = {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f,
-                0.0f, 0.0f, 0.0f, 1.0f,
-            },
-        });
-        RenderFrameGraphFrame(empty_frame, ctx, swapchain, sync, frame_index);
+//        core::FrameData empty_frame{};
+//        empty_frame.frame_index = frame_index;
+//        empty_frame.renderables.push_back(core::FrameRenderableData{
+//            .mesh_id = "meshes/viking_room.obj",
+//            .material_id = "materials/triangle.material.xml",
+//            .shader_id = "solid_triangle",
+//            .world = {
+//                1.0f, 0.0f, 0.0f, 0.0f,
+//                0.0f, 1.0f, 0.0f, 0.0f,
+//                0.0f, 0.0f, 1.0f, 0.0f,
+//                0.0f, 0.0f, 0.0f, 1.0f,
+//            },
+//        });
+//        RenderFrameGraphFrame(empty_frame, ctx, swapchain, sync, frame_index);
     
 }
 

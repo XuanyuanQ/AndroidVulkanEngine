@@ -201,22 +201,10 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
         __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %llu", context.frame->frame_index);
-        static ave::resource::MaterialRuntime default_material{
-            .id = 999999,
-            .name = "default_fallback",
-            .shader_id = 0,
-            .base_color_texture = 0,
-            .normal_texture = 0,
-            .metallic_roughness_texture = 0,
-            .base_color = {1.0f, 1.0f, 1.0f, 1.0f},
-            .metallic = 0.0f,
-            .roughness = 0.5f,
-            .is_loaded = true
-        };
         auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
             Emit(context, "  skip: missing material '" + renderable->material_id + "', using default");
-            material = &default_material;
+            continue;
         }   
         
 
@@ -225,9 +213,14 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             Emit(context, "  skip: missing mesh '" + renderable->mesh_id + "'");
             continue;
         }
-        auto const* shader = shader_mgr.GetShaderByPath(renderable->shader_id); //for bring-up,loading shader no via material
+        ave::resource::ShaderRuntime const* shader = nullptr;
+        // Fallback to the material's loaded shader if not explicitly specified on the renderable
+        if (!shader && material != nullptr && material->shader_id != 0) {
+            shader = shader_mgr.GetShader(material->shader_id);
+        }
+
         if (!shader) {
-            Emit(context, "  skip: missing shader '" + renderable->shader_id + "'");
+            Emit(context, "  skip: missing shader  ");
             continue;
         }
 
@@ -252,6 +245,16 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
             // Bind pipeline + descriptors + vertex buffer.
             context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+            // if (frame_set_id_ != 0) {
+            //     vk::DescriptorSet desc_set = desc_alloc.GetHandle(frame_set_id_);
+            //     if (desc_set) {
+            //         context.command_buffer.bindDescriptorSets(
+            //             pipeline->BindPoint(),
+            //             pipeline->Layout(),
+            //             0, 1, &desc_set, 0, nullptr);
+            //     }
+            // }
 
             vk::DeviceSize offset = 0;
             context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ave/core/RenderTags.h"
 
@@ -26,7 +26,6 @@ struct FrameRenderableData {
 
     std::string mesh_id;
     std::string material_id;
-    std::string shader_id;// For bring-up, shader is specified directly on renderable. Extend to support material-specified shader and shader variants.
 
     glm::mat4 world{1.0f};
 
