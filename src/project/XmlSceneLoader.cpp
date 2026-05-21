@@ -333,6 +333,17 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
         }
     }
 
+    auto texture_tags = MatchTags(text, "Texture");
+    for (auto const& texture_tag : texture_tags) {
+        auto name = Attribute(texture_tag, "name");
+        if (name == "baseColor") {
+            doc.base_color_texture = Attribute(texture_tag, "path");
+            if (doc.base_color_texture.empty()) {
+                doc.base_color_texture = Attribute(texture_tag, "texture");
+            }
+        }
+    }
+
     return doc;
 }
 

@@ -1,3 +1,4 @@
 <Material name="TriangleMaterial" shader="solid_triangle">
     <Color name="baseColor" value="1,0.25,0.1,1" />
+    <Texture name="baseColor" path="textures/viking_room.png" />
 </Material>

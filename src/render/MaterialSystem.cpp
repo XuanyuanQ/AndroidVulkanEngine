@@ -36,6 +36,7 @@ uint32_t MaterialSystem::LoadMaterial(std::string const& path)
     logical_mat.name = path;
     logical_mat.shader_name = mat_doc.shader;
     logical_mat.params.base_color = mat_doc.base_color;
+    logical_mat.base_color_texture_path = mat_doc.base_color_texture;
     logical_mat.params.metallic = mat_doc.metallic;
     logical_mat.params.roughness = mat_doc.roughness;
 
@@ -228,6 +229,20 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
     gpu_mat_mgr.SetBaseColor(gpu_mat_id, logical_mat.params.base_color);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "metallic", logical_mat.params.metallic);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "roughness", logical_mat.params.roughness);
+
+    if (!logical_mat.base_color_texture_path.empty()) {
+        auto& texture_mgr = resource_system_->GetTextureManager();
+        uint32_t texture_id = 0;
+        if (auto const* texture = texture_mgr.GetTextureByPath(logical_mat.base_color_texture_path)) {
+            texture_id = texture->id;
+        } else {
+            texture_id = texture_mgr.LoadTexture(logical_mat.base_color_texture_path);
+        }
+
+        if (texture_id != 0) {
+            gpu_mat_mgr.SetTexture(gpu_mat_id, "base_color", texture_id);
+        }
+    }
 }
 
 } // namespace ave::render

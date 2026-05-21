@@ -78,10 +78,10 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
             return readTextAsset(path.c_str());
         });
     
-renderer_.GetMaterialSystem().SetShaderAssetLoader(
-    [this](std::string const& path) -> std::vector<uint32_t> {
-        return readShaderAsset(path.c_str());
-    });
+    renderer_.GetMaterialSystem().SetShaderAssetLoader(
+        [this](std::string const& path) -> std::vector<uint32_t> {
+            return readShaderAsset(path.c_str());
+        });
 
     sync_.Init(ctx_, kFramesInFlight);
 
