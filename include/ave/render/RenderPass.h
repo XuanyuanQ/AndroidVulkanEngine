@@ -57,6 +57,7 @@ struct RenderPassContext {
     vkfw::VkSwapchain* swapchain = nullptr;
     uint32_t swapchain_image_index = 0;
     vk::CommandBuffer command_buffer = {};
+    vk::RenderPass compatibility_render_pass = {};
 
     // Optional: capture debug strings per pass for early bring-up.
     std::vector<std::string>* debug_output = nullptr;

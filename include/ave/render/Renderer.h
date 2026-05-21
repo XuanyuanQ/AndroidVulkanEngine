@@ -57,6 +57,9 @@ public:
 
     // FrameGraph Vulkan backend (ForwardOpaque bring-up).
     bool InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
+    bool InitializeFrameGraphBackend(vkfw::VkContext& ctx,
+                                     vkfw::VkSwapchain& swapchain,
+                                     vkfw::VkFrameSync& sync);
     void ShutdownFrameGraphBackend();
     void RenderFrameGraphFrame(core::FrameData const& frame,
                                vkfw::VkContext& ctx,

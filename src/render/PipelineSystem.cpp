@@ -1,9 +1,12 @@
 #include "ave/render/PipelineSystem.h"
 #include "ave/render/MaterialSystem.h"
+#include "ave/project/SharedDataContract.h"
 #include "ave/resource/ResourceSystem.h"
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
 #include "VkContext.hpp"
+#include <cstddef>
+
 #include <cstddef>
 
 namespace ave::render {
@@ -210,7 +213,7 @@ void PipelineLayoutCache::Clear()
 // Pipeline Cache
 PipelineCache::PipelineCache() = default;
 
-uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key)
+uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPass compatibility_render_pass)
 {
     if (!ctx_) {
         return 0;
@@ -260,7 +263,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key)
             },
         };
     } else if (key.vertex_layout_id == 2) {
-        // project::VertexData: position(float3) + normal(float3) + tangent(float4) + texcoord0(float2) + texcoord1(float2) + color(float4)
+        // SharedDataContract::VertexData: use position + color for current preview shaders.
         vertex_input.vertex_inputs = {
             vkfw::PipelineVertexInput{
                 .binding = 0,
@@ -349,11 +352,15 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key)
         pipeline_info.viewport.scissors = {scissor};
     }
 
-    // Dynamic rendering: pipeline is keyed by attachment formats (no VkRenderPass).
-    pipeline_info.use_dynamic_rendering = true;
-    pipeline_info.color_formats = {static_cast<vk::Format>(key.rt_format)};
-    pipeline_info.depth_format = static_cast<vk::Format>(key.depth_format);
-    pipeline_info.stencil_format = static_cast<vk::Format>(key.stencil_format);
+    if (ctx_ && ctx_->SupportsDynamicRendering()) {
+        pipeline_info.use_dynamic_rendering = true;
+        pipeline_info.color_formats = {static_cast<vk::Format>(key.rt_format)};
+        pipeline_info.depth_format = static_cast<vk::Format>(key.depth_format);
+        pipeline_info.stencil_format = static_cast<vk::Format>(key.stencil_format);
+    } else {
+        pipeline_info.use_dynamic_rendering = false;
+        pipeline_info.render_pass = compatibility_render_pass;
+    }
     
     // Initialize pipeline
     if (!pipeline->Init(*ctx_, pipeline_info)) {

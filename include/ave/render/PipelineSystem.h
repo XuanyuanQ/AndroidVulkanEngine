@@ -198,7 +198,7 @@ public:
     void SetResourceSystem(ave::resource::ResourceSystem* resource_system) { resource_system_ = resource_system; }
     void SetPipelineLayoutCache(PipelineLayoutCache* pipeline_layout_cache) { pipeline_layout_cache_ = pipeline_layout_cache; }
     
-    uint32_t GetOrCreatePipeline(PipelineKey const& key);
+    uint32_t GetOrCreatePipeline(PipelineKey const& key, vk::RenderPass compatibility_render_pass = {});
     vkfw::VkPipeline const* GetPipeline(uint32_t id) const;
     void Clear();
     

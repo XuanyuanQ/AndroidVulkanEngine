@@ -4,10 +4,13 @@
 #include "ave/resource/ResourceSystem.h"
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
+#include "ave/project/SharedDataContract.h"
 
+#include "VkPipeline.hpp"
 #include "VkSwapchain.hpp"
 #include <android/log.h>
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -40,13 +43,13 @@ DescriptorSetLayoutKey MakeFrameSetLayoutKey()
     key.bindings = {
         DescriptorBinding{
             .binding = 0,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eUniformBuffer),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
         },
         DescriptorBinding{
             .binding = 1,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
@@ -60,25 +63,25 @@ DescriptorSetLayoutKey MakeMaterialSetLayoutKey()
     key.bindings = {
         DescriptorBinding{
             .binding = 0,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eUniformBuffer),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
         DescriptorBinding{
             .binding = 1,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
         DescriptorBinding{
             .binding = 2,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
         DescriptorBinding{
             .binding = 3,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
@@ -96,7 +99,7 @@ PipelineKey MakePipelineKey(RenderPassContext const& ctx,
     key.shader_id = shader_id;
     key.vertex_layout_id = VertexLayoutIdFromMesh(mesh);
     key.render_state_id = 1;
-    key.layout_profile = 2; // Set0 frame + Set1 material
+    key.layout_profile = 0; // Preview FrameData path: no descriptor sets yet.
     key.rt_format = 0;      // filled by caller when swapchain is present
     key.depth_format = 0;
     key.stencil_format = 0;
@@ -193,7 +196,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             desc_alloc.UpdateUniformBuffer(frame_set_id_, /*binding*/ 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
         }
     }
-
     for (auto const* renderable : view.renderables) {
         if (!renderable) {
             continue;
@@ -235,7 +237,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             key.viewport_width = context.swapchain->Extent().width;
             key.viewport_height = context.swapchain->Extent().height;
         }
-        uint32_t const pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(key);
+        uint32_t const pipeline_id =
+            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
             Emit(context, "  skip: pipeline create failed for '" + renderable->debug_name + "'");
             continue;
@@ -247,64 +250,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                 continue;
             }
 
-            // Material descriptor set (UBO only for now).
-            auto& binding = material_bindings_[material->id];
-            if (!binding.ubo.IsInitialized()) {
-                struct MaterialUbo {
-                    float base_color[4]{};
-                    float metallic = 0.0f;
-                    float roughness = 0.0f;
-                    float _pad[2]{};
-                };
-                binding.ubo.Init(*context.vk, vkfw::BufferInfo{
-                                                .size = static_cast<uint32_t>(sizeof(MaterialUbo)),
-                                                .usage = vkfw::BufferUsage::Uniform,
-                                                .mappable = true,
-                                            });
-            }
-
-            struct MaterialUbo {
-                float base_color[4]{};
-                float metallic = 0.0f;
-                float roughness = 0.0f;
-                float _pad[2]{};
-            } mat_ubo{};
-            mat_ubo.base_color[0] = material->base_color[0];
-            mat_ubo.base_color[1] = material->base_color[1];
-            mat_ubo.base_color[2] = material->base_color[2];
-            mat_ubo.base_color[3] = material->base_color[3];
-            mat_ubo.metallic = material->metallic;
-            mat_ubo.roughness = material->roughness;
-            binding.ubo.UpdateData(*context.vk, &mat_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
-
-            if (binding.descriptor_set_id == 0) {
-                uint32_t const material_layout_id = desc_cache.GetOrCreateLayout(MakeMaterialSetLayoutKey());
-                binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(material_layout_id);
-            }
-            if (binding.descriptor_set_id != 0) {
-                desc_alloc.UpdateUniformBuffer(binding.descriptor_set_id, /*binding*/ 0, binding.ubo.Handle(), 0, sizeof(MaterialUbo));
-            }
-
             // Bind pipeline + descriptors + vertex buffer.
             context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
-
-            std::vector<vk::DescriptorSet> sets;
-            sets.reserve(2);
-            if (frame_set_id_ != 0) {
-                sets.push_back(desc_alloc.GetHandle(frame_set_id_));
-            }
-            if (binding.descriptor_set_id != 0) {
-                sets.push_back(desc_alloc.GetHandle(binding.descriptor_set_id));
-            }
-            if (!sets.empty()) {
-                context.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                                         pipeline->Layout(),
-                                                         /*firstSet*/ 0,
-                                                         static_cast<uint32_t>(sets.size()),
-                                                         sets.data(),
-                                                         0,
-                                                         nullptr);
-            }
 
             vk::DeviceSize offset = 0;
             context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);

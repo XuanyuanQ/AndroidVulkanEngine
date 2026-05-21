@@ -5,6 +5,8 @@
 #include "VkSwapchain.hpp"
 #include "VkRasterRenderer.hpp"
 #include "VkCommandBuffer.hpp"
+#include "VkFramebufferSet.hpp"
+#include "VkRenderPass.hpp"
 #include "ave/resource/GpuUploadQueue.h"
 #include "ave/render/RenderPasses.h"
 #include "ave/render/RenderPass.h"
@@ -16,6 +18,8 @@ class Renderer::Impl {
 public:
     rhi::VulkanRasterRenderer raster_renderer{};
     vkfw::VkCommandBuffer framegraph_command_buffers{};
+    vkfw::VkRenderPass framegraph_render_pass{};
+    vkfw::VkFramebufferSet framegraph_framebuffers{};
 };
 
 Renderer::Renderer()
@@ -155,7 +159,49 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSy
     }
     SetVkContext(&ctx);
 
-    // Allocate one primary command buffer per frame-in-flight.
+    return impl_->framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
+                                                          .level = vkfw::CommandBufferLevel::Primary,
+                                                          .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
+                                                          .count = sync.FramesInFlight(),
+                                                      });
+}
+
+bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
+                                           vkfw::VkSwapchain& swapchain,
+                                           vkfw::VkFrameSync& sync)
+{
+    if (impl_ == nullptr) {
+        impl_ = std::make_unique<Impl>();
+    }
+    SetVkContext(&ctx);
+
+    if (!ctx.SupportsDynamicRendering()) {
+        vkfw::RenderPassAttachment color_attachment{};
+        color_attachment.binding = 0;
+        color_attachment.type = vkfw::RenderPassAttachmentType::Color;
+        color_attachment.format = swapchain.Format();
+        color_attachment.samples = vk::SampleCountFlagBits::e1;
+        color_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
+        color_attachment.store_op = vkfw::RenderPassStoreOp::Store;
+        color_attachment.initial_layout = vk::ImageLayout::eColorAttachmentOptimal;
+        color_attachment.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+        vkfw::RenderPassSubpass subpass{};
+        subpass.color_attachments.push_back(color_attachment);
+
+        vkfw::RenderPassInfo render_pass_info{};
+        render_pass_info.subpasses.push_back(subpass);
+        render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+        if (!impl_->framegraph_render_pass.Init(ctx, render_pass_info)) {
+            return false;
+        }
+        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass)) {
+            impl_->framegraph_render_pass.Shutdown(ctx);
+            return false;
+        }
+    }
+
     return impl_->framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
                                                           .level = vkfw::CommandBufferLevel::Primary,
                                                           .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
@@ -167,6 +213,8 @@ void Renderer::ShutdownFrameGraphBackend()
 {
     if (impl_ != nullptr && vk_context_ != nullptr) {
         impl_->framegraph_command_buffers.Shutdown(*vk_context_);
+        impl_->framegraph_framebuffers.Shutdown(*vk_context_);
+        impl_->framegraph_render_pass.Shutdown(*vk_context_);
     }
 }
 
@@ -223,8 +271,7 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     clear.color.float32[2] = 0.06f;
     clear.color.float32[3] = 1.0f;
 
-    bool const core_dynamic_rendering = ctx.PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
-    if (core_dynamic_rendering) {
+    if (ctx.SupportsDynamicRendering()) {
         vk::RenderingAttachmentInfo color_attachment{};
         color_attachment.imageView = swapchain.ImageView(image_index);
         color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
@@ -239,19 +286,13 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
         rendering_info.pColorAttachments = &color_attachment;
         cmd.beginRendering(rendering_info);
     } else {
-        vk::RenderingAttachmentInfoKHR color_attachment{};
-        color_attachment.imageView = swapchain.ImageView(image_index);
-        color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-        color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-        color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-        color_attachment.clearValue = clear;
-
-        vk::RenderingInfoKHR rendering_info{};
-        rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
-        rendering_info.layerCount = 1;
-        rendering_info.colorAttachmentCount = 1;
-        rendering_info.pColorAttachments = &color_attachment;
-        cmd.beginRenderingKHR(rendering_info);
+        vk::RenderPassBeginInfo render_pass_begin{};
+        render_pass_begin.renderPass = impl_->framegraph_render_pass.Handle();
+        render_pass_begin.framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
+        render_pass_begin.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
+        render_pass_begin.clearValueCount = 1;
+        render_pass_begin.pClearValues = &clear;
+        cmd.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
     }
 
     RenderPassContext pass_ctx{};
@@ -262,12 +303,15 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     pass_ctx.swapchain = &swapchain;
     pass_ctx.swapchain_image_index = image_index;
     pass_ctx.command_buffer = cmd;
+    if (!ctx.SupportsDynamicRendering()) {
+        pass_ctx.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
+    }
     graph_.Execute(pass_ctx);
 
-    if (core_dynamic_rendering) {
+    if (ctx.SupportsDynamicRendering()) {
         cmd.endRendering();
     } else {
-        cmd.endRenderingKHR();
+        cmd.endRenderPass();
     }
 
     vk::ImageMemoryBarrier to_present{};
