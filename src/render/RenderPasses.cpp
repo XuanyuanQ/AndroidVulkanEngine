@@ -167,14 +167,12 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
 
     struct FrameUbo {
-        float view_projection[16]{};
+        glm::mat4 view_projection;
     };
 
     FrameUbo frame_ubo{};
     if (context.frame != nullptr) {
-        for (int i = 0; i < 16; ++i) {
-            frame_ubo.view_projection[i] = context.frame->view.view_projection[i];
-        }
+        frame_ubo.view_projection = context.frame->view.view_projection;
     }
 
     if (has_vk) {

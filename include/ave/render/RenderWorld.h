@@ -3,6 +3,7 @@
 #include "ave/render/RenderTypes.h"
 
 #include <memory>
+#include <glm/glm.hpp>
 #include <vector>
 #include <cstdint>
 
@@ -22,7 +23,7 @@ struct RenderObject {
     uint32_t mesh_id = 0;
     uint32_t material_id = 0;
     uint32_t instance_count = 1;
-    std::array<float, 16> world_matrix{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}; // Identity matrix
+    glm::mat4 world_matrix = glm::mat4(1.0f); // Identity matrix
     bool visible = true;
     uint32_t layer_mask = 0xFFFFFFFF;
     bool cast_shadows = false;
@@ -37,9 +38,9 @@ struct RenderLight {
     };
 
     Type type = Type::Directional;
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> direction{0.0f, -1.0f, 0.0f};
-    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    glm::vec3 color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     float range = 10.0f;
     float spot_angle = 45.0f;
@@ -48,9 +49,9 @@ struct RenderLight {
 
 // Camera data for rendering
 struct RenderCamera {
-    std::array<float, 16> view_matrix{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-    std::array<float, 16> projection_matrix{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
+    glm::mat4 view_matrix = glm::mat4(1.0f);
+    glm::mat4 projection_matrix = glm::mat4(1.0f);
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
     float near_plane = 0.1f;
     float far_plane = 100.0f;
     float fov = 60.0f;

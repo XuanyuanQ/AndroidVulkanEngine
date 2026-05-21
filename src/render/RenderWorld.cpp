@@ -1,7 +1,12 @@
 #include "ave/render/RenderWorld.h"
+#include "ave/render/FrameGraph.h"
+#include "ave/render/MaterialSystem.h"
+#include "ave/render/RenderTypes.h"
 
 #include <cmath>
 #include <algorithm>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace ave::render {
 
@@ -9,15 +14,14 @@ namespace {
 
 // Simple frustum culling implementation
 struct Frustum {
-    float planes[6][4]; // Normal + distance
+    glm::vec4 planes[6]; // Normal + distance
 
-    bool IntersectsAABB(std::array<float, 3> const& min, std::array<float, 3> const& max) const {
+    bool IntersectsAABB(glm::vec3 const& min, glm::vec3 const& max) const {
         for (int i = 0; i < 6; ++i) {
-            float px = planes[i][0] > 0.0f ? max[0] : min[0];
-            float py = planes[i][1] > 0.0f ? max[1] : min[1];
-            float pz = planes[i][2] > 0.0f ? max[2] : min[2];
-            
-            float distance = planes[i][0] * px + planes[i][1] * py + planes[i][2] * pz + planes[i][3];
+            float px = planes[i].x > 0.0f ? max.x : min.x;
+            float py = planes[i].y > 0.0f ? max.y : min.y;
+            float pz = planes[i].z > 0.0f ? max.z : min.z;
+            float distance = planes[i].x * px + planes[i].y * py + planes[i].z * pz + planes[i].w;
             if (distance < 0.0f) {
                 return false;
             }
@@ -27,55 +31,62 @@ struct Frustum {
 };
 
 // Extract frustum from view-projection matrix
-Frustum ExtractFrustum(std::array<float, 16> const& view_proj) {
+Frustum ExtractFrustum(glm::mat4 const& view_proj) {
     Frustum frustum;
     
     // Left plane
-    frustum.planes[0][0] = view_proj[3] + view_proj[0];
-    frustum.planes[0][1] = view_proj[7] + view_proj[4];
-    frustum.planes[0][2] = view_proj[11] + view_proj[8];
-    frustum.planes[0][3] = view_proj[15] + view_proj[12];
+    frustum.planes[0] = glm::vec4(
+        view_proj[3][0] + view_proj[0][0],
+        view_proj[3][1] + view_proj[0][1],
+        view_proj[3][2] + view_proj[0][2],
+        view_proj[3][3] + view_proj[0][3]
+    );
     
     // Right plane
-    frustum.planes[1][0] = view_proj[3] - view_proj[0];
-    frustum.planes[1][1] = view_proj[7] - view_proj[4];
-    frustum.planes[1][2] = view_proj[11] - view_proj[8];
-    frustum.planes[1][3] = view_proj[15] - view_proj[12];
-    
-    // Top plane
-    frustum.planes[2][0] = view_proj[3] + view_proj[1];
-    frustum.planes[2][1] = view_proj[7] + view_proj[5];
-    frustum.planes[2][2] = view_proj[11] + view_proj[9];
-    frustum.planes[2][3] = view_proj[15] + view_proj[13];
+    frustum.planes[1] = glm::vec4(
+        view_proj[3][0] - view_proj[0][0],
+        view_proj[3][1] - view_proj[0][1],
+        view_proj[3][2] - view_proj[0][2],
+        view_proj[3][3] - view_proj[0][3]
+    );
     
     // Bottom plane
-    frustum.planes[3][0] = view_proj[3] - view_proj[1];
-    frustum.planes[3][1] = view_proj[7] - view_proj[5];
-    frustum.planes[3][2] = view_proj[11] - view_proj[9];
-    frustum.planes[3][3] = view_proj[15] - view_proj[13];
+    frustum.planes[2] = glm::vec4(
+        view_proj[3][0] + view_proj[1][0],
+        view_proj[3][1] + view_proj[1][1],
+        view_proj[3][2] + view_proj[1][2],
+        view_proj[3][3] + view_proj[1][3]
+    );
+    
+    // Top plane
+    frustum.planes[3] = glm::vec4(
+        view_proj[3][0] - view_proj[1][0],
+        view_proj[3][1] - view_proj[1][1],
+        view_proj[3][2] - view_proj[1][2],
+        view_proj[3][3] - view_proj[1][3]
+    );
     
     // Near plane
-    frustum.planes[4][0] = view_proj[3] + view_proj[2];
-    frustum.planes[4][1] = view_proj[7] + view_proj[6];
-    frustum.planes[4][2] = view_proj[11] + view_proj[10];
-    frustum.planes[4][3] = view_proj[15] + view_proj[14];
+    frustum.planes[4] = glm::vec4(
+        view_proj[3][0] + view_proj[2][0],
+        view_proj[3][1] + view_proj[2][1],
+        view_proj[3][2] + view_proj[2][2],
+        view_proj[3][3] + view_proj[2][3]
+    );
     
     // Far plane
-    frustum.planes[5][0] = view_proj[3] - view_proj[2];
-    frustum.planes[5][1] = view_proj[7] - view_proj[6];
-    frustum.planes[5][2] = view_proj[11] - view_proj[10];
-    frustum.planes[5][3] = view_proj[15] - view_proj[14];
+    frustum.planes[5] = glm::vec4(
+        view_proj[3][0] - view_proj[2][0],
+        view_proj[3][1] - view_proj[2][1],
+        view_proj[3][2] - view_proj[2][2],
+        view_proj[3][3] - view_proj[2][3]
+    );
     
     // Normalize planes
     for (int i = 0; i < 6; ++i) {
-        float length = std::sqrt(frustum.planes[i][0] * frustum.planes[i][0] +
-                                 frustum.planes[i][1] * frustum.planes[i][1] +
-                                 frustum.planes[i][2] * frustum.planes[i][2]);
+        float length = glm::length(glm::vec3(frustum.planes[i]));
         if (length > 0.0f) {
-            frustum.planes[i][0] /= length;
-            frustum.planes[i][1] /= length;
-            frustum.planes[i][2] /= length;
-            frustum.planes[i][3] /= length;
+            frustum.planes[i] /= length;
         }
     }
     
@@ -83,18 +94,8 @@ Frustum ExtractFrustum(std::array<float, 16> const& view_proj) {
 }
 
 // Multiply view and projection matrices
-std::array<float, 16> MultiplyMatrices(std::array<float, 16> const& a, std::array<float, 16> const& b) {
-    std::array<float, 16> result{};
-    for (int row = 0; row < 4; ++row) {
-        for (int col = 0; col < 4; ++col) {
-            result[row * 4 + col] = 
-                a[row * 4 + 0] * b[0 * 4 + col] +
-                a[row * 4 + 1] * b[1 * 4 + col] +
-                a[row * 4 + 2] * b[2 * 4 + col] +
-                a[row * 4 + 3] * b[3 * 4 + col];
-        }
-    }
-    return result;
+glm::mat4 MultiplyMatrices(glm::mat4 const& a, glm::mat4 const& b) {
+    return a * b;
 }
 
 } // namespace
@@ -125,7 +126,7 @@ void RenderWorld::CullAndBatch() {
     }
     
     // Calculate view-projection matrix
-    auto view_proj = MultiplyMatrices(camera_.projection_matrix, camera_.view_matrix);
+    auto view_proj = camera_.projection_matrix * camera_.view_matrix;
     
     // Extract frustum
     Frustum frustum = ExtractFrustum(view_proj);
@@ -138,11 +139,8 @@ void RenderWorld::CullAndBatch() {
         
         // TODO: Calculate object AABB from world matrix
         // For now, use a simple distance check
-        float distance = std::sqrt(
-            object.world_matrix[12] * object.world_matrix[12] +
-            object.world_matrix[13] * object.world_matrix[13] +
-            object.world_matrix[14] * object.world_matrix[14]
-        );
+        glm::vec3 position = glm::vec3(object.world_matrix[3]);
+        float distance = glm::length(position);
         
         // Simple distance culling (objects beyond far plane)
         if (distance < camera_.far_plane) {

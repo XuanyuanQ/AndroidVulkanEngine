@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ave/core/RenderTags.h"
 
@@ -6,15 +6,16 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace ave::core {
 
 struct FrameViewData {
     std::string camera_object_id;
-    float view[16]{};
-    float projection[16]{};
-    float view_projection[16]{};
-    std::array<float, 3> world_position{0.0f, 0.0f, 0.0f};
+    glm::mat4 view{1.0f};
+    glm::mat4 projection{1.0f};
+    glm::mat4 view_projection{1.0f};
+    glm::vec3 world_position{0.0f, 0.0f, 0.0f};
     float near_plane = 0.1f;
     float far_plane = 1000.0f;
 };
@@ -27,7 +28,7 @@ struct FrameRenderableData {
     std::string material_id;
     std::string shader_id;// For bring-up, shader is specified directly on renderable. Extend to support material-specified shader and shader variants.
 
-    float world[16]{};
+    glm::mat4 world{1.0f};
 
     // Routing/state (see docs/frame_data_contract_zh.md).
     uint32_t layer_mask = ToMask(RenderLayer::World);
@@ -51,9 +52,9 @@ struct FrameLightData {
     std::string debug_name;
     std::string type{"point"};
 
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> direction{0.0f, -1.0f, 0.0f};
-    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    glm::vec3 color{1.0f, 1.0f, 1.0f};
 
     float intensity = 1.0f;
     float range = 10.0f;
@@ -71,9 +72,9 @@ struct FrameUiData {
     std::string material_id;
     std::string texture_id;
 
-    std::array<float, 2> position{0.0f, 0.0f};
-    std::array<float, 2> size{0.0f, 0.0f};
-    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec2 position{0.0f, 0.0f};
+    glm::vec2 size{0.0f, 0.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 
     float depth = 0.0f;
     bool visible = true;

@@ -4,6 +4,8 @@
 #include "ave/project/SceneDocument.h"
 
 #include <filesystem>
+#include <cstring>
+#include <glm/glm.hpp>
 #include <string>
 
 namespace ave::project {
@@ -11,7 +13,7 @@ namespace ave::project {
 struct MaterialDocument {
     std::string name;
     std::string shader;
-    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
 };

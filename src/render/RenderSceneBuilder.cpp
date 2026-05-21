@@ -1,43 +1,56 @@
 #include "ave/render/RenderSceneBuilder.h"
+#include "ave/render/RenderWorld.h"
+#include "ave/render/MaterialSystem.h"
+#include "ave/render/FrameGraph.h"
+#include "ave/project/SharedDataContract.h"
 
-#include <stdexcept>
+#include <algorithm>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace ave::render {
 
-RenderSceneBuilder::RenderSceneBuilder() {
+RenderSceneBuilder::RenderSceneBuilder()
+{
 }
 
-void RenderSceneBuilder::BuildFromScene(project::SceneDocument const& scene, RenderSceneConfig const& config) {
-    // Clear existing data
+void RenderSceneBuilder::BuildFromScene(project::SceneDocument const& scene, RenderSceneConfig const& config)
+{
     render_world_.Clear();
-    material_id_map_.clear();
-    next_material_id_ = 1;
-
-    // Convert all game objects to render objects
+    material_system_.Clear();
+    
+    // Build default frame graph
+    BuildDefaultFrameGraph(config);
+    
+    // Convert game objects to render objects
     for (auto const& obj : scene.objects) {
         ConvertGameObject(obj);
     }
-
-    // Build default frame graph if no custom configuration
-    BuildDefaultFrameGraph(config);
+    
+    // Cull and batch render objects
+    render_world_.CullAndBatch();
 }
 
-void RenderSceneBuilder::ConvertGameObject(project::GameObjectData const& obj) {
+void RenderSceneBuilder::ConvertGameObject(project::GameObjectData const& obj)
+{
     RenderObject render_obj;
     render_obj.id = obj.id;
     render_obj.name = obj.name;
+    render_obj.mesh_id = 0; // TODO: Resolve mesh ID
+    render_obj.material_id = 0; // TODO: Resolve material ID
+    render_obj.instance_count = 1;
+    render_obj.visible = true;
+    render_obj.layer_mask = 0xFFFFFFFF;
+    render_obj.cast_shadows = false;
     
     // Convert transform to world matrix
-    // For now, use identity matrix - TODO: implement proper transform conversion
-    for (int i = 0; i < 16; ++i) {
-        render_obj.world_matrix[i] = (i % 5 == 0) ? 1.0f : 0.0f;
-    }
+    render_obj.world_matrix = glm::mat4(1.0f);
     
     // Set position from transform (if present)
     if (obj.components.transform.has_value()) {
-        render_obj.world_matrix[12] = obj.components.transform->position[0];
-        render_obj.world_matrix[13] = obj.components.transform->position[1];
-        render_obj.world_matrix[14] = obj.components.transform->position[2];
+        render_obj.world_matrix[3][0] = obj.components.transform->position.x;
+        render_obj.world_matrix[3][1] = obj.components.transform->position.y;
+        render_obj.world_matrix[3][2] = obj.components.transform->position.z;
     }
     
     // Set layer mask based on object type

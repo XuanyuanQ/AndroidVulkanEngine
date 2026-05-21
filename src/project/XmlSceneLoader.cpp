@@ -1,9 +1,10 @@
 #include "ave/project/XmlSceneLoader.h"
 
 #include <fstream>
-#include <regex>
 #include <sstream>
+#include <regex>
 #include <stdexcept>
+#include <glm/glm.hpp>
 
 namespace ave::project {
 
@@ -16,42 +17,42 @@ std::string Attribute(std::string const& tag, std::string const& name, std::stri
     return std::regex_search(tag, match, pattern) ? match[1].str() : std::move(fallback);
 }
 
-std::array<float, 3> Float3(std::string const& text, std::array<float, 3> fallback)
+glm::vec3 Float3(std::string const& text, glm::vec3 fallback)
 {
     if (text.empty()) {
         return fallback;
     }
 
-    std::array<float, 3> value = fallback;
+    glm::vec3 value = fallback;
     char comma = 0;
     std::stringstream stream(text);
-    stream >> value[0] >> comma >> value[1] >> comma >> value[2];
+    stream >> value.x >> comma >> value.y >> comma >> value.z;
     return value;
 }
 
-std::array<float, 4> Float4(std::string const& text, std::array<float, 4> fallback)
+glm::vec4 Float4(std::string const& text, glm::vec4 fallback)
 {
     if (text.empty()) {
         return fallback;
     }
 
-    std::array<float, 4> value = fallback;
+    glm::vec4 value = fallback;
     char comma = 0;
     std::stringstream stream(text);
-    stream >> value[0] >> comma >> value[1] >> comma >> value[2] >> comma >> value[3];
+    stream >> value.x >> comma >> value.y >> comma >> value.z >> comma >> value.w;
     return value;
 }
 
-std::array<float, 2> Float2(std::string const& text, std::array<float, 2> fallback)
+glm::vec2 Float2(std::string const& text, glm::vec2 fallback)
 {
     if (text.empty()) {
         return fallback;
     }
 
-    std::array<float, 2> value = fallback;
+    glm::vec2 value = fallback;
     char comma = 0;
     std::stringstream stream(text);
-    stream >> value[0] >> comma >> value[1];
+    stream >> value.x >> comma >> value.y;
     return value;
 }
 

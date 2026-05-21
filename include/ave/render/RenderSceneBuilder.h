@@ -1,15 +1,10 @@
 #pragma once
 
-#include "ave/project/XmlSceneLoader.h"
-#include "ave/render/RenderWorld.h"
-#include "ave/render/MaterialSystem.h"
-#include "ave/render/FrameGraph.h"
-#include "ave/render/RenderPasses.h"
-
-#include <memory>
-#include <unordered_map>
 #include <string>
-#include <optional>
+#include <vector>
+#include <unordered_map>
+#include <cstdint>
+#include <glm/glm.hpp>
 
 namespace ave::render {
 
@@ -26,7 +21,7 @@ struct RenderSceneConfig {
 struct MaterialConfig {
     std::string name;
     std::string shader;
-    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
     bool is_pbr = true;

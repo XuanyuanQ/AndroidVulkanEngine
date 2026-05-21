@@ -3,13 +3,14 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace ave::render {
 
 struct TriangleDrawItem {
     std::string object_id;
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 4> color{1.0f, 0.2f, 0.1f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec4 color{1.0f, 0.2f, 0.1f, 1.0f};
 };
 
 struct RenderScene {
@@ -17,8 +18,8 @@ struct RenderScene {
 };
 
 struct RasterColorVertex {
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct RasterShaderCode {

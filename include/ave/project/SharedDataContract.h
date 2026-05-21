@@ -3,25 +3,29 @@
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <string>
+#include <cstring>
 #include <variant>
 #include <vector>
+
+// GLM for math types
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace ave::project {
 
 struct TransformData {
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> rotation{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> scale{1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 rotation{0.0f, 0.0f, 0.0f};
+    glm::vec3 scale{1.0f, 1.0f, 1.0f};
 };
 
 struct VertexData {
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
-    std::array<float, 4> tangent{1.0f, 0.0f, 0.0f, 1.0f};
-    std::array<float, 2> texcoord0{0.0f, 0.0f};
-    std::array<float, 2> texcoord1{0.0f, 0.0f};
-    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 normal{0.0f, 0.0f, 1.0f};
+    glm::vec4 tangent{1.0f, 0.0f, 0.0f, 1.0f};
+    glm::vec2 texcoord0{0.0f, 0.0f};
+    glm::vec2 texcoord1{0.0f, 0.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct MeshData {
@@ -47,9 +51,9 @@ using MaterialValueData = std::variant<
     bool,
     int32_t,
     float,
-    std::array<float, 2>,
-    std::array<float, 3>,
-    std::array<float, 4>,
+    glm::vec2,
+    glm::vec3,
+    glm::vec4,
     std::string>;
 
 struct MaterialParameterData {
@@ -113,7 +117,7 @@ enum class LightType {
 
 struct LightData {
     LightType type = LightType::Point;
-    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+    glm::vec3 color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     float range = 10.0f;
     float inner_angle = 20.0f;
@@ -123,7 +127,7 @@ struct LightData {
 
 struct ImageComponentData {
     std::string texture;
-    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct ButtonComponentData {
@@ -138,7 +142,7 @@ struct ProgressBarComponentData {
 };
 
 struct TriangleRendererData {
-    std::array<float, 4> color{1.0f, 0.2f, 0.1f, 1.0f};
+    glm::vec4 color{1.0f, 0.2f, 0.1f, 1.0f};
     std::string material;
 };
 
@@ -175,8 +179,8 @@ struct GameObjectData {
 };
 
 struct EnvironmentData {
-    std::array<float, 4> clear_color{0.03f, 0.04f, 0.06f, 1.0f};
-    std::array<float, 3> ambient_color{0.08f, 0.08f, 0.10f};
+    glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
+    glm::vec3 ambient_color{0.08f, 0.08f, 0.10f};
 };
 
 struct SceneData {

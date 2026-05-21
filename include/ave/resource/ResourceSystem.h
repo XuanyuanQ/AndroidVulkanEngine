@@ -5,8 +5,14 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
-#include <array>
-#include <functional>
+#include <glm/glm.hpp>
+
+namespace vkfw {
+class VkContext;
+class VkBuffer;
+class VkTexture;
+class VkShader;
+}
 
 #include "ave/project/SharedDataContract.h"
 #include "VkBuffer.hpp"
@@ -70,7 +76,7 @@ struct MaterialRuntime {
     uint32_t metallic_roughness_texture = 0;
     
     // PBR parameters
-    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
     
@@ -175,7 +181,7 @@ public:
     uint32_t CreateMaterial(std::string const& name, uint32_t shader_id);
     bool SetTexture(uint32_t material_id, std::string const& slot, uint32_t texture_id);
     bool SetParameter(uint32_t material_id, std::string const& param, float value);
-    bool SetBaseColor(uint32_t material_id, std::array<float, 4> const& color);
+    bool SetBaseColor(uint32_t material_id, glm::vec4 const& color);
     MaterialRuntime const* GetMaterial(uint32_t id) const;
     MaterialRuntime const* GetMaterialByName(std::string const& name) const;
     void RemoveMaterial(uint32_t id);

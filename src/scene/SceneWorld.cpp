@@ -1,83 +1,53 @@
 ﻿#include "ave/scene/SceneWorld.h"
+#include "ave/project/SharedDataContract.h"
 
-#include <algorithm>
 #include <cmath>
-#include <unordered_map>
+#include <algorithm>
+#include <glm/glm.hpp>
 
 namespace ave::scene {
+
 namespace {
 
-void SetIdentity(float matrix[16])
-{
-    std::fill(matrix, matrix + 16, 0.0f);
-    matrix[0] = 1.0f;
-    matrix[5] = 1.0f;
-    matrix[10] = 1.0f;
-    matrix[15] = 1.0f;
+glm::mat4 SetIdentity() {
+    return glm::mat4(1.0f);
 }
 
-void SetTranslationScale(float matrix[16],
-                         std::array<float, 3> const& position,
-                         std::array<float, 3> const& scale)
+glm::mat4 SetTranslationScale(glm::vec3 const& position, glm::vec3 const& scale)
 {
-    SetIdentity(matrix);
-    matrix[0] = scale[0];
-    matrix[5] = scale[1];
-    matrix[10] = scale[2];
-    matrix[12] = position[0];
-    matrix[13] = position[1];
-    matrix[14] = position[2];
+    glm::mat4 matrix = glm::mat4(1.0f);
+    matrix[0][0] = scale.x;
+    matrix[1][1] = scale.y;
+    matrix[2][2] = scale.z;
+    matrix[3][0] = position.x;
+    matrix[3][1] = position.y;
+    matrix[3][2] = position.z;
+    return matrix;
 }
 
-std::array<float, 3> AddFloat3(std::array<float, 3> const& a, std::array<float, 3> const& b)
+glm::vec3 AddFloat3(glm::vec3 const& a, glm::vec3 const& b)
 {
-    return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
+    return a + b;
 }
 
-std::array<float, 3> MultiplyFloat3(std::array<float, 3> const& a, std::array<float, 3> const& b)
+glm::vec3 MultiplyFloat3(glm::vec3 const& a, glm::vec3 const& b)
 {
-    return {a[0] * b[0], a[1] * b[1], a[2] * b[2]};
+    return a * b;
 }
 
-void SetInverseTranslation(float matrix[16], std::array<float, 3> const& position)
+glm::mat4 SetInverseTranslation(glm::vec3 const& position)
 {
-    SetIdentity(matrix);
-    matrix[12] = -position[0];
-    matrix[13] = -position[1];
-    matrix[14] = -position[2];
+    glm::mat4 matrix = glm::mat4(1.0f);
+    matrix[3][0] = -position.x;
+    matrix[3][1] = -position.y;
+    matrix[3][2] = -position.z;
+    return matrix;
 }
 
-void SetPerspective(float matrix[16], float fov_degrees, float aspect_ratio, float near_plane, float far_plane)
+glm::mat4 SetPerspective(float fov_degrees, float aspect_ratio, float near_plane, float far_plane)
 {
-    std::fill(matrix, matrix + 16, 0.0f);
-
     float const fov_radians = fov_degrees * 3.14159265358979323846f / 180.0f;
-    float const tan_half_fov = std::tan(fov_radians * 0.5f);
-    if (tan_half_fov <= 0.0f || aspect_ratio <= 0.0f || far_plane <= near_plane) {
-        SetIdentity(matrix);
-        return;
-    }
-
-    matrix[0] = 1.0f / (aspect_ratio * tan_half_fov);
-    matrix[5] = 1.0f / tan_half_fov;
-    matrix[10] = -(far_plane + near_plane) / (far_plane - near_plane);
-    matrix[11] = -1.0f;
-    matrix[14] = -(2.0f * far_plane * near_plane) / (far_plane - near_plane);
-}
-
-void MultiplyMatrices(float out[16], float const a[16], float const b[16])
-{
-    float result[16]{};
-    for (int row = 0; row < 4; ++row) {
-        for (int col = 0; col < 4; ++col) {
-            result[row * 4 + col] =
-                a[row * 4 + 0] * b[0 * 4 + col] +
-                a[row * 4 + 1] * b[1 * 4 + col] +
-                a[row * 4 + 2] * b[2 * 4 + col] +
-                a[row * 4 + 3] * b[3 * 4 + col];
-        }
-    }
-    std::copy(result, result + 16, out);
+    return glm::perspective(fov_radians, aspect_ratio, near_plane, far_plane);
 }
 
 std::string LightTypeToString(project::LightType type)
@@ -114,8 +84,8 @@ void Deduplicate(std::vector<std::string>& values)
 }
 
 struct WorldTransform {
-    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> scale{1.0f, 1.0f, 1.0f};
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 scale{1.0f, 1.0f, 1.0f};
 };
 
 WorldTransform ResolveWorldTransform(project::SceneData const& scene,
@@ -153,14 +123,11 @@ WorldTransform ResolveWorldTransform(project::SceneData const& scene,
     return world;
 }
 
-bool ComputeVisibility(std::array<float, 3> const& camera_position,
+bool ComputeVisibility(glm::vec3 const& camera_position,
                        float far_plane,
-                       std::array<float, 3> const& world_position)
+                       glm::vec3 const& world_position)
 {
-    float const dx = world_position[0] - camera_position[0];
-    float const dy = world_position[1] - camera_position[1];
-    float const dz = world_position[2] - camera_position[2];
-    float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+    float const distance = glm::length(world_position - camera_position);
     return distance <= far_plane;
 }
 
@@ -195,9 +162,9 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene)
     lights_.clear();
     ui_items_.clear();
 
-    SetIdentity(view_.view);
-    SetIdentity(view_.projection);
-    SetIdentity(view_.view_projection);
+    view_.view = glm::mat4(1.0f);
+    view_.projection = glm::mat4(1.0f);
+    view_.view_projection = glm::mat4(1.0f);
 
     bool has_camera = false;
     std::unordered_map<std::string, size_t> object_indices;
@@ -222,9 +189,9 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene)
             view_.near_plane = camera.near_plane;
             view_.far_plane = camera.far_plane;
             view_.world_position = world_transform.position;
-            SetInverseTranslation(view_.view, world_transform.position);
-            SetPerspective(view_.projection, camera.fov, 16.0f / 9.0f, camera.near_plane, camera.far_plane);
-            MultiplyMatrices(view_.view_projection, view_.projection, view_.view);
+            view_.view = SetInverseTranslation(world_transform.position);
+            view_.projection = SetPerspective(camera.fov, 16.0f / 9.0f, camera.near_plane, camera.far_plane);
+            view_.view_projection = view_.projection * view_.view;
             has_camera = true;
         }
 
@@ -243,7 +210,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene)
             renderable.receives_shadow = true;
             renderable.sort_key = (HashString(renderable.material_id) << 16) ^ HashString(renderable.mesh_id);
 
-            SetTranslationScale(renderable.world, world_transform.position, world_transform.scale);
+            renderable.world = SetTranslationScale(world_transform.position, world_transform.scale);
             renderables_.push_back(std::move(renderable));
         }
 

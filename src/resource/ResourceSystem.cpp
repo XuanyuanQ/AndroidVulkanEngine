@@ -2,13 +2,7 @@
 #include "VkBuffer.hpp"
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
-
-#include <algorithm>
-#include <cstddef>
-#include <functional>
-#include <string>
-#include <sstream>
-#include <unordered_map>
+#include <glm/glm.hpp>
 
 namespace ave::resource {
 
@@ -68,12 +62,12 @@ int ResolveObjIndex(int index, int count)
     return -1;
 }
 
-std::array<float, 3> TransformPreviewPosition(std::array<float, 3> const& position)
+glm::vec3 TransformPreviewPosition(glm::vec3 const& position)
 {
     return {
-        position[0],
-        position[2],
-        -position[1],
+        position.x,
+        position.z,
+        -position.y,
     };
 }
 
@@ -83,7 +77,7 @@ void PreparePreviewMeshData(project::MeshData& mesh)
         return;
     }
 
-    std::vector<std::array<float, 3>> positions;
+    std::vector<glm::vec3> positions;
     positions.reserve(mesh.vertices.size());
     for (auto const& vertex : mesh.vertices) {
         positions.push_back(TransformPreviewPosition(vertex.position));
@@ -92,48 +86,38 @@ void PreparePreviewMeshData(project::MeshData& mesh)
     auto min_pos = positions.front();
     auto max_pos = positions.front();
     for (auto const& position : positions) {
-        for (int i = 0; i < 3; ++i) {
-            min_pos[i] = std::min(min_pos[i], position[i]);
-            max_pos[i] = std::max(max_pos[i], position[i]);
-        }
+        min_pos = glm::min(min_pos, position);
+        max_pos = glm::max(max_pos, position);
     }
 
-    std::array<float, 3> const center{
-        (min_pos[0] + max_pos[0]) * 0.5f,
-        (min_pos[1] + max_pos[1]) * 0.5f,
-        (min_pos[2] + max_pos[2]) * 0.5f,
-    };
-    float const extent_x = max_pos[0] - min_pos[0];
-    float const extent_y = max_pos[1] - min_pos[1];
-    float const extent_z = max_pos[2] - min_pos[2];
+    glm::vec3 const center = (min_pos + max_pos) * 0.5f;
+    float const extent_x = max_pos.x - min_pos.x;
+    float const extent_y = max_pos.y - min_pos.y;
+    float const extent_z = max_pos.z - min_pos.z;
     float const max_extent = std::max({extent_x, extent_y, extent_z, 0.0001f});
     float const scale = 1.6f / max_extent;
     bool const has_any_uv = std::any_of(
         mesh.vertices.begin(),
         mesh.vertices.end(),
         [](project::VertexData const& vertex) {
-            return vertex.texcoord0 != std::array<float, 2>{0.0f, 0.0f};
+            return vertex.texcoord0 != glm::vec2{0.0f, 0.0f};
         });
 
     for (size_t i = 0; i < mesh.vertices.size(); ++i) {
         auto& vertex = mesh.vertices[i];
         auto const& position = positions[i];
-        std::array<float, 4> color{0.85f, 0.82f, 0.78f, 1.0f};
+        glm::vec4 color{0.85f, 0.82f, 0.78f, 1.0f};
         if (has_any_uv) {
             auto const& uv = vertex.texcoord0;
             color = {
-                std::clamp(uv[0], 0.0f, 1.0f),
-                std::clamp(uv[1], 0.0f, 1.0f),
-                std::clamp(1.0f - uv[0], 0.0f, 1.0f),
+                std::clamp(uv.x, 0.0f, 1.0f),
+                std::clamp(uv.y, 0.0f, 1.0f),
+                std::clamp(1.0f - uv.x, 0.0f, 1.0f),
                 1.0f,
             };
         }
 
-        vertex.position = {
-            (position[0] - center[0]) * scale,
-            (position[1] - center[1]) * scale,
-            (position[2] - center[2]) * scale,
-        };
+        vertex.position = (position - center) * scale;
         vertex.color = color;
     }
 
@@ -152,8 +136,8 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
     out_mesh = {};
     out_mesh.topology = "triangleList";
 
-    std::vector<std::array<float, 3>> positions;
-    std::vector<std::array<float, 2>> texcoords;
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec2> texcoords;
     std::unordered_map<ObjVertexRef, uint32_t, ObjVertexRefHash> vertex_cache;
 
     std::stringstream stream(text);
@@ -165,16 +149,16 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
 
         if (line.rfind("v ", 0) == 0) {
             std::stringstream line_stream(line.substr(2));
-            std::array<float, 3> position{};
-            line_stream >> position[0] >> position[1] >> position[2];
+            glm::vec3 position{};
+            line_stream >> position.x >> position.y >> position.z;
             positions.push_back(position);
             continue;
         }
 
         if (line.rfind("vt ", 0) == 0) {
             std::stringstream line_stream(line.substr(3));
-            std::array<float, 2> texcoord{};
-            line_stream >> texcoord[0] >> texcoord[1];
+            glm::vec2 texcoord{};
+            line_stream >> texcoord.x >> texcoord.y;
             texcoords.push_back(texcoord);
             continue;
         }
@@ -728,7 +712,7 @@ bool MaterialManager::SetParameter(uint32_t material_id, std::string const& para
     return true;
 }
 
-bool MaterialManager::SetBaseColor(uint32_t material_id, std::array<float, 4> const& color)
+bool MaterialManager::SetBaseColor(uint32_t material_id, glm::vec4 const& color)
 {
     auto it = materials_.find(material_id);
     if (it == materials_.end()) {

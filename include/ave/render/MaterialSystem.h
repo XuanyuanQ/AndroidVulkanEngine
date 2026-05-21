@@ -2,13 +2,12 @@
 
 #include "ave/render/RenderTypes.h"
 
-#include <array>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 #include <cstdint>
-#include <optional>
-#include <functional>
+#include <glm/glm.hpp>
 
 namespace ave::resource {
 class ResourceSystem;
@@ -18,12 +17,12 @@ namespace ave::render {
 
 // PBR material properties
 struct PBRMaterialParams {
-    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
     float normal_scale = 1.0f;
     float occlusion_strength = 1.0f;
-    float emissive_factor[3] = {0.0f, 0.0f, 0.0f};
+    glm::vec3 emissive_factor{0.0f, 0.0f, 0.0f};
     float alpha_cutoff = 0.5f;
     bool alpha_mask = false;
     bool double_sided = false;

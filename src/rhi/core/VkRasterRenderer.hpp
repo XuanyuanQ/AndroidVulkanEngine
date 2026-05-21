@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <span>
 #include <vector>
 
@@ -25,8 +26,8 @@ import vulkan_hpp;
 namespace ave::rhi {
 
 struct RasterColorVertex {
-  std::array<float, 3> position{0.0f, 0.0f, 0.0f};
-  std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+  glm::vec3 position{0.0f, 0.0f, 0.0f};
+  glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct RasterShaderCode {
