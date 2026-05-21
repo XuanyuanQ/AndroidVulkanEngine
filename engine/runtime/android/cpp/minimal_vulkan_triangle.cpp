@@ -93,27 +93,14 @@ renderer_.GetMaterialSystem().SetShaderAssetLoader(
         logError("Failed to load scene mesh.");
         return;
     }
-
-    ave::render::RasterShaderCode shaders{
-        readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
-        readShaderAsset("compiled_shaders/solid_triangle.frag.spv"),
-    };
-    use_frame_data_path_ = model_mesh_id_ != 0;
-    if (use_frame_data_path_) {
-        if (renderer_.Graph().PassCount() == 0) {
-            renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
-        }
+    use_frame_data_path_ = true;
+    if (renderer_.Graph().PassCount() == 0) {
+        renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
+    }
         if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
             logError("Failed to initialize FrameGraph backend.");
             return;
         }
-    } else {
-        bool const raster_ready = renderer_.InitializeRaster(ctx_, swapchainWrap_, sync_, vertices_, shaders);
-        if (!raster_ready) {
-            logError("Failed to initialize Vulkan triangle renderer.");
-            return;
-        }
-    }
 
     drawFrame();
 }
@@ -186,21 +173,6 @@ bool MinimalVulkanTriangle::loadSceneMesh()
                 __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to load mesh resource %s", mesh.mesh.c_str());
                 return false;
             }
-            if (!mesh.material.empty() && material_manager.GetMaterialByName(mesh.material) == nullptr) {
-                if (shader_id == 0) {
-                    shader_id = shader_manager.LoadShaderFromData(
-                        "runtime/solid_triangle_framegraph",
-                        readShaderAsset("compiled_shaders/solid_triangle.vert.spv"),
-                        readShaderAsset("compiled_shaders/solid_triangle.frag.spv"));
-                    if (shader_id == 0) {
-                        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to create preview shader runtime");
-                        return false;
-                    }
-                }
-                material_manager.CreateMaterial(mesh.material, shader_id);
-            }
-            __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded mesh resource %s as mesh id %u", mesh.mesh.c_str(), model_mesh_id_);
-            __android_log_print(ANDROID_LOG_INFO, kLogTag, "Texture asset staged for future sampling: textures/viking_room.png");
             
             if (!mesh.material.empty()) {
                 uint32_t mat_id = renderer_.GetMaterialSystem().LoadMaterial(mesh.material);
@@ -253,7 +225,6 @@ void MinimalVulkanTriangle::drawFrame()
         return;
     }
 
-    renderer_.RenderRasterFrame(ctx_, swapchainWrap_, sync_, frame_index_);
 }
 
 void MinimalVulkanTriangle::cleanupSurfaceResources()
