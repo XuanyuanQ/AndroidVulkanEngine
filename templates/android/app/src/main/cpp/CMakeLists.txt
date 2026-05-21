@@ -56,6 +56,7 @@ target_include_directories(ave_runtime
         "${AVE_ANDROID_RUNTIME}"
         "${AVE_ENGINE_ROOT}/include"
         "${AVE_ENGINE_ROOT}/src/rhi/core"
+        "${AVE_ENGINE_ROOT}/external/glm-0.9.9.5"
 )
 
 # 添加本地 Vulkan 头文件路径

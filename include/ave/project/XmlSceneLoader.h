@@ -14,6 +14,7 @@ struct MaterialDocument {
     std::string name;
     std::string shader;
     glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    std::string base_color_texture;
     float metallic = 0.0f;
     float roughness = 0.5f;
 };

@@ -44,6 +44,7 @@ struct Material {
     std::string shader_name;
     PBRMaterialParams params;
     MaterialTextures textures;
+    std::string base_color_texture_path;
     bool is_pbr = true;
 };
 

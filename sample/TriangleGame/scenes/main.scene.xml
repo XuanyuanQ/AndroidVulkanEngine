@@ -9,9 +9,4 @@
         <MeshRenderer mesh="meshes/viking_room.obj" material="materials/triangle.material.xml" />
         <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
-
-    <GameObject id="room_texture" name="Viking Room Texture">
-        <Transform position="-0.85,-0.75,0" rotation="0,0,0" scale="1,1,1" />
-        <Image texture="textures/viking_room.png" color="1,1,1,1" />
-    </GameObject>
 </Scene>
