@@ -52,7 +52,6 @@ private:
     bool use_frame_data_path_ = false;
 
 private:
-    void renderLoop(); // 👈 渲染线程的死循环函数
 
     // 线程控制变量
     std::thread m_render_thread;

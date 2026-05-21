@@ -47,12 +47,13 @@ DescriptorSetLayoutKey MakeFrameSetLayoutKey()
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
         },
-        DescriptorBinding{
-            .binding = 1,
-            .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
+        // Reserved for shadow map / global textures.
+        // DescriptorBinding{
+        //     .binding = 1,
+        //     .descriptor_type = static_cast<uint32_t>(vk::DescriptorType::eCombinedImageSampler),
+        //     .descriptor_count = 1,
+        //     .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        // },
     };
     return key;
 }
@@ -99,7 +100,7 @@ PipelineKey MakePipelineKey(RenderPassContext const& ctx,
     key.shader_id = shader_id;
     key.vertex_layout_id = VertexLayoutIdFromMesh(mesh);
     key.render_state_id = 1;
-    key.layout_profile = 0; // Preview FrameData path: no descriptor sets yet.
+    key.layout_profile = 1; // Preview FrameData path: no descriptor sets yet.
     key.rt_format = 0;      // filled by caller when swapchain is present
     key.depth_format = 0;
     key.stencil_format = 0;
@@ -235,6 +236,7 @@ PassDataFilter PBRPass::GetDataFilter() const
     return filter;
 }
 
+glm::mat4 last_view_projection = glm::mat4{1.0f};
 void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
     __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: PBRPass");
@@ -257,7 +259,16 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     struct FrameUbo {
         glm::mat4 view_projection;
     };
+    // if (context.frame && context.frame->view.view_projection != last_view_projection) {
+    //     const auto& mat = context.frame->view.view_projection;
+    //     last_view_projection = context.frame->view.view_projection;
 
+    //     __android_log_print(ANDROID_LOG_INFO, "ViewProjection", "ViewProjection Matrix:");
+    //     __android_log_print(ANDROID_LOG_INFO, "ViewProjection", "[ %f, %f, %f, %f ]", mat[0][0], mat[1][0], mat[2][0], mat[3][0]);
+    //     __android_log_print(ANDROID_LOG_INFO, "ViewProjection", "[ %f, %f, %f, %f ]", mat[0][1], mat[1][1], mat[2][1], mat[3][1]);
+    //     __android_log_print(ANDROID_LOG_INFO, "ViewProjection", "[ %f, %f, %f, %f ]", mat[0][2], mat[1][2], mat[2][2], mat[3][2]);
+    //     __android_log_print(ANDROID_LOG_INFO, "ViewProjection", "[ %f, %f, %f, %f ]", mat[0][3], mat[1][3], mat[2][3], mat[3][3]);
+    // } 
     FrameUbo frame_ubo{};
     if (context.frame != nullptr) {
         frame_ubo.view_projection = context.frame->view.view_projection;
@@ -331,15 +342,15 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             // Bind pipeline + descriptors + vertex buffer.
             context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
-            // if (frame_set_id_ != 0) {
-            //     vk::DescriptorSet desc_set = desc_alloc.GetHandle(frame_set_id_);
-            //     if (desc_set) {
-            //         context.command_buffer.bindDescriptorSets(
-            //             pipeline->BindPoint(),
-            //             pipeline->Layout(),
-            //             0, 1, &desc_set, 0, nullptr);
-            //     }
-            // }
+            if (frame_set_id_ != 0) {
+                vk::DescriptorSet desc_set = desc_alloc.GetHandle(frame_set_id_);
+                if (desc_set) {
+                    context.command_buffer.bindDescriptorSets(
+                        pipeline->BindPoint(),
+                        pipeline->Layout(),
+                        0, 1, &desc_set, 0, nullptr);
+                }
+            }
 
             vk::DeviceSize offset = 0;
             context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);

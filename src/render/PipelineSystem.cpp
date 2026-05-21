@@ -12,6 +12,7 @@
 namespace ave::render {
 namespace {
 
+// Frame descriptor set layout: only Uniform Buffer needed for view_projection
 DescriptorSetLayoutKey MakeFrameSetLayoutKey()
 {
     DescriptorSetLayoutKey key;
@@ -23,16 +24,15 @@ DescriptorSetLayoutKey MakeFrameSetLayoutKey()
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
         },
         // Reserved for shadow map / global textures.
-        DescriptorBinding{
-            .binding = 1,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
+        // DescriptorBinding{
+        //     .binding = 1,
+        //     .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+        //     .descriptor_count = 1,
+        //     .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        // },
     };
     return key;
 }
-
 DescriptorSetLayoutKey MakeMaterialSetLayoutKey()
 {
     DescriptorSetLayoutKey key;

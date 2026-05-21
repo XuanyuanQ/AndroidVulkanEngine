@@ -153,12 +153,13 @@ void MinimalVulkanTriangle::clearSurface()
 
 void MinimalVulkanTriangle::resize(int width, int height)
 {
-    width_ = width;
-    height_ = height;
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Surface resized: %dx%d", width_, height_);
-    if (ctx_.IsInitialized() && window_ != nullptr) {
-        drawFrame();
-    }
+    //需要考虑怎么重新建 swapchain 和相关资源，以及如何通知渲染线程进行调整
+    // width_ = width;
+    // height_ = height;
+    // __android_log_print(ANDROID_LOG_INFO, kLogTag, "Surface resized: %dx%d", width_, height_);
+    // if (ctx_.IsInitialized() && window_ != nullptr) {
+    //     drawFrame();
+    // }
 }
 
 bool MinimalVulkanTriangle::loadSceneMesh()
@@ -270,12 +271,14 @@ void MinimalVulkanTriangle::drawFrame()
         if (delta_time > 0.1f) delta_time = 0.1f; // 限制单帧最大时长
 
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
-    if (use_frame_data_path_) {
-        scene_world_.UpdateDebugCamera(delta_time);
-        scene_world_.BuildFrameData(frame_index_, frame_data_);
-        renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, frame_index_);
-        return;
-    }
+        if (use_frame_data_path_) {
+            scene_world_.UpdateDebugCamera(delta_time);
+            scene_world_.BuildFrameData(frame_index_, frame_data_);
+            renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, frame_index_);
+            // No early return; continue looping to process next frame
+        } else {
+            // Existing non-frame-data path logic (if any) can be placed here
+        }
 
 }
 }
