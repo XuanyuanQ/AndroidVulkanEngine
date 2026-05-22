@@ -197,6 +197,7 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
 
     auto& gpu_mat_mgr = resource_system_->GetMaterialManager();
     auto& shader_mgr = resource_system_->GetShaderManager();
+     auto& texture_mgr = resource_system_->GetTextureManager(); // Ensure texture manager is initialized for potential texture loading
 
     auto const* gpu_mat = gpu_mat_mgr.GetMaterialByName(logical_mat.name);
     uint32_t gpu_mat_id = 0;

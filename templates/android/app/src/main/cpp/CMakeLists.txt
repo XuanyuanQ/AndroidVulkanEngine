@@ -33,9 +33,6 @@ add_library(ave_runtime SHARED
     "${AVE_ANDROID_RUNTIME}/minimal_vulkan_triangle.cpp"
     "${AVE_ENGINE_ROOT}/src/core/JobSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
-    # "${CORE_SOURCES}"
-    "${AVE_ENGINE_ROOT}/src/core/JobSystem.cpp"
-    "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
     "${AVE_ENGINE_ROOT}/src/resource/GpuUploadQueue.cpp"
     "${AVE_ENGINE_ROOT}/src/resource/ResourceSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/scene/SceneWorld.cpp"
@@ -43,9 +40,9 @@ add_library(ave_runtime SHARED
     "${AVE_ENGINE_ROOT}/src/render/RenderPasses.cpp"
     "${AVE_ENGINE_ROOT}/src/render/FrameGraph.cpp"
     "${AVE_ENGINE_ROOT}/src/render/PipelineSystem.cpp"
-    "${AVE_ENGINE_ROOT}/src/render/RenderPasses.cpp"
     "${AVE_ENGINE_ROOT}/src/render/Renderer.cpp"
     "${AVE_ENGINE_ROOT}/src/render/MaterialSystem.cpp"
+    "${AVE_ENGINE_ROOT}/external/stb_image/stb_impl.cpp"
     "${RHI_SOURCES}"
 )
 
@@ -57,6 +54,7 @@ target_include_directories(ave_runtime
         "${AVE_ENGINE_ROOT}/include"
         "${AVE_ENGINE_ROOT}/src/rhi/core"
         "${AVE_ENGINE_ROOT}/external/glm-0.9.9.5"
+        "${AVE_ENGINE_ROOT}/external/stb_image"
 )
 
 # 添加本地 Vulkan 头文件路径

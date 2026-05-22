@@ -3,6 +3,10 @@
 #include "VkTexture.hpp"
 #include "VkShader.hpp"
 #include <glm/glm.hpp>
+#include <filesystem>
+// #define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 
 namespace ave::resource {
 
@@ -403,16 +407,27 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
     if (!ctx_) {
         return 0;
     }
-    
-    // Check if already loaded
-    auto it = path_to_id_.find(path);
+
+    // Use filename as texture name for caching
+    std::string name = std::filesystem::path(path).filename().string();
+    // Check if already loaded using name
+    auto it = path_to_id_.find(name);
     if (it != path_to_id_.end()) {
         return it->second;
     }
-    
-    // TODO: Load texture from file (e.g., .png, .jpg, .ktx)
-    // For now, return 0 to indicate not implemented
-    return 0;
+
+    // Load image data with stb_image (force RGBA)
+    int texWidth = 0, texHeight = 0, texChannels = 0;
+    stbi_uc* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    if (!pixels) {
+        // Failed to load image
+        return 0;
+    }
+
+    // Delegate to LoadTextureFromData, using a single mip level
+    uint32_t id = LoadTextureFromData(name, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), pixels, 1);
+    stbi_image_free(pixels);
+    return id;
 }
 
 uint32_t TextureManager::LoadTextureFromData(std::string const& name, uint32_t width, uint32_t height,
