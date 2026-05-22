@@ -205,7 +205,10 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
                     if (ref.texcoord_index != 0) {
                         int const tex_index = ResolveObjIndex(ref.texcoord_index, static_cast<int>(texcoords.size()));
                         if (tex_index >= 0 && tex_index < static_cast<int>(texcoords.size())) {
-                            vertex.texcoord0 = texcoords[static_cast<size_t>(tex_index)];
+                            // OBJ UV 原点在左下角，Vulkan 纹理原点在左上角，需翻转 V 轴
+                            auto uv = texcoords[static_cast<size_t>(tex_index)];
+                            uv.y = 1.0f - uv.y;
+                            vertex.texcoord0 = uv;
                         }
                     }
 
