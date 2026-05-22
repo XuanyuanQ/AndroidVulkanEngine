@@ -26,6 +26,27 @@ class VkDescriptorPool;
 
 namespace ave::render {
 
+/**
+     * @brief 定义着色器管线布局的配置 Profile
+     * * 用于规范不同渲染批次或 Pass 所需的 Descriptor Set 数量与层级结构。
+     */
+    enum class PipelineLayoutProfile : uint32_t {
+        /// @brief 空布局：不绑定任何 Descriptor Set（常用于极简 Demo 或纯顶点动画）
+        Empty = 0,
+
+        /// @brief 完整布局：包含 Set 0 (Frame) + Set 1 (Material) + Set 2 (Object)
+        Full_Set0_Set1_Set2 = 1,
+
+        /// @brief 材质布局：包含 Set 0 (Frame) + Set 1 (Material)
+        Material_Set0_Set1 = 2,
+
+        /// @brief 仅全局布局：只包含 Set 0 (Frame / Global)（常用于后处理 Post-Processing）
+        Global_Set0_Only = 3,
+
+        /// @brief 计算空间剔除布局：仅包含一个用于 Compute Shader 的 Set 0（内含输入的物体列表和输出的剔除结果 SSBO）
+        ComputeCulling_Set0_Only = 4,
+    };
+
 // Pipeline key for caching
 struct PipelineKey {
     uint32_t pass_id = 0;
@@ -37,7 +58,7 @@ struct PipelineKey {
     // 1: Set0 frame + Set1 material + Set2 object
     // 2: Set0 frame + Set1 material
     // 3: Set0 frame only
-    uint32_t layout_profile = 0;
+    ave::render::PipelineLayoutProfile layout_profile = ave::render::PipelineLayoutProfile::Empty;
     uint32_t rt_format = 0;
     uint32_t depth_format = 0;
     uint32_t stencil_format = 0;
@@ -73,7 +94,7 @@ struct PipelineKeyHash {
         combine(seed, key.shader_id);
         combine(seed, key.vertex_layout_id);
         combine(seed, key.render_state_id);
-        combine(seed, key.layout_profile);
+        combine(seed, static_cast<std::size_t>(key.layout_profile));
         combine(seed, key.rt_format);
         combine(seed, key.depth_format);
         combine(seed, key.stencil_format);

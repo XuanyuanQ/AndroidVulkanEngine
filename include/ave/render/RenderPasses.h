@@ -25,7 +25,7 @@ public:
 private:
     vkfw::VkBuffer frame_ubo_{};
     uint32_t frame_set_id_ = 0;
-    vkfw::VkTexture shadow_map_{};
+    vkfw::VkTexture shadow_map_{}; //阴影图只有一张
     uint32_t shadow_shader_id_ = 0;
     bool shadow_map_initialized_ = false;
     glm::mat4 shadow_view_projection_{1.0f};

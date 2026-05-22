@@ -141,7 +141,7 @@ PipelineKey MakePipelineKey(uint32_t pass_id,
     key.shader_id = shader_id;
     key.vertex_layout_id = VertexLayoutIdFromMesh(mesh);
     key.render_state_id = 1;
-    key.layout_profile = 0;
+    key.layout_profile = PipelineLayoutProfile::Empty;
     key.rt_format = 0;
     key.depth_format = 0;
     key.stencil_format = 0;
@@ -516,7 +516,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         }
 
         PipelineKey key = MakePipelineKey(1, shadow_shader_id_, *mesh);
-        key.layout_profile = 3;
+        key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
         key.rt_format = 0;
         key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
         key.viewport_width = kShadowMapSize;
@@ -682,7 +682,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
 
         PipelineKey key = MakePipelineKey(0, shader->id, *mesh);
-        key.layout_profile = 2;
+        key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         if (has_vk) {
             key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
             key.viewport_width = context.swapchain->Extent().width;
@@ -969,7 +969,7 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
         // Get Compute Pipeline
         PipelineKey pipe_key;
         pipe_key.shader_id = g_culling_shader_id;
-        pipe_key.layout_profile = 4;
+        pipe_key.layout_profile = PipelineLayoutProfile::ComputeCulling_Set0_Only;
 
         uint32_t const pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(pipe_key, context.compatibility_render_pass);
         auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);

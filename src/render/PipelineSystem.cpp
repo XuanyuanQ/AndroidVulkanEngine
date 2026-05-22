@@ -330,7 +330,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
 
         if (auto* desc_cache = pipeline_layout_cache_->GetDescriptorSetLayoutCache()) {
             if (is_compute) {
-                if (key.layout_profile == 4) {
+                if (key.layout_profile == PipelineLayoutProfile::ComputeCulling_Set0_Only) {
                     DescriptorSetLayoutKey culling_set_key;
                     culling_set_key.bindings = {
                         DescriptorBinding{
@@ -349,13 +349,16 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     compute_set_layout_id = desc_cache->GetOrCreateLayout(culling_set_key);
                 }
             } else {
-                if (key.layout_profile == 1 || key.layout_profile == 2 || key.layout_profile == 3) {
+                if (key.layout_profile == PipelineLayoutProfile::Full_Set0_Set1_Set2 
+                    || key.layout_profile == PipelineLayoutProfile::Material_Set0_Set1 
+                    || key.layout_profile == PipelineLayoutProfile::Global_Set0_Only) {
                     frame_set_layout_id = desc_cache->GetOrCreateLayout(MakeFrameSetLayoutKey());
                 }
-                if (key.layout_profile == 1 || key.layout_profile == 2) {
+                if (key.layout_profile == PipelineLayoutProfile::Full_Set0_Set1_Set2 
+                    || key.layout_profile == PipelineLayoutProfile::Material_Set0_Set1) {
                     material_set_layout_id = desc_cache->GetOrCreateLayout(MakeMaterialSetLayoutKey());
                 }
-                if (key.layout_profile == 1) {
+                if (key.layout_profile == PipelineLayoutProfile::Full_Set0_Set1_Set2) {
                     object_set_layout_id = desc_cache->GetOrCreateLayout(MakeObjectSetLayoutKey());
                 }
             }
@@ -375,7 +378,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         }
 
         std::vector<vk::PushConstantRange> push_constants;
-        if (is_compute && key.layout_profile == 4) {
+        if (is_compute && key.layout_profile == PipelineLayoutProfile::ComputeCulling_Set0_Only) {
             vk::PushConstantRange range{};
             range.stageFlags = vk::ShaderStageFlagBits::eCompute;
             range.offset = 0;
