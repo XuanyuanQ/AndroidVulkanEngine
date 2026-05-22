@@ -375,7 +375,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
             vk::PushConstantRange range{};
             range.stageFlags = vk::ShaderStageFlagBits::eCompute;
             range.offset = 0;
-            range.size = 100; // 6 planes (6 * 16 = 96 bytes) + total_instances (4 bytes) = 100 bytes
+            range.size = 112; // 6 planes (6 * 16 = 96 bytes) + total_instances (4 bytes) + 12 bytes padding = 112 bytes
             push_constants.push_back(range);
         }
         uint32_t layout_id = pipeline_layout_cache_->GetOrCreateLayout(layout_key, push_constants);

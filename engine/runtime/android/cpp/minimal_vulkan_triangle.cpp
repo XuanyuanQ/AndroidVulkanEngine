@@ -101,6 +101,10 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         [this](std::string const& path) -> std::vector<uint32_t> {
             return readShaderAsset(path.c_str());
         });
+    renderer_.GetResourceSystem().GetShaderManager().SetShaderAssetLoader(
+        [this](std::string const& path) -> std::vector<uint32_t> {
+            return readShaderAsset(path.c_str());
+        });
 
     sync_.Init(ctx_, kFramesInFlight);
 
@@ -279,7 +283,8 @@ void MinimalVulkanTriangle::drawFrame()
         if (use_frame_data_path_) {
             scene_world_.UpdateDebugCamera(delta_time);
             scene_world_.BuildFrameData(frame_index_, frame_data_);
-            renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, frame_index_);
+            renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
+            frame_index_++;
             // No early return; continue looping to process next frame
         } else {
             // Existing non-frame-data path logic (if any) can be placed here

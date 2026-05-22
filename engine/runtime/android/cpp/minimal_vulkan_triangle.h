@@ -45,6 +45,7 @@ private:
     vkfw::VkSwapchain swapchainWrap_{};
     vkfw::VkFrameSync sync_{};
     uint32_t frame_index_ = 0;
+    uint32_t sync_frame_index_ = 0;
     ave::render::Renderer renderer_{};
     ave::scene::SceneWorld scene_world_{};
     ave::core::FrameData frame_data_{};

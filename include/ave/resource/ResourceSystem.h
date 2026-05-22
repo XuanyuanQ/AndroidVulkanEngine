@@ -151,10 +151,13 @@ private:
 // Shader Manager
 class ShaderManager {
 public:
+    using ShaderAssetLoader = std::function<std::vector<uint32_t>(std::string const&)>;
+
     ShaderManager();
     ~ShaderManager() = default;
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
+    void SetShaderAssetLoader(ShaderAssetLoader loader) { shader_asset_loader_ = std::move(loader); }
     
     uint32_t LoadShader(std::string const& path);
     uint32_t LoadShaderFromData(std::string const& name, 
@@ -172,6 +175,7 @@ public:
     
 private:
     vkfw::VkContext* ctx_ = nullptr;
+    ShaderAssetLoader shader_asset_loader_{};
     std::unordered_map<uint32_t, ShaderRuntime> shaders_;
     std::unordered_map<std::string, uint32_t> path_to_id_;
     uint32_t next_id_ = 1;

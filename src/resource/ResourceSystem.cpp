@@ -626,9 +626,22 @@ uint32_t ShaderManager::LoadComputeShader(std::string const& path)
         return it->second;
     }
     
-    // TODO: Load compute shader from file (e.g., .comp, .spv)
-    // For now, return 0 to indicate not implemented
-    return 0;
+    if (!shader_asset_loader_) {
+        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "ShaderAssetLoader is not registered, cannot load compute shader: %s", path.c_str());
+        return 0;
+    }
+
+    std::vector<uint32_t> compute_spirv = shader_asset_loader_(path);
+    if (compute_spirv.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "Failed to load compute shader: %s", path.c_str());
+        return 0;
+    }
+
+    uint32_t id = LoadComputeShaderFromData(path, compute_spirv, "main");
+    if (id != 0) {
+        path_to_id_[path] = id;
+    }
+    return id;
 }
 
 uint32_t ShaderManager::LoadComputeShaderFromData(std::string const& name,
