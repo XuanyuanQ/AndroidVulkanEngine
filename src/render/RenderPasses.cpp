@@ -75,16 +75,6 @@ vkfw::VkTexture const* ResolveTextureOrFallback(vkfw::VkContext& ctx,
     return fallback_texture.IsInitialized() ? &fallback_texture : nullptr;
 }
 
-uint32_t VertexLayoutIdFromMesh(ave::resource::MeshRuntime const& mesh)
-{
-    if (mesh.vertex_stride == 7u * sizeof(float)) {
-        return 1;
-    }
-    if (mesh.vertex_stride == sizeof(ave::project::VertexData)) {
-        return 2;
-    }
-    return 0;
-}
 
 DescriptorSetLayoutKey MakeFrameSetLayoutKey()
 {
@@ -132,14 +122,11 @@ DescriptorSetLayoutKey MakeMaterialSetLayoutKey()
     return key;
 }
 
-PipelineKey MakePipelineKey(uint32_t pass_id,
-                            uint32_t shader_id,
+PipelineKey MakePipelineKey(uint32_t shader_id,
                             ave::resource::MeshRuntime const& mesh)
 {
     PipelineKey key{};
-    key.pass_id = pass_id;
     key.shader_id = shader_id;
-    key.vertex_layout_id = VertexLayoutIdFromMesh(mesh);
     key.render_state_id = 1;
     key.layout_profile = PipelineLayoutProfile::Empty;
     key.rt_format = 0;
@@ -515,7 +502,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
             continue;
         }
 
-        PipelineKey key = MakePipelineKey(1, shadow_shader_id_, *mesh);
+        PipelineKey key = MakePipelineKey(shadow_shader_id_, *mesh);
         key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
         key.rt_format = 0;
         key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
@@ -681,7 +668,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
 
-        PipelineKey key = MakePipelineKey(0, shader->id, *mesh);
+        PipelineKey key = MakePipelineKey(shader->id, *mesh);
         key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         if (has_vk) {
             key.rt_format = static_cast<uint32_t>(context.swapchain->Format());

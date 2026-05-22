@@ -257,27 +257,9 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         // Set vertex input state (simplified for now)
         vkfw::PipelineVertexInputState vertex_input;
         vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
-        if (key.vertex_layout_id == 1) {
-            // RasterColorVertex: position(float3) + color(float4)
-            vertex_input.vertex_inputs = {
-                vkfw::PipelineVertexInput{
-                    .binding = 0,
-                    .location = 0,
-                    .stride = 7u * sizeof(float),
-                    .format = vk::Format::eR32G32B32Sfloat,
-                    .offset = 0,
-                },
-                vkfw::PipelineVertexInput{
-                    .binding = 0,
-                    .location = 1,
-                    .stride = 7u * sizeof(float),
-                    .format = vk::Format::eR32G32B32A32Sfloat,
-                    .offset = 3u * sizeof(float),
-                },
-            };
-        } else if (key.vertex_layout_id == 2) {
             // SharedDataContract::VertexData: position + color + texcoord0.
             vertex_input.vertex_inputs = {
+                // 0. position (glm::vec3)
                 vkfw::PipelineVertexInput{
                     .binding = 0,
                     .location = 0,
@@ -285,22 +267,47 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     .format = vk::Format::eR32G32B32Sfloat,
                     .offset = offsetof(ave::project::VertexData, position),
                 },
+                // 1. normal (glm::vec3)
                 vkfw::PipelineVertexInput{
                     .binding = 0,
                     .location = 1,
                     .stride = sizeof(ave::project::VertexData),
-                    .format = vk::Format::eR32G32B32A32Sfloat,
-                    .offset = offsetof(ave::project::VertexData, color),
+                    .format = vk::Format::eR32G32B32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, normal),
                 },
+                // 2. tangent (glm::vec4)
                 vkfw::PipelineVertexInput{
                     .binding = 0,
                     .location = 2,
                     .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32B32A32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, tangent),
+                },
+                // 3. texcoord0 (glm::vec2)
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 3,
+                    .stride = sizeof(ave::project::VertexData),
                     .format = vk::Format::eR32G32Sfloat,
                     .offset = offsetof(ave::project::VertexData, texcoord0),
                 },
+                // 4. texcoord1 (glm::vec2)
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 4,
+                    .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, texcoord1),
+                },
+                // 5. color (glm::vec4)
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 5,
+                    .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32B32A32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, color),
+                },
             };
-        }
         pipeline_info.vertex_input = vertex_input;
         
         // Set rasterization state

@@ -202,7 +202,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
                     VertexData vertex{};
                     vertex.position = Float3(Attribute(vertex_tag, "position"), vertex.position);
                     vertex.normal = Float3(Attribute(vertex_tag, "normal"), vertex.normal);
-                    vertex.tangent = Float4(Attribute(vertex_tag, "tangent"), vertex.tangent);
+                    vertex.tangent = Float3(Attribute(vertex_tag, "tangent"), vertex.tangent);
                     vertex.texcoord0 = Float2(Attribute(vertex_tag, "texcoord0"), vertex.texcoord0);
                     vertex.texcoord1 = Float2(Attribute(vertex_tag, "texcoord1"), vertex.texcoord1);
                     vertex.color = Float4(Attribute(vertex_tag, "color"), vertex.color);

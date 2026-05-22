@@ -49,9 +49,8 @@ namespace ave::render {
 
 // Pipeline key for caching
 struct PipelineKey {
-    uint32_t pass_id = 0;
     uint32_t shader_id = 0;
-    uint32_t vertex_layout_id = 0;
+    uint32_t vertex_layout_id = 0;//暂时不区分顶点布局，后续可根据需要添加
     uint32_t render_state_id = 0;
     // Descriptor layout profile.
     // 0: empty (no descriptor sets)
@@ -67,8 +66,7 @@ struct PipelineKey {
     uint32_t viewport_height = 0;
     
     bool operator==(PipelineKey const& other) const {
-        return pass_id == other.pass_id &&
-               shader_id == other.shader_id &&
+        return  shader_id == other.shader_id &&
                vertex_layout_id == other.vertex_layout_id &&
                render_state_id == other.render_state_id &&
                layout_profile == other.layout_profile &&
@@ -90,7 +88,6 @@ struct PipelineKeyHash {
         };
 
         std::size_t seed = 0;
-        combine(seed, key.pass_id);
         combine(seed, key.shader_id);
         combine(seed, key.vertex_layout_id);
         combine(seed, key.render_state_id);
