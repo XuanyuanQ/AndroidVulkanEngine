@@ -557,15 +557,29 @@ uint32_t ShaderManager::LoadShader(std::string const& path)
         return 0;
     }
     
-    // Check if already loaded
-    auto it = path_to_id_.find(path);
+    std::string const normalized_path = std::filesystem::path(path).lexically_normal().generic_string();
+    auto it = path_to_id_.find(normalized_path);
     if (it != path_to_id_.end()) {
         return it->second;
     }
-    
-    // TODO: Load shader from file (e.g., .vert, .frag, .spv)
-    // For now, return 0 to indicate not implemented
-    return 0;
+
+    if (!shader_asset_loader_) {
+        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "ShaderAssetLoader is not registered, cannot load shader: %s", normalized_path.c_str());
+        return 0;
+    }
+
+    std::vector<uint32_t> vertex_spirv = shader_asset_loader_(normalized_path + ".vert.spv");
+    if (vertex_spirv.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "Failed to load vertex shader: %s.vert.spv", normalized_path.c_str());
+        return 0;
+    }
+
+    std::vector<uint32_t> fragment_spirv = shader_asset_loader_(normalized_path + ".frag.spv");
+    uint32_t const id = LoadShaderFromData(normalized_path, vertex_spirv, fragment_spirv, "main");
+    if (id != 0) {
+        path_to_id_[normalized_path] = id;
+    }
+    return id;
 }
 
 uint32_t ShaderManager::LoadShaderFromData(std::string const& name, 
@@ -651,6 +665,9 @@ uint32_t ShaderManager::LoadComputeShaderFromData(std::string const& name,
     if (!ctx_) {
         return 0;
     }
+    if (path_to_id_.find(name) != path_to_id_.end()) {
+        return path_to_id_[name];
+    }
     
     uint32_t id = next_id_++;
     
@@ -669,6 +686,7 @@ uint32_t ShaderManager::LoadComputeShaderFromData(std::string const& name,
     
     shader.is_loaded = true;
     shaders_[id] = std::move(shader);
+    path_to_id_[name] = id;
     
     return id;
 }

@@ -251,6 +251,9 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     }
     
     if (!is_compute) {
+        bool const depth_only_pipeline =
+            (key.rt_format == 0) && (key.depth_format != 0 || key.stencil_format != 0);
+
         // Set vertex input state (simplified for now)
         vkfw::PipelineVertexInputState vertex_input;
         vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
@@ -304,15 +307,16 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         vkfw::PipelineRasterizationState rasterization;
         rasterization.polygon_mode = vk::PolygonMode::eFill;
         // Match the demo expectations (accept both windings) until we introduce proper render state keys.
-        rasterization.cull_mode = vk::CullModeFlagBits::eNone;
+        rasterization.cull_mode = depth_only_pipeline ? vk::CullModeFlagBits::eBack : vk::CullModeFlagBits::eNone;
         pipeline_info.rasterization = rasterization;
 
-        // Demo pipeline defaults: no depth attachment in the swapchain pass, so disable depth.
-        pipeline_info.depth_stencil.depth_test_enable = false;
-        pipeline_info.depth_stencil.depth_write_enable = false;
+        pipeline_info.depth_stencil.depth_test_enable = depth_only_pipeline;
+        pipeline_info.depth_stencil.depth_write_enable = depth_only_pipeline;
+        pipeline_info.depth_stencil.depth_compare_op = vk::CompareOp::eLessOrEqual;
 
-        // Swapchain render pass has one color attachment; provide one blend attachment state.
-        pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
+        if (!depth_only_pipeline) {
+            pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
+        }
     }
     
     // Set pipeline layout (fixed engine convention; caller chooses a profile via PipelineKey::layout_profile)

@@ -21,6 +21,14 @@ public:
     std::string_view Name() const override { return "ShadowPass"; }
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    vkfw::VkBuffer frame_ubo_{};
+    uint32_t frame_set_id_ = 0;
+    vkfw::VkTexture shadow_map_{};
+    uint32_t shadow_shader_id_ = 0;
+    bool shadow_map_initialized_ = false;
+    glm::mat4 shadow_view_projection_{1.0f};
 };
 
 class PBRPass final : public RenderPass {

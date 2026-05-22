@@ -9,10 +9,12 @@
 #include "VkSwapchain.hpp"
 #include <android/log.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <algorithm>
 
 namespace ave::render {
 namespace {
@@ -149,6 +151,161 @@ PipelineKey MakePipelineKey(uint32_t pass_id,
     return key;
 }
 
+constexpr uint32_t kShadowMapSize = 1024;
+
+glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameData const* frame)
+{
+    glm::vec3 scene_center = frame ? frame->view.world_position : glm::vec3{0.0f};
+    glm::vec3 min_bounds = scene_center;
+    glm::vec3 max_bounds = scene_center;
+    bool has_bounds = false;
+
+    for (auto const* renderable : view.renderables) {
+        if (!renderable) {
+            continue;
+        }
+        glm::vec3 const position = glm::vec3(renderable->world[3]);
+        if (!has_bounds) {
+            min_bounds = position;
+            max_bounds = position;
+            has_bounds = true;
+        } else {
+            min_bounds = glm::min(min_bounds, position);
+            max_bounds = glm::max(max_bounds, position);
+        }
+    }
+
+    if (has_bounds) {
+        scene_center = (min_bounds + max_bounds) * 0.5f;
+    }
+
+    glm::vec3 light_direction{0.35f, -1.0f, 0.25f};
+    for (auto const* light : view.lights) {
+        if (!light || !light->cast_shadows) {
+            continue;
+        }
+        if (light->type == "directional" || light->type.empty()) {
+            light_direction = light->direction;
+            break;
+        }
+    }
+
+    if (glm::length(light_direction) < 0.0001f) {
+        light_direction = glm::vec3{0.35f, -1.0f, 0.25f};
+    }
+    light_direction = glm::normalize(light_direction);
+
+    glm::vec3 up = std::abs(glm::dot(light_direction, glm::vec3{0.0f, 1.0f, 0.0f})) > 0.95f
+        ? glm::vec3{0.0f, 0.0f, 1.0f}
+        : glm::vec3{0.0f, 1.0f, 0.0f};
+
+    float radius = 20.0f;
+    if (has_bounds) {
+        glm::vec3 const extents = glm::abs(max_bounds - min_bounds);
+        radius = std::max(std::max(extents.x, extents.y), std::max(extents.z, 10.0f)) * 0.8f;
+    }
+
+    glm::vec3 const eye = scene_center - light_direction * (radius * 2.5f);
+    glm::mat4 const light_view = glm::lookAt(eye, scene_center, up);
+    glm::mat4 const light_projection = glm::ortho(-radius, radius, -radius, radius, 0.1f, radius * 6.0f);
+    glm::mat4 shadow_view_projection = light_projection * light_view;
+    shadow_view_projection[1][1] *= -1.0f;
+    return shadow_view_projection;
+}
+
+void TransitionImageLayout(vk::CommandBuffer const& command_buffer,
+                           vk::Image image,
+                           vk::ImageAspectFlags aspect_mask,
+                           vk::ImageLayout old_layout,
+                           vk::ImageLayout new_layout,
+                           vk::AccessFlags src_access_mask,
+                           vk::AccessFlags dst_access_mask,
+                           vk::PipelineStageFlags src_stage,
+                           vk::PipelineStageFlags dst_stage)
+{
+    vk::ImageMemoryBarrier barrier{};
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = aspect_mask;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = src_access_mask;
+    barrier.dstAccessMask = dst_access_mask;
+    command_buffer.pipelineBarrier(src_stage, dst_stage, {}, {}, {}, barrier);
+}
+
+bool BeginShadowMapRendering(RenderPassContext const& context,
+                             vkfw::VkTexture const& shadow_map,
+                             uint32_t shadow_map_size,
+                             vk::ClearDepthStencilValue const& clear_depth)
+{
+    if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} || !shadow_map.IsInitialized()) {
+        return false;
+    }
+
+    bool const core_dynamic_rendering =
+        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+    if (context.vk->SupportsDynamicRendering()) {
+        if (core_dynamic_rendering) {
+            vk::RenderingAttachmentInfo depth_attachment{};
+            depth_attachment.imageView = shadow_map.View();
+            depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+            depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+            depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+            depth_attachment.clearValue.depthStencil = clear_depth;
+
+            vk::RenderingInfo rendering_info{};
+            rendering_info.renderArea = vk::Rect2D{{0, 0}, vk::Extent2D{shadow_map_size, shadow_map_size}};
+            rendering_info.layerCount = 1;
+            rendering_info.colorAttachmentCount = 0;
+            rendering_info.pDepthAttachment = &depth_attachment;
+
+            context.command_buffer.beginRendering(rendering_info);
+        } else {
+            vk::RenderingAttachmentInfoKHR depth_attachment{};
+            depth_attachment.imageView = shadow_map.View();
+            depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+            depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+            depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+            depth_attachment.clearValue.depthStencil = clear_depth;
+
+            vk::RenderingInfoKHR rendering_info{};
+            rendering_info.renderArea = vk::Rect2D{{0, 0}, vk::Extent2D{shadow_map_size, shadow_map_size}};
+            rendering_info.layerCount = 1;
+            rendering_info.colorAttachmentCount = 0;
+            rendering_info.pDepthAttachment = &depth_attachment;
+
+            context.command_buffer.beginRenderingKHR(rendering_info);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+void EndShadowMapRendering(RenderPassContext const& context)
+{
+    if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{}) {
+        return;
+    }
+
+    bool const core_dynamic_rendering =
+        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    if (context.vk->SupportsDynamicRendering()) {
+        if (core_dynamic_rendering) {
+            context.command_buffer.endRendering();
+        } else {
+            context.command_buffer.endRenderingKHR();
+        }
+    }
+}
+
 bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue const& clear_value, bool clear_color)
 {
     if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{}) {
@@ -263,37 +420,91 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     }
 
     bool const has_vk =
-        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+        context.vk != nullptr && context.command_buffer != vk::CommandBuffer{};
 
     auto& mesh_mgr = context.resources->GetMeshManager();
-    auto& mat_mgr = context.resources->GetMaterialManager();
     auto& shader_mgr = context.resources->GetShaderManager();
-
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
 
-    bool began_rendering = false;
-    if (has_vk) {
-        vk::ClearValue clear{};
-        clear.color.float32[0] = 0.03f;
-        clear.color.float32[1] = 0.04f;
-        clear.color.float32[2] = 0.06f;
-        clear.color.float32[3] = 1.0f;
-        began_rendering = BeginSwapchainRendering(context, clear, false);
+    struct FrameUbo {
+        glm::mat4 view_projection{1.0f};
+    };
+
+    if (!has_vk) {
+        return;
     }
 
-    // For shadow pass we only need material (if any) and mesh data.
-    // No frame UBO is required.
+    if (shadow_shader_id_ == 0) {
+        shadow_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
+        if (shadow_shader_id_ == 0) {
+            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to load shadow shader");
+            return;
+        }
+    }
+
+    if (!shadow_map_.IsInitialized()) {
+        if (!shadow_map_.Init(*context.vk, vkfw::TextureInfo{
+                                               .width = kShadowMapSize,
+                                               .height = kShadowMapSize,
+                                               .mip_levels = 1,
+                                               .format = vkfw::TextureFormat::D32_SFLOAT,
+                                               .usage = static_cast<vkfw::TextureUsage>(
+                                                   static_cast<uint32_t>(vkfw::TextureUsage::DepthStencilAttachment) |
+                                                   static_cast<uint32_t>(vkfw::TextureUsage::Sampled)),
+                                               .mipmap = false,
+                                           })) {
+            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to create shadow map");
+            return;
+        }
+        shadow_map_initialized_ = false;
+    }
+
+    shadow_view_projection_ = BuildShadowViewProjection(view, context.frame);
+
+    FrameUbo frame_ubo{};
+    frame_ubo.view_projection = shadow_view_projection_;
+
+    if (!frame_ubo_.IsInitialized()) {
+        frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
+                                        .size = static_cast<uint32_t>(sizeof(FrameUbo)),
+                                        .usage = vkfw::BufferUsage::Uniform,
+                                        .mappable = true,
+                                    });
+    }
+    frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
+
+    if (frame_set_id_ == 0) {
+        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
+        frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+    }
+    if (frame_set_id_ != 0) {
+        desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
+    }
+
+    vk::ImageLayout const old_layout = shadow_map_initialized_
+        ? vk::ImageLayout::eShaderReadOnlyOptimal
+        : vk::ImageLayout::eUndefined;
+    TransitionImageLayout(context.command_buffer,
+                          shadow_map_.Handle(),
+                          vk::ImageAspectFlagBits::eDepth,
+                          old_layout,
+                          vk::ImageLayout::eDepthAttachmentOptimal,
+                          {},
+                          vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                          vk::PipelineStageFlagBits::eTopOfPipe,
+                          vk::PipelineStageFlagBits::eEarlyFragmentTests);
+
+    vk::ClearDepthStencilValue clear_depth{};
+    clear_depth.depth = 1.0f;
+    clear_depth.stencil = 0;
+    if (!BeginShadowMapRendering(context, shadow_map_, kShadowMapSize, clear_depth)) {
+        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to begin shadow-map rendering");
+        return;
+    }
 
     for (auto const* renderable : view.renderables) {
         if (!renderable) {
-            continue;
-        }
-
-        auto const* material = renderable->material_handle != 0
-            ? mat_mgr.GetMaterial(renderable->material_handle)
-            : mat_mgr.GetMaterialByName(renderable->material_id);
-        if (!material) {
             continue;
         }
 
@@ -304,21 +515,16 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
             continue;
         }
 
-        auto const* shader = material->shader_id != 0 ? shader_mgr.GetShader(material->shader_id) : nullptr;
-        if (!shader) {
-            continue;
-        }
-
-        PipelineKey key = MakePipelineKey(1, shader->id, *mesh);
-        if (has_vk) {
-            key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
-            key.viewport_width = context.swapchain->Extent().width;
-            key.viewport_height = context.swapchain->Extent().height;
-        }
+        PipelineKey key = MakePipelineKey(1, shadow_shader_id_, *mesh);
+        key.layout_profile = 3;
+        key.rt_format = 0;
+        key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
+        key.viewport_width = kShadowMapSize;
+        key.viewport_height = kShadowMapSize;
 
         uint32_t const pipeline_id =
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
-        if (pipeline_id == 0 || !has_vk) {
+        if (pipeline_id == 0) {
             continue;
         }
 
@@ -328,6 +534,19 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         }
 
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+        if (frame_set_id_ != 0) {
+            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
+            if (frame_set) {
+                context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                          pipeline->Layout(),
+                                                          0,
+                                                          1,
+                                                          &frame_set,
+                                                          0,
+                                                          nullptr);
+            }
+        }
 
         vk::DeviceSize offset = 0;
         context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
@@ -341,9 +560,17 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         }
     }
 
-    if (began_rendering) {
-        EndSwapchainRendering(context);
-    }
+    EndShadowMapRendering(context);
+    TransitionImageLayout(context.command_buffer,
+                          shadow_map_.Handle(),
+                          vk::ImageAspectFlagBits::eDepth,
+                          vk::ImageLayout::eDepthAttachmentOptimal,
+                          vk::ImageLayout::eShaderReadOnlyOptimal,
+                          vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                          vk::AccessFlagBits::eShaderRead,
+                          vk::PipelineStageFlagBits::eLateFragmentTests,
+                          vk::PipelineStageFlagBits::eFragmentShader);
+    shadow_map_initialized_ = true;
 }
 
 PassDataFilter PBRPass::GetDataFilter() const
