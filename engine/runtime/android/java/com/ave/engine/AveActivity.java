@@ -77,35 +77,38 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private boolean mIsRightButtonPressed = false;
 
     @Override
-    public boolean onGenericMotionEvent(MotionEvent event) {
-        // 检查是否是鼠标事件，且按下了右键 (BUTTON_SECONDARY 就是鼠标右键)
-        boolean rightClick = (event.getButtonState() & MotionEvent.BUTTON_SECONDARY) != 0;
+    public boolean dispatchTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
 
-        if (action == MotionEvent.ACTION_DOWN || rightClick) {
-            if (!mIsRightButtonPressed) {
-                mIsRightButtonPressed = true;
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                // 只要鼠标左键点下（或者手指按下），记录初始坐标
                 mLastX = event.getX();
                 mLastY = event.getY();
-            }
-            
-            // 计算鼠标移动的相对偏差 (Delta)
-            float dx = event.getX() - mLastX;
-            float dy = event.getY() - mLastY;
-            
-            mLastX = event.getX();
-            mLastY = event.getY();
+                break;
 
-            // 如果鼠标在移动，把偏差发给 C++
-            if (action == MotionEvent.ACTION_MOVE && (Math.abs(dx) > 0.1f || Math.abs(dy) > 0.1f)) {
-                nativeMotionEvent(dx, dy, action);
-            }
-            return true;
-        } else {
-            mIsRightButtonPressed = false;
+            case MotionEvent.ACTION_MOVE:
+                // 只要按住并拖动，计算偏移量
+                float dx = event.getX() - mLastX;
+                float dy = event.getY() - mLastY;
+
+                mLastX = event.getX();
+                mLastY = event.getY();
+
+                // 过滤掉极其微小的抖动
+                if (Math.abs(dx) > 0.1f || Math.abs(dy) > 0.1f) {
+                    android.util.Log.d("AVE_INPUT_DEBUG", "🔴 屏幕划动中 -> dx: " + dx + ", dy: " + dy);
+                    // 把偏移量丢给 C++ 
+                    nativeMotionEvent(dx, dy, action);
+                }
+                break;
+                
+            case MotionEvent.ACTION_UP:
+                break;
         }
 
-        return super.onGenericMotionEvent(event);
+        // 依然让系统底层继续处理该事件
+        return super.dispatchTouchEvent(event);
     }
 
 
