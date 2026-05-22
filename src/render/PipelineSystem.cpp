@@ -273,7 +273,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                 },
             };
         } else if (key.vertex_layout_id == 2) {
-            // SharedDataContract::VertexData: use position + color for current preview shaders.
+            // SharedDataContract::VertexData: position + color + texcoord0.
             vertex_input.vertex_inputs = {
                 vkfw::PipelineVertexInput{
                     .binding = 0,
@@ -288,6 +288,13 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     .stride = sizeof(ave::project::VertexData),
                     .format = vk::Format::eR32G32B32A32Sfloat,
                     .offset = offsetof(ave::project::VertexData, color),
+                },
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 2,
+                    .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, texcoord0),
                 },
             };
         }
