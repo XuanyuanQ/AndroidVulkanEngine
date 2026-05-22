@@ -1,4 +1,6 @@
-﻿#include "ave/render/FrameGraph.h"
+#include "ave/render/FrameGraph.h"
+#include "VkContext.hpp"
+#include "VkSwapchain.hpp"
 
 namespace ave::render {
 
@@ -25,6 +27,8 @@ void FrameGraph::Execute(RenderPassContext const& context)
         return;
     }
 
+    // 纯粹的调度器逻辑：依次执行注册的渲染通道。
+    // 每个 Pass 节点自主管理其渲染目标（Render Targets）与动态渲染边界（beginRendering / endRendering）。
     for (auto& node : passes_) {
         if (!node.pass) {
             continue;
@@ -32,6 +36,7 @@ void FrameGraph::Execute(RenderPassContext const& context)
 
         PassDataFilter const filter = node.has_filter_override ? node.filter_override
                                                                : node.pass->GetDataFilter();
+
         PassExecutionView const view = BuildPassView(*context.frame, filter);
         node.pass->Execute(context, view);
     }

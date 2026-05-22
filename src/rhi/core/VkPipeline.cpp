@@ -11,7 +11,7 @@ static vk::VertexInputRate GetVertexInputRate(uint32_t stride) {
     return vk::VertexInputRate::eVertex;
 }
 
-bool VkPipelineLayout::Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> const& descriptor_layouts) {
+bool VkPipelineLayout::Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> const& descriptor_layouts, std::vector<vk::PushConstantRange> const& push_constants) {
     std::vector<vk::DescriptorSetLayout> layouts;
     layouts.reserve(descriptor_layouts.size());
     
@@ -24,6 +24,10 @@ bool VkPipelineLayout::Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> 
     vk::PipelineLayoutCreateInfo layout_info{};
     layout_info.setLayoutCount = static_cast<uint32_t>(layouts.size());
     layout_info.pSetLayouts = layouts.data();
+    if (!push_constants.empty()) {
+        layout_info.pushConstantRangeCount = static_cast<uint32_t>(push_constants.size());
+        layout_info.pPushConstantRanges = push_constants.data();
+    }
 
     try {
         layout_ = std::make_unique<vk::raii::PipelineLayout>(ctx.Device(), layout_info);
@@ -38,6 +42,26 @@ void VkPipelineLayout::Shutdown(VkContext& ctx) {
 }
 
 bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
+    if (info.is_compute) {
+        if (info.shader_stages.empty()) {
+            return false;
+        }
+        vk::ComputePipelineCreateInfo compute_info{};
+        compute_info.stage = info.shader_stages[0];
+        compute_info.layout = info.layout;
+        compute_info.basePipelineHandle = info.base_pipeline_handle;
+        compute_info.basePipelineIndex = info.base_pipeline_index;
+
+        try {
+            pipeline_ = std::make_unique<vk::raii::Pipeline>(ctx.Device(), nullptr, compute_info);
+            bind_point_ = vk::PipelineBindPoint::eCompute;
+            layout_ = info.layout;
+            return true;
+        } catch (vk::SystemError& e) {
+            return false;
+        }
+    }
+
     // Convert vertex input state
     std::vector<vk::VertexInputBindingDescription> vertex_bindings;
     std::vector<vk::VertexInputAttributeDescription> vertex_attributes;

@@ -111,14 +111,14 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
                                             uint32_t mesh_id,
                                             RasterShaderCode const& shaders)
 {
-     InitializeFrameGraphBackend(ctx, sync);
-     graph_.AddPass(std::make_unique<PBRPass>());
-     graph_.AddPass(std::make_unique<ShadowPass>());
-     graph_.AddPass(std::make_unique<DepthPrepass>());
-     graph_.AddPass(std::make_unique<UIPass>());
-    //  graph_.AddPass(std::make_unique<ComputePass>());
-    //  resource_system_.GetShaderManager().LoadShaderFromData("mesh_shader", shaders.vertex, shaders.fragment);
-     return true;
+    (void)shaders; // Unused for now but kept for signature compatibility
+      InitializeFrameGraphBackend(ctx, sync);
+      graph_.AddPass(std::make_unique<ComputePass>());
+      graph_.AddPass(std::make_unique<PBRPass>());
+      graph_.AddPass(std::make_unique<ShadowPass>());
+      graph_.AddPass(std::make_unique<DepthPrepass>());
+      graph_.AddPass(std::make_unique<UIPass>());
+      return true;
 
 }
 
@@ -244,36 +244,6 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
                         vk::PipelineStageFlagBits::eColorAttachmentOutput,
                         {}, {}, {}, to_color);
 
-    vk::ClearValue clear{};
-    clear.color.float32[0] = 0.03f;
-    clear.color.float32[1] = 0.04f;
-    clear.color.float32[2] = 0.06f;
-    clear.color.float32[3] = 1.0f;
-
-    if (ctx.SupportsDynamicRendering()) {
-        vk::RenderingAttachmentInfo color_attachment{};
-        color_attachment.imageView = swapchain.ImageView(image_index);
-        color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-        color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-        color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-        color_attachment.clearValue = clear;
-
-        vk::RenderingInfo rendering_info{};
-        rendering_info.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
-        rendering_info.layerCount = 1;
-        rendering_info.colorAttachmentCount = 1;
-        rendering_info.pColorAttachments = &color_attachment;
-        cmd.beginRendering(rendering_info);
-    } else {
-        vk::RenderPassBeginInfo render_pass_begin{};
-        render_pass_begin.renderPass = impl_->framegraph_render_pass.Handle();
-        render_pass_begin.framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
-        render_pass_begin.renderArea = vk::Rect2D{{0, 0}, swapchain.Extent()};
-        render_pass_begin.clearValueCount = 1;
-        render_pass_begin.pClearValues = &clear;
-        cmd.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
-    }
-
     RenderPassContext pass_ctx{};
     pass_ctx.frame = &frame;
     pass_ctx.resources = &resource_system_;
@@ -284,14 +254,9 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     pass_ctx.command_buffer = cmd;
     if (!ctx.SupportsDynamicRendering()) {
         pass_ctx.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
+        pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
     }
     graph_.Execute(pass_ctx);
-
-    if (ctx.SupportsDynamicRendering()) {
-        cmd.endRendering();
-    } else {
-        cmd.endRenderPass();
-    }
 
     vk::ImageMemoryBarrier to_present{};
     to_present.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;

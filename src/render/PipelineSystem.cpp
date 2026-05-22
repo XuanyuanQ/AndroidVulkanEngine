@@ -152,7 +152,7 @@ void DescriptorSetLayoutCache::Clear()
 // Pipeline Layout Cache
 PipelineLayoutCache::PipelineLayoutCache() = default;
 
-uint32_t PipelineLayoutCache::GetOrCreateLayout(PipelineLayoutKey const& key)
+uint32_t PipelineLayoutCache::GetOrCreateLayout(PipelineLayoutKey const& key, std::vector<vk::PushConstantRange> const& push_constants)
 {
     if (!ctx_) {
         return 0;
@@ -181,7 +181,7 @@ uint32_t PipelineLayoutCache::GetOrCreateLayout(PipelineLayoutKey const& key)
     
     // Create VkPipelineLayout using vkfw
     auto layout = std::make_unique<vkfw::VkPipelineLayout>();
-    if (layout->Init(*ctx_, set_layouts)) {
+    if (layout->Init(*ctx_, set_layouts, push_constants)) {
         layouts_[id] = std::move(layout);
     }
     
@@ -231,71 +231,82 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     vkfw::PipelineInfo pipeline_info;
     
     // Get shader stages from ResourceSystem
+    bool is_compute = false;
     if (resource_system_) {
         auto const* shader = resource_system_->GetShaderManager().GetShader(key.shader_id);
-        if (shader && shader->vertex_shader && shader->vertex_shader->IsInitialized()) {
-            pipeline_info.shader_stages.push_back(shader->vertex_shader->GetPipelineStageInfo());
-        }
-        if (shader && shader->fragment_shader && shader->fragment_shader->IsInitialized()) {
-            pipeline_info.shader_stages.push_back(shader->fragment_shader->GetPipelineStageInfo());
+        if (shader) {
+            if (shader->compute_shader && shader->compute_shader->IsInitialized()) {
+                pipeline_info.shader_stages.push_back(shader->compute_shader->GetPipelineStageInfo());
+                is_compute = true;
+                pipeline_info.is_compute = true;
+            } else {
+                if (shader->vertex_shader && shader->vertex_shader->IsInitialized()) {
+                    pipeline_info.shader_stages.push_back(shader->vertex_shader->GetPipelineStageInfo());
+                }
+                if (shader->fragment_shader && shader->fragment_shader->IsInitialized()) {
+                    pipeline_info.shader_stages.push_back(shader->fragment_shader->GetPipelineStageInfo());
+                }
+            }
         }
     }
     
-    // Set vertex input state (simplified for now)
-    vkfw::PipelineVertexInputState vertex_input;
-    vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
-    if (key.vertex_layout_id == 1) {
-        // RasterColorVertex: position(float3) + color(float4)
-        vertex_input.vertex_inputs = {
-            vkfw::PipelineVertexInput{
-                .binding = 0,
-                .location = 0,
-                .stride = 7u * sizeof(float),
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = 0,
-            },
-            vkfw::PipelineVertexInput{
-                .binding = 0,
-                .location = 1,
-                .stride = 7u * sizeof(float),
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = 3u * sizeof(float),
-            },
-        };
-    } else if (key.vertex_layout_id == 2) {
-        // SharedDataContract::VertexData: use position + color for current preview shaders.
-        vertex_input.vertex_inputs = {
-            vkfw::PipelineVertexInput{
-                .binding = 0,
-                .location = 0,
-                .stride = sizeof(ave::project::VertexData),
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = offsetof(ave::project::VertexData, position),
-            },
-            vkfw::PipelineVertexInput{
-                .binding = 0,
-                .location = 1,
-                .stride = sizeof(ave::project::VertexData),
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = offsetof(ave::project::VertexData, color),
-            },
-        };
+    if (!is_compute) {
+        // Set vertex input state (simplified for now)
+        vkfw::PipelineVertexInputState vertex_input;
+        vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
+        if (key.vertex_layout_id == 1) {
+            // RasterColorVertex: position(float3) + color(float4)
+            vertex_input.vertex_inputs = {
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 0,
+                    .stride = 7u * sizeof(float),
+                    .format = vk::Format::eR32G32B32Sfloat,
+                    .offset = 0,
+                },
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 1,
+                    .stride = 7u * sizeof(float),
+                    .format = vk::Format::eR32G32B32A32Sfloat,
+                    .offset = 3u * sizeof(float),
+                },
+            };
+        } else if (key.vertex_layout_id == 2) {
+            // SharedDataContract::VertexData: use position + color for current preview shaders.
+            vertex_input.vertex_inputs = {
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 0,
+                    .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32B32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, position),
+                },
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 1,
+                    .stride = sizeof(ave::project::VertexData),
+                    .format = vk::Format::eR32G32B32A32Sfloat,
+                    .offset = offsetof(ave::project::VertexData, color),
+                },
+            };
+        }
+        pipeline_info.vertex_input = vertex_input;
+        
+        // Set rasterization state
+        vkfw::PipelineRasterizationState rasterization;
+        rasterization.polygon_mode = vk::PolygonMode::eFill;
+        // Match the demo expectations (accept both windings) until we introduce proper render state keys.
+        rasterization.cull_mode = vk::CullModeFlagBits::eNone;
+        pipeline_info.rasterization = rasterization;
+
+        // Demo pipeline defaults: no depth attachment in the swapchain pass, so disable depth.
+        pipeline_info.depth_stencil.depth_test_enable = false;
+        pipeline_info.depth_stencil.depth_write_enable = false;
+
+        // Swapchain render pass has one color attachment; provide one blend attachment state.
+        pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
     }
-    pipeline_info.vertex_input = vertex_input;
-    
-    // Set rasterization state
-    vkfw::PipelineRasterizationState rasterization;
-    rasterization.polygon_mode = vk::PolygonMode::eFill;
-    // Match the demo expectations (accept both windings) until we introduce proper render state keys.
-    rasterization.cull_mode = vk::CullModeFlagBits::eNone;
-    pipeline_info.rasterization = rasterization;
-
-    // Demo pipeline defaults: no depth attachment in the swapchain pass, so disable depth.
-    pipeline_info.depth_stencil.depth_test_enable = false;
-    pipeline_info.depth_stencil.depth_write_enable = false;
-
-    // Swapchain render pass has one color attachment; provide one blend attachment state.
-    pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
     
     // Set pipeline layout (fixed engine convention; caller chooses a profile via PipelineKey::layout_profile)
     if (pipeline_layout_cache_) {
@@ -304,19 +315,44 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         uint32_t frame_set_layout_id = 0;
         uint32_t material_set_layout_id = 0;
         uint32_t object_set_layout_id = 0;
+        uint32_t compute_set_layout_id = 0;
 
         if (auto* desc_cache = pipeline_layout_cache_->GetDescriptorSetLayoutCache()) {
-            if (key.layout_profile == 1 || key.layout_profile == 2 || key.layout_profile == 3) {
-                frame_set_layout_id = desc_cache->GetOrCreateLayout(MakeFrameSetLayoutKey());
-            }
-            if (key.layout_profile == 1 || key.layout_profile == 2) {
-                material_set_layout_id = desc_cache->GetOrCreateLayout(MakeMaterialSetLayoutKey());
-            }
-            if (key.layout_profile == 1) {
-                object_set_layout_id = desc_cache->GetOrCreateLayout(MakeObjectSetLayoutKey());
+            if (is_compute) {
+                if (key.layout_profile == 4) {
+                    DescriptorSetLayoutKey culling_set_key;
+                    culling_set_key.bindings = {
+                        DescriptorBinding{
+                            .binding = 0,
+                            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::StorageBuffer),
+                            .descriptor_count = 1,
+                            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eCompute),
+                        },
+                        DescriptorBinding{
+                            .binding = 1,
+                            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::StorageBuffer),
+                            .descriptor_count = 1,
+                            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eCompute),
+                        }
+                    };
+                    compute_set_layout_id = desc_cache->GetOrCreateLayout(culling_set_key);
+                }
+            } else {
+                if (key.layout_profile == 1 || key.layout_profile == 2 || key.layout_profile == 3) {
+                    frame_set_layout_id = desc_cache->GetOrCreateLayout(MakeFrameSetLayoutKey());
+                }
+                if (key.layout_profile == 1 || key.layout_profile == 2) {
+                    material_set_layout_id = desc_cache->GetOrCreateLayout(MakeMaterialSetLayoutKey());
+                }
+                if (key.layout_profile == 1) {
+                    object_set_layout_id = desc_cache->GetOrCreateLayout(MakeObjectSetLayoutKey());
+                }
             }
         }
 
+        if (compute_set_layout_id != 0) {
+            layout_key.set_layout_ids.push_back(compute_set_layout_id);
+        }
         if (frame_set_layout_id != 0) {
             layout_key.set_layout_ids.push_back(frame_set_layout_id);
         }
@@ -327,39 +363,49 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
             layout_key.set_layout_ids.push_back(object_set_layout_id);
         }
 
-        uint32_t layout_id = pipeline_layout_cache_->GetOrCreateLayout(layout_key);
+        std::vector<vk::PushConstantRange> push_constants;
+        if (is_compute && key.layout_profile == 4) {
+            vk::PushConstantRange range{};
+            range.stageFlags = vk::ShaderStageFlagBits::eCompute;
+            range.offset = 0;
+            range.size = 100; // 6 planes (6 * 16 = 96 bytes) + total_instances (4 bytes) = 100 bytes
+            push_constants.push_back(range);
+        }
+        uint32_t layout_id = pipeline_layout_cache_->GetOrCreateLayout(layout_key, push_constants);
         auto const* layout = pipeline_layout_cache_->GetLayout(layout_id);
         if (layout) {
             pipeline_info.layout = layout->Handle();
         }
     }
     
-    // Set viewport/scissor
-    if (key.viewport_width > 0 && key.viewport_height > 0) {
-        vk::Viewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(key.viewport_width);
-        viewport.height = static_cast<float>(key.viewport_height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+    if (!is_compute) {
+        // Set viewport/scissor
+        if (key.viewport_width > 0 && key.viewport_height > 0) {
+            vk::Viewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(key.viewport_width);
+            viewport.height = static_cast<float>(key.viewport_height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
 
-        vk::Rect2D scissor{};
-        scissor.offset = vk::Offset2D{0, 0};
-        scissor.extent = vk::Extent2D{key.viewport_width, key.viewport_height};
+            vk::Rect2D scissor{};
+            scissor.offset = vk::Offset2D{0, 0};
+            scissor.extent = vk::Extent2D{key.viewport_width, key.viewport_height};
 
-        pipeline_info.viewport.viewports = {viewport};
-        pipeline_info.viewport.scissors = {scissor};
-    }
+            pipeline_info.viewport.viewports = {viewport};
+            pipeline_info.viewport.scissors = {scissor};
+        }
 
-    if (ctx_ && ctx_->SupportsDynamicRendering()) {
-        pipeline_info.use_dynamic_rendering = true;
-        pipeline_info.color_formats = {static_cast<vk::Format>(key.rt_format)};
-        pipeline_info.depth_format = static_cast<vk::Format>(key.depth_format);
-        pipeline_info.stencil_format = static_cast<vk::Format>(key.stencil_format);
-    } else {
-        pipeline_info.use_dynamic_rendering = false;
-        pipeline_info.render_pass = compatibility_render_pass;
+        if (ctx_ && ctx_->SupportsDynamicRendering()) {
+            pipeline_info.use_dynamic_rendering = true;
+            pipeline_info.color_formats = {static_cast<vk::Format>(key.rt_format)};
+            pipeline_info.depth_format = static_cast<vk::Format>(key.depth_format);
+            pipeline_info.stencil_format = static_cast<vk::Format>(key.stencil_format);
+        } else {
+            pipeline_info.use_dynamic_rendering = false;
+            pipeline_info.render_pass = compatibility_render_pass;
+        }
     }
     
     // Initialize pipeline

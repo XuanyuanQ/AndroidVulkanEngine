@@ -34,7 +34,11 @@ bool PassesRenderableFilter(core::FrameRenderableData const& renderable, PassDat
     if ((renderable.layer_mask & filter.layer_mask) == 0u) {
         return false;
     }
-    if (!core::HasPassBit(renderable.pass_mask, filter.pass_bit)) {
+    core::RenderPassBit check_bit = filter.pass_bit;
+    if (check_bit == core::RenderPassBit::Compute) {
+        check_bit = core::RenderPassBit::ForwardOpaque;
+    }
+    if (!core::HasPassBit(renderable.pass_mask, check_bit)) {
         return false;
     }
     if (filter.shadow_casters_only && !renderable.casts_shadow) {

@@ -176,7 +176,7 @@ public:
     void SetDescriptorSetLayoutCache(DescriptorSetLayoutCache* cache) { desc_set_layout_cache_ = cache; }
     DescriptorSetLayoutCache* GetDescriptorSetLayoutCache() const { return desc_set_layout_cache_; }
     
-    uint32_t GetOrCreateLayout(PipelineLayoutKey const& key);
+    uint32_t GetOrCreateLayout(PipelineLayoutKey const& key, std::vector<vk::PushConstantRange> const& push_constants = {});
     vkfw::VkPipelineLayout const* GetLayout(uint32_t id) const;
     void Clear();
     

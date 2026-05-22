@@ -1,0 +1,50 @@
+#version 450
+
+layout(local_size_x = 16) in;
+
+struct Instance {
+    vec4 position_radius; // xyz = position, w = radius
+};
+
+layout(push_constant) uniform PushConstants {
+    vec4 planes[6];
+    uint total_instances;
+} push;
+
+layout(std430, set = 0, binding = 0) readonly buffer InputBuffer {
+    Instance instances[];
+} input_data;
+
+layout(std430, set = 0, binding = 1) writeonly buffer OutputBuffer {
+    uint visibility[];
+} output_data;
+
+void main() {
+    uint g_id = gl_GlobalInvocationID.x;
+    if (g_id >= push.total_instances) {
+        return;
+    }
+
+    vec4 pos_rad = input_data.instances[g_id].position_radius;
+    vec3 center = pos_rad.xyz;
+    float radius = pos_rad.w;
+
+    vec3 min_bounds = center - vec3(radius);
+    vec3 max_bounds = center + vec3(radius);
+
+    bool visible = true;
+    for (int i = 0; i < 6; ++i) {
+        vec4 plane = push.planes[i];
+        float px = plane.x > 0.0f ? max_bounds.x : min_bounds.x;
+        float py = plane.y > 0.0f ? max_bounds.y : min_bounds.y;
+        float pz = plane.z > 0.0f ? max_bounds.z : min_bounds.z;
+        
+        float dist = plane.x * px + plane.y * py + plane.z * pz + plane.w;
+        if (dist < 0.0f) {
+            visible = false;
+            break;
+        }
+    }
+
+    output_data.visibility[g_id] = visible ? 1u : 0u;
+}

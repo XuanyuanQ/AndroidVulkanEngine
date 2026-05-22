@@ -44,6 +44,11 @@ public:
     std::string_view Name() const override { return "ComputePass"; }
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    vkfw::VkBuffer instances_buffers_[2]{};
+    vkfw::VkBuffer visibility_buffers_[2]{};
+    uint32_t descriptor_set_ids_[2] = {0, 0};
 };
 
 class UIPass final : public RenderPass {

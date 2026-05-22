@@ -105,6 +105,7 @@ struct PipelineInfo {
     uint32_t subpass = 0;
     vk::Pipeline base_pipeline_handle = nullptr;
     int32_t base_pipeline_index = -1;
+    bool is_compute = false;
 };
 
 class VkPipelineLayout {
@@ -118,7 +119,7 @@ public:
     VkPipelineLayout(VkPipelineLayout const&) = delete;
     VkPipelineLayout& operator=(VkPipelineLayout const&) = delete;
 
-    bool Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> const& descriptor_layouts);
+    bool Init(VkContext& ctx, std::vector<VkDescriptorSetLayout*> const& descriptor_layouts, std::vector<vk::PushConstantRange> const& push_constants = {});
     void Shutdown(VkContext& ctx);
 
     bool IsInitialized() const noexcept { return layout_ != nullptr; }
