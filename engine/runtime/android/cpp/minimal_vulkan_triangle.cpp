@@ -231,8 +231,18 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         return false;
     }
 
-    scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem());
+    auto const extent = swapchainWrap_.Extent();
+    // Android Pre-rotation: ANativeWindow 在竖屏手机上返回的是旋转后的横屏尺寸（宽>高），
+    // 实际渲染需要用 height/width 得到正确的竖屏 aspect ratio。
+    float const aspect = (extent.width > 0)
+        ? static_cast<float>(extent.height) / static_cast<float>(extent.width)
+        : 9.0f / 16.0f;
+    __android_log_print(ANDROID_LOG_INFO, kLogTag,
+        "Swapchain extent: %ux%u, aspect=%.4f", extent.width, extent.height, aspect);
+    scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem(), aspect);
     scene_world_.BuildFrameData(frame_index_, frame_data_);
+
+
 
     __android_log_print(ANDROID_LOG_INFO,
                         kLogTag,

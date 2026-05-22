@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ave/core/FrameData.h"
 #include "ave/project/SceneDocument.h"
@@ -32,7 +32,8 @@ public:
     void BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const;
     void RebuildFromScene(project::SceneData const& scene,
                           resource::ResourceSystem const& resources,
-                          render::MaterialSystem const& materials);
+                          render::MaterialSystem const& materials,
+                          float aspect_ratio = 16.0f / 9.0f);
 
 #ifdef ENABLE_CAMERA_DEBUG
     // Simple debug camera for keyboard testing

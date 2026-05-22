@@ -1,4 +1,4 @@
-﻿#include "ave/scene/SceneWorld.h"
+#include "ave/scene/SceneWorld.h"
 #include "ave/project/SharedDataContract.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/MaterialSystem.h"
@@ -52,7 +52,9 @@ glm::mat4 SetInverseTranslation(glm::vec3 const& position)
 glm::mat4 SetPerspective(float fov_degrees, float aspect_ratio, float near_plane, float far_plane)
 {
     float const fov_radians = fov_degrees * 3.14159265358979323846f / 180.0f;
-    return glm::perspective(fov_radians, aspect_ratio, near_plane, far_plane);
+    glm::mat4 proj = glm::perspective(fov_radians, aspect_ratio, near_plane, far_plane);
+    proj[1][1] *= -1.0f; // Vulkan NDC: Y 轴朝下，glm::perspective 是 OpenGL 约定，必须翻转
+    return proj;
 }
 
 std::string LightTypeToString(project::LightType type)
@@ -236,7 +238,8 @@ uint32_t SceneWorld::AddPointLight(float x, float y, float z, float intensity)
 
 void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                                   resource::ResourceSystem const& resources,
-                                  render::MaterialSystem const& materials)
+                                  render::MaterialSystem const& materials,
+                                  float aspect_ratio)
 {
     view_ = {};
     renderables_.clear();
@@ -271,7 +274,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             view_.far_plane = camera.far_plane;
             view_.world_position = world_transform.position;
             view_.view = SetInverseTranslation(world_transform.position);
-            view_.projection = SetPerspective(camera.fov, 16.0f / 9.0f, camera.near_plane, camera.far_plane);
+            view_.projection = SetPerspective(camera.fov, aspect_ratio, camera.near_plane, camera.far_plane);
             view_.view_projection = view_.projection * view_.view;
             has_camera = true;
         }
