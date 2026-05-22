@@ -24,11 +24,11 @@ enum class TextureFormat {
 };
 
 enum class TextureUsage {
-    Sampled,
-    ColorAttachment,
-    DepthStencilAttachment,
-    TransferSrc,
-    TransferDst
+    Sampled = 1u << 0,
+    ColorAttachment = 1u << 1,
+    DepthStencilAttachment = 1u << 2,
+    TransferSrc = 1u << 3,
+    TransferDst = 1u << 4
 };
 
 struct TextureInfo {
@@ -62,7 +62,6 @@ public:
     vk::DeviceMemory Memory() const noexcept { return *memory_; }
     vk::Format Format() const noexcept { return format_; }
     vk::Extent3D Extent() const noexcept { return extent_; }
-
     void UpdateData(VkContext& ctx, void const* data, uint32_t size);
 
 private:

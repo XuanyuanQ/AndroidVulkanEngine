@@ -2,8 +2,30 @@
 #include "ave/resource/ResourceSystem.h"
 #include "ave/project/XmlSceneLoader.h"
 #include <android/log.h>
+#include <filesystem>
 
 namespace ave::render {
+
+namespace {
+
+bool LooksLikeProjectAssetRootPath(std::filesystem::path const& path)
+{
+    auto it = path.begin();
+    if (it == path.end()) {
+        return false;
+    }
+
+    auto const first = it->generic_string();
+    return first == "textures"
+        || first == "materials"
+        || first == "meshes"
+        || first == "shaders"
+        || first == "scenes"
+        || first == "assets"
+        || first == "compiled_shaders";
+}
+
+} // namespace
 
 MaterialSystem::MaterialSystem() = default;
 
@@ -36,7 +58,13 @@ uint32_t MaterialSystem::LoadMaterial(std::string const& path)
     logical_mat.name = path;
     logical_mat.shader_name = mat_doc.shader;
     logical_mat.params.base_color = mat_doc.base_color;
-    logical_mat.base_color_texture_path = mat_doc.base_color_texture;
+    if (!mat_doc.base_color_texture.empty()) {
+        std::filesystem::path texture_path = mat_doc.base_color_texture;
+        if (texture_path.is_relative() && !LooksLikeProjectAssetRootPath(texture_path)) {
+            texture_path = std::filesystem::path(path).parent_path() / texture_path;
+        }
+        logical_mat.base_color_texture_path = texture_path.lexically_normal().generic_string();
+    }
     logical_mat.params.metallic = mat_doc.metallic;
     logical_mat.params.roughness = mat_doc.roughness;
 
@@ -197,7 +225,6 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
 
     auto& gpu_mat_mgr = resource_system_->GetMaterialManager();
     auto& shader_mgr = resource_system_->GetShaderManager();
-     auto& texture_mgr = resource_system_->GetTextureManager(); // Ensure texture manager is initialized for potential texture loading
 
     auto const* gpu_mat = gpu_mat_mgr.GetMaterialByName(logical_mat.name);
     uint32_t gpu_mat_id = 0;

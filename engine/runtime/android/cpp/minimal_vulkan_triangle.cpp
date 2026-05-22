@@ -92,6 +92,10 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         [this](std::string const& path) {
             return readTextAsset(path.c_str());
         });
+    renderer_.GetResourceSystem().GetTextureManager().SetBinaryAssetLoader(
+        [this](std::string const& path) {
+            return readBinaryAsset(path.c_str());
+        });
     
     renderer_.GetMaterialSystem().SetShaderAssetLoader(
         [this](std::string const& path) -> std::vector<uint32_t> {
@@ -351,6 +355,31 @@ std::string MinimalVulkanTriangle::readTextAsset(char const* path) const
     }
     text.resize(static_cast<size_t>(read));
     return text;
+}
+
+std::vector<std::uint8_t> MinimalVulkanTriangle::readBinaryAsset(char const* path) const
+{
+    if (assets_ == nullptr) {
+        return {};
+    }
+
+    AAsset* asset = AAssetManager_open(assets_, path, AASSET_MODE_BUFFER);
+    if (asset == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Binary asset not found: %s", path);
+        return {};
+    }
+
+    size_t const size = static_cast<size_t>(AAsset_getLength(asset));
+    std::vector<std::uint8_t> bytes(size);
+    int const read = AAsset_read(asset, bytes.data(), size);
+    AAsset_close(asset);
+
+    if (read < 0 || static_cast<size_t>(read) != size) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to read binary asset: %s", path);
+        return {};
+    }
+
+    return bytes;
 }
 
 } // namespace ave::android

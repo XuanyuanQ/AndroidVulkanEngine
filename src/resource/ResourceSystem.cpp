@@ -6,6 +6,7 @@
 #include <filesystem>
 // #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include <android/log.h>
 
 
 namespace ave::resource {
@@ -408,25 +409,61 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
         return 0;
     }
 
-    // Use filename as texture name for caching
-    std::string name = std::filesystem::path(path).filename().string();
-    // Check if already loaded using name
-    auto it = path_to_id_.find(name);
+    auto it = path_to_id_.find(path);
     if (it != path_to_id_.end()) {
         return it->second;
     }
 
-    // Load image data with stb_image (force RGBA)
-    int texWidth = 0, texHeight = 0, texChannels = 0;
-    stbi_uc* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+
+    int texWidth = 0;
+    int texHeight = 0;
+    int texChannels = 0;
+    stbi_uc* pixels = nullptr;
+
+    if (binary_asset_loader_) {
+        auto image_bytes = binary_asset_loader_(path);
+
+        if (!image_bytes.empty()) {
+            pixels = stbi_load_from_memory(image_bytes.data(),
+                                           static_cast<int>(image_bytes.size()),
+                                           &texWidth,
+                                           &texHeight,
+                                           &texChannels,
+                                           STBI_rgb_alpha);
+            if (!pixels) {
+                __android_log_print(ANDROID_LOG_ERROR,
+                                    "TextureManager",
+                                    "Failed to decode texture asset: %s (%s)",
+                                    path.c_str(),
+                                    stbi_failure_reason());
+            }
+        } else {
+            __android_log_print(ANDROID_LOG_WARN,
+                                "TextureManager",
+                                "Texture asset loader returned empty data: %s",
+                                path.c_str());
+        }
+    }
+
+
     if (!pixels) {
-        // Failed to load image
+        __android_log_print(ANDROID_LOG_ERROR,
+                            "TextureManager",
+                            "Failed to load texture: %s (%s)",
+                            path.c_str(),
+                            stbi_failure_reason());
         return 0;
     }
 
-    // Delegate to LoadTextureFromData, using a single mip level
-    uint32_t id = LoadTextureFromData(name, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), pixels, 1);
+    uint32_t id = LoadTextureFromData(path,
+                                      static_cast<uint32_t>(texWidth),
+                                      static_cast<uint32_t>(texHeight),
+                                      pixels,
+                                      1);
     stbi_image_free(pixels);
+    if (id != 0) {
+        path_to_id_[path] = id;
+    }
     return id;
 }
 
@@ -435,6 +472,10 @@ uint32_t TextureManager::LoadTextureFromData(std::string const& name, uint32_t w
 {
     if (!ctx_) {
         return 0;
+    }
+
+    if(path_to_id_.find(name) != path_to_id_.end()) {
+        return path_to_id_[name];
     }
     
     uint32_t id = next_id_++;
@@ -480,6 +521,7 @@ TextureRuntime const* TextureManager::GetTextureByPath(std::string const& path) 
     if (it != path_to_id_.end()) {
         return GetTexture(it->second);
     }
+
     return nullptr;
 }
 

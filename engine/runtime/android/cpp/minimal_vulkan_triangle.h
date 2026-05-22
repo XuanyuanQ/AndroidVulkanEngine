@@ -32,6 +32,7 @@ private:
     void cleanupSurfaceResources();
     void logProjectAsset() const;
     std::vector<uint32_t> readShaderAsset(char const* path) const;
+    std::vector<std::uint8_t> readBinaryAsset(char const* path) const;
     std::string readTextAsset(char const* path) const;
 
     AAssetManager* assets_ = nullptr;

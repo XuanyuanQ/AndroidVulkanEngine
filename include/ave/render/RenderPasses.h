@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "VkBuffer.hpp"
+#include "VkTexture.hpp"
 
 namespace ave::render {
 
@@ -37,6 +38,7 @@ private:
     vkfw::VkBuffer frame_ubo_{};
     uint32_t frame_set_id_ = 0;
     std::unordered_map<uint32_t, MaterialBinding> material_bindings_{};
+    vkfw::VkTexture fallback_white_texture_{};
 };
 
 class ComputePass final : public RenderPass {

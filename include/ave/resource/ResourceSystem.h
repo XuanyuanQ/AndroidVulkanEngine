@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <functional>
 #include <glm/glm.hpp>
 
 namespace vkfw {
@@ -123,10 +124,13 @@ private:
 // Texture Manager
 class TextureManager {
 public:
+    using BinaryAssetLoader = std::function<std::vector<std::uint8_t>(std::string const&)>;
+
     TextureManager();
     ~TextureManager() = default;
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
+    void SetBinaryAssetLoader(BinaryAssetLoader loader) { binary_asset_loader_ = std::move(loader); }
     
     uint32_t LoadTexture(std::string const& path);
     uint32_t LoadTextureFromData(std::string const& name, uint32_t width, uint32_t height, 
@@ -138,6 +142,7 @@ public:
     
 private:
     vkfw::VkContext* ctx_ = nullptr;
+    BinaryAssetLoader binary_asset_loader_{};
     std::unordered_map<uint32_t, TextureRuntime> textures_;
     std::unordered_map<std::string, uint32_t> path_to_id_;
     uint32_t next_id_ = 1;
@@ -179,6 +184,7 @@ public:
     ~MaterialManager() = default;
     
     uint32_t CreateMaterial(std::string const& name, uint32_t shader_id);
+    
     bool SetTexture(uint32_t material_id, std::string const& slot, uint32_t texture_id);
     bool SetParameter(uint32_t material_id, std::string const& param, float value);
     bool SetBaseColor(uint32_t material_id, glm::vec4 const& color);

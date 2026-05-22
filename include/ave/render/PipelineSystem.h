@@ -226,6 +226,12 @@ public:
     vk::DescriptorSet GetHandle(uint32_t set_id) const;
     bool UpdateUniformBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
     bool UpdateStorageBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
+
+    bool UpdateImageSampler(uint32_t set_id,
+                            uint32_t binding,
+                            vk::Sampler sampler,
+                            vk::ImageView image_view,
+                            vk::ImageLayout image_layout);
     void Clear();
     
 private:

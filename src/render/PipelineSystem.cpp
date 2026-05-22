@@ -547,6 +547,42 @@ bool DescriptorAllocator::UpdateUniformBuffer(uint32_t set_id,
     return true;
 }
 
+bool DescriptorAllocator::UpdateImageSampler(uint32_t set_id,
+                            uint32_t binding,
+                            vk::Sampler sampler,
+                            vk::ImageView image_view,
+                            vk::ImageLayout image_layout){
+    if (!ctx_) {
+        return false;
+    }
+
+    auto it = sets_.find(set_id);
+    if (it == sets_.end()) {
+        return false;
+    }
+
+    // 1. 核心区别：Buffer 换成 ImageInfo
+    vk::DescriptorImageInfo img_info{};
+    img_info.sampler = sampler;               // 传入的采样器
+    img_info.imageView = image_view;           // 传入的图片视图
+    img_info.imageLayout = image_layout;       // 通常是 vk::ImageLayout::eShaderReadOnlyOptimal
+
+    // 2. 配置写入结构体
+    vk::WriteDescriptorSet write{};
+    write.dstSet = *it->second;
+    write.dstBinding = binding;
+    write.dstArrayElement = 0;
+    write.descriptorCount = 1;
+    
+    // 3. 核心区别：类型换成 eCombinedImageSampler
+    write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    write.pImageInfo = &img_info;              // 注意：这里是 pImageInfo，而不是 pBufferInfo
+
+    // 4. 提交给 Vulkan 设备更新
+    ctx_->Device().updateDescriptorSets(write, {});
+    return true;
+}
+
 bool DescriptorAllocator::UpdateStorageBuffer(uint32_t set_id,
                                              uint32_t binding,
                                              vk::Buffer buffer,
