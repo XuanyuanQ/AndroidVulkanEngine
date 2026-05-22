@@ -1,5 +1,7 @@
 ﻿#include "ave/scene/SceneWorld.h"
 #include "ave/project/SharedDataContract.h"
+#include "ave/resource/ResourceSystem.h"
+#include "ave/render/MaterialSystem.h"
 #include <android/input.h>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -232,7 +234,9 @@ uint32_t SceneWorld::AddPointLight(float x, float y, float z, float intensity)
     return static_cast<uint32_t>(lights_.size() - 1);
 }
 
-void SceneWorld::RebuildFromScene(project::SceneData const& scene)
+void SceneWorld::RebuildFromScene(project::SceneData const& scene,
+                                  resource::ResourceSystem const& resources,
+                                  render::MaterialSystem const& materials)
 {
     view_ = {};
     renderables_.clear();
@@ -280,12 +284,26 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene)
             renderable.debug_name = object.name;
             renderable.mesh_id = mesh.mesh;
             renderable.material_id = mesh.material;
+            if (!mesh.mesh.empty()) {
+                if (auto const* mesh_runtime = resources.GetMeshManager().GetMeshByPath(mesh.mesh)) {
+                    renderable.mesh_handle = mesh_runtime->id;
+                }
+            }
+            if (!mesh.material.empty()) {
+                if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(mesh.material)) {
+                    renderable.material_handle = gpu_material->id;
+                } else if (auto const* material = materials.GetMaterial(mesh.material)) {
+                    renderable.material_handle = material->id;
+                }
+            }
             renderable.index_count = static_cast<uint32_t>(mesh.indices.size());
             renderable.vertex_count = static_cast<uint32_t>(mesh.vertices.size());
             renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, world_transform.position);
             renderable.casts_shadow = false;
             renderable.receives_shadow = true;
-            renderable.sort_key = (HashString(renderable.material_id) << 16) ^ HashString(renderable.mesh_id);
+            renderable.sort_key =
+                (static_cast<uint64_t>(renderable.material_handle) << 32)
+                ^ static_cast<uint64_t>(renderable.mesh_handle);
 
             renderable.world = SetTranslationScale(world_transform.position, world_transform.scale);
             renderables_.push_back(std::move(renderable));

@@ -222,7 +222,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         return false;
     }
 
-    scene_world_.RebuildFromScene(scene);
+    scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem());
     scene_world_.BuildFrameData(frame_index_, frame_data_);
 
     __android_log_print(ANDROID_LOG_INFO,

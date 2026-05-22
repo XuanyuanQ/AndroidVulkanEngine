@@ -26,6 +26,8 @@ struct FrameRenderableData {
 
     std::string mesh_id;
     std::string material_id;
+    uint32_t mesh_handle = 0;
+    uint32_t material_handle = 0;
 
     glm::mat4 world{1.0f};
 

@@ -163,14 +163,18 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         if (!renderable) continue;
 
         // Resolve material
-        auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
+        auto const* material = renderable->material_handle != 0
+            ? mat_mgr.GetMaterial(renderable->material_handle)
+            : mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing material %s", renderable->material_id.c_str());
             continue;
         }
 
         // Resolve mesh
-        auto const* mesh = mesh_mgr.GetMeshByPath(renderable->mesh_id);
+        auto const* mesh = renderable->mesh_handle != 0
+            ? mesh_mgr.GetMesh(renderable->mesh_handle)
+            : mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing mesh %s", renderable->mesh_id.c_str());
             continue;
@@ -297,14 +301,18 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
         __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %llu", context.frame->frame_index);
-        auto const* material = mat_mgr.GetMaterialByName(renderable->material_id);
+        auto const* material = renderable->material_handle != 0
+            ? mat_mgr.GetMaterial(renderable->material_handle)
+            : mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing material %s, using default", renderable->material_id.c_str());
             continue;
         }   
         
 
-        auto const* mesh = mesh_mgr.GetMeshByPath(renderable->mesh_id);
+        auto const* mesh = renderable->mesh_handle != 0
+            ? mesh_mgr.GetMesh(renderable->mesh_handle)
+            : mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip: missing mesh %s", renderable->mesh_id.c_str());
             continue;

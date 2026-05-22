@@ -7,6 +7,14 @@
 #include <cstring>
 #include <vector>
 
+namespace ave::resource {
+class ResourceSystem;
+}
+
+namespace ave::render {
+class MaterialSystem;
+}
+
 #define ENABLE_CAMERA_DEBUG
 // Debug camera support (enabled only in test builds)
 #ifdef ENABLE_CAMERA_DEBUG
@@ -22,7 +30,9 @@ public:
     uint32_t AddRenderable(std::string object_id, std::string debug_name, std::string mesh_id, std::string material_id);
     uint32_t AddPointLight(float x, float y, float z, float intensity);
     void BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const;
-    void RebuildFromScene(project::SceneData const& scene);
+    void RebuildFromScene(project::SceneData const& scene,
+                          resource::ResourceSystem const& resources,
+                          render::MaterialSystem const& materials);
 
 #ifdef ENABLE_CAMERA_DEBUG
     // Simple debug camera for keyboard testing
