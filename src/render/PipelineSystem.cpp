@@ -270,7 +270,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         vkfw::PipelineVertexInputState vertex_input;
         vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
         if (key.vertex_layout_id == 2) {
-            // Lightweight 2D UI Vertex Format: UiVertex
+            // Lightweight 2D UI Vertex Format: UiVertex with texture_index
             vertex_input.vertex_inputs = {
                 // 0. position (glm::vec2) -> location 0
                 vkfw::PipelineVertexInput{
@@ -280,21 +280,29 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     .format = vk::Format::eR32G32Sfloat,
                     .offset = offsetof(ave::render::UiVertex, position),
                 },
-                // 1. uv (glm::vec2) -> location 3 (matches inTexcoord0 in ui_textured.vert)
+                // 1. uv (glm::vec2) -> location 1
                 vkfw::PipelineVertexInput{
                     .binding = 0,
-                    .location = 3,
+                    .location = 1,
                     .stride = sizeof(ave::render::UiVertex),
                     .format = vk::Format::eR32G32Sfloat,
                     .offset = offsetof(ave::render::UiVertex, uv),
                 },
-                // 2. color (glm::vec4) -> location 5 (matches inColor in ui_textured.vert)
+                // 2. color (glm::vec4) -> location 2
                 vkfw::PipelineVertexInput{
                     .binding = 0,
-                    .location = 5,
+                    .location = 2,
                     .stride = sizeof(ave::render::UiVertex),
                     .format = vk::Format::eR32G32B32A32Sfloat,
                     .offset = offsetof(ave::render::UiVertex, color),
+                },
+                // 3. texture_index (uint32_t) -> location 3
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 3,
+                    .stride = sizeof(ave::render::UiVertex),
+                    .format = vk::Format::eR32Uint,
+                    .offset = offsetof(ave::render::UiVertex, texture_index),
                 },
             };
         } else {
@@ -659,6 +667,39 @@ bool DescriptorAllocator::UpdateImageSampler(uint32_t set_id,
     write.pImageInfo = &img_info;              // 注意：这里是 pImageInfo，而不是 pBufferInfo
 
     // 4. 提交给 Vulkan 设备更新
+    ctx_->Device().updateDescriptorSets(write, {});
+    return true;
+}
+
+bool DescriptorAllocator::UpdateImageSamplerArray(uint32_t set_id,
+                            uint32_t binding,
+                            uint32_t array_index,
+                            vk::Sampler sampler,
+                            vk::ImageView image_view,
+                            vk::ImageLayout image_layout){
+    if (!ctx_) {
+        return false;
+    }
+
+    auto it = sets_.find(set_id);
+    if (it == sets_.end()) {
+        return false;
+    }
+
+    vk::DescriptorImageInfo img_info{};
+    img_info.sampler = sampler;
+    img_info.imageView = image_view;
+    img_info.imageLayout = image_layout;
+
+    vk::WriteDescriptorSet write{};
+    write.dstSet = *it->second;
+    write.dstBinding = binding;
+    write.dstArrayElement = array_index;
+    write.descriptorCount = 1;
+    
+    write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    write.pImageInfo = &img_info;
+
     ctx_->Device().updateDescriptorSets(write, {});
     return true;
 }

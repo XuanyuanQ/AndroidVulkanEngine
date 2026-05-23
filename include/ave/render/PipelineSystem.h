@@ -87,6 +87,7 @@ struct UiVertex {
     glm::vec2 position;
     glm::vec2 uv;
     glm::vec4 color;
+    uint32_t texture_index;
 };
 
 // Hash for PipelineKey
@@ -264,6 +265,12 @@ public:
                             vk::Sampler sampler,
                             vk::ImageView image_view,
                             vk::ImageLayout image_layout);
+    bool UpdateImageSamplerArray(uint32_t set_id,
+                                 uint32_t binding,
+                                 uint32_t array_index,
+                                 vk::Sampler sampler,
+                                 vk::ImageView image_view,
+                                 vk::ImageLayout image_layout);
     void Clear();
     
 private:

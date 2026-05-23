@@ -378,16 +378,14 @@ glm::vec3 ClampUiPosition(glm::vec2 const& position, float depth)
 
 void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
                   std::vector<uint32_t>& indices,
-                  std::vector<UiDrawRange>& draw_ranges,
                   core::FrameUiData const& item,
-                  uint32_t texture_runtime_id,
+                  uint32_t texture_index,
                   float aspect_ratio)
 {
     glm::vec2 const half_size = item.size * 0.5f;
     glm::vec3 const center = ClampUiPosition(item.position, item.depth);
 
     uint32_t const base_vertex = static_cast<uint32_t>(vertices.size());
-    uint32_t const first_index = static_cast<uint32_t>(indices.size());
 
     auto make_vertex = [&](float x, float y, float u, float v) {
         ave::render::UiVertex vertex{};
@@ -398,6 +396,7 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
         };
         vertex.uv = glm::vec2{u, v};
         vertex.color = item.color;
+        vertex.texture_index = texture_index;
         return vertex;
     };
 
@@ -412,17 +411,6 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
     indices.push_back(base_vertex + 0);
     indices.push_back(base_vertex + 2);
     indices.push_back(base_vertex + 3);
-
-    // Dynamic UI Batching: if adjacent UI elements use the same texture, combine them into one draw call!
-    if (!draw_ranges.empty() && draw_ranges.back().texture_runtime_id == texture_runtime_id) {
-        draw_ranges.back().index_count += 6;
-    } else {
-        draw_ranges.push_back(UiDrawRange{
-            .first_index = first_index,
-            .index_count = 6,
-            .texture_runtime_id = texture_runtime_id,
-        });
-    }
 }
 
 } // namespace
@@ -1133,30 +1121,58 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
     std::vector<ave::render::UiVertex> vertices;
     std::vector<uint32_t> indices;
-    std::vector<UiDrawRange> draw_ranges;
     vertices.reserve(view.ui_items.size() * 4);
     indices.reserve(view.ui_items.size() * 6);
-    draw_ranges.reserve(view.ui_items.size());
 
     // aspect ratio correction based on current swapchain extent (uses height/width for Android pre-rotation)
     float const width = has_vk ? static_cast<float>(context.swapchain->Extent().width) : 1080.0f;
     float const height = has_vk ? static_cast<float>(context.swapchain->Extent().height) : 1920.0f;
     float const aspect_ratio = (width > 0.0f) ? (height / width) : (9.0f / 16.0f);
 
+    // 1. Gather all unique textures used this frame (max 15 slots, index 1 to 15)
+    std::vector<std::string> unique_texture_paths;
+    if (has_vk) {
+        for (auto const* item : view.ui_items) {
+            if (!item || !item->visible || item->texture_id.empty()) {
+                continue;
+            }
+            if (std::find(unique_texture_paths.begin(), unique_texture_paths.end(), item->texture_id) == unique_texture_paths.end()) {
+                if (unique_texture_paths.size() < 15) {
+                    unique_texture_paths.push_back(item->texture_id);
+                }
+            }
+        }
+    }
+
+    // Load or resolve texture runtime IDs
+    std::vector<uint32_t> texture_runtime_ids(16, 0); // 16 slots, default to 0 (fallback white)
+    for (size_t i = 0; i < unique_texture_paths.size(); ++i) {
+        std::string const& path = unique_texture_paths[i];
+        uint32_t runtime_id = 0;
+        if (auto const* runtime = texture_mgr.GetTextureByPath(path)) {
+            runtime_id = runtime->id;
+        } else {
+            runtime_id = texture_mgr.LoadTexture(path);
+        }
+        texture_runtime_ids[i + 1] = runtime_id;
+    }
+
+    // 2. Generate geometry
     for (auto const* item : view.ui_items) {
         if (!item || !item->visible) {
             continue;
         }
         __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  ui: %s", item->debug_name.c_str());
-        uint32_t texture_runtime_id = 0;
-        if (has_vk && !item->texture_id.empty()) {
-            if (auto const* runtime = texture_mgr.GetTextureByPath(item->texture_id)) {
-                texture_runtime_id = runtime->id;
-            } else {
-                texture_runtime_id = texture_mgr.LoadTexture(item->texture_id);
+        
+        uint32_t texture_index = 0; // Default to fallback white slot
+        if (!item->texture_id.empty()) {
+            auto it = std::find(unique_texture_paths.begin(), unique_texture_paths.end(), item->texture_id);
+            if (it != unique_texture_paths.end()) {
+                texture_index = static_cast<uint32_t>(1 + std::distance(unique_texture_paths.begin(), it));
             }
         }
-        AppendUiQuad(vertices, indices, draw_ranges, *item, texture_runtime_id, aspect_ratio);
+        
+        AppendUiQuad(vertices, indices, *item, texture_index, aspect_ratio);
     }
 
     if (!has_vk || vertices.empty() || indices.empty()) {
@@ -1246,12 +1262,13 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     context.command_buffer.bindVertexBuffers(0, ui_vertex_buffers_[buf_idx].Handle(), offset);
     context.command_buffer.bindIndexBuffer(ui_index_buffers_[buf_idx].Handle(), 0, vk::IndexType::eUint32);
 
+    // 3. Declare Descriptor Set with 16 slots!
     DescriptorSetLayoutKey texture_set_layout_key;
     texture_set_layout_key.bindings = {
         DescriptorBinding{
             .binding = 0,
             .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
+            .descriptor_count = 16, // Bindless texture array of size 16!
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
     };
@@ -1259,35 +1276,49 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     vk::Sampler const sampler = GetCommonSampler(*context.vk);
     EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
 
-    for (auto const& draw_range : draw_ranges) {
-        uint32_t const texture_runtime_id = draw_range.texture_runtime_id;
-        uint32_t& descriptor_set_id = texture_descriptor_sets_[texture_runtime_id];
-        if (descriptor_set_id == 0) {
-            descriptor_set_id = desc_alloc.AllocateDescriptorSet(texture_layout_id);
-        }
+    // Allocate double-buffered descriptor set
+    uint32_t descriptor_set_id = texture_descriptor_sets_[buf_idx];
+    if (descriptor_set_id == 0) {
+        descriptor_set_id = desc_alloc.AllocateDescriptorSet(texture_layout_id);
+        texture_descriptor_sets_[buf_idx] = descriptor_set_id;
+    }
 
-        if (descriptor_set_id != 0) {
-            vkfw::VkTexture const* texture = ResolveTextureOrFallback(*context.vk, texture_mgr, texture_runtime_id, fallback_white_texture_);
+    if (descriptor_set_id != 0) {
+        // Write slot 0 (fallback white)
+        desc_alloc.UpdateImageSamplerArray(descriptor_set_id,
+                                           0,
+                                           0,
+                                           sampler,
+                                           fallback_white_texture_.View(),
+                                           vk::ImageLayout::eShaderReadOnlyOptimal);
+        // Write slots 1 to 15
+        for (uint32_t slot = 1; slot < 16; ++slot) {
+            uint32_t const runtime_id = texture_runtime_ids[slot];
+            vkfw::VkTexture const* texture = ResolveTextureOrFallback(*context.vk, texture_mgr, runtime_id, fallback_white_texture_);
             if (texture != nullptr) {
-                desc_alloc.UpdateImageSampler(descriptor_set_id,
-                                              0,
-                                              sampler,
-                                              texture->View(),
-                                              vk::ImageLayout::eShaderReadOnlyOptimal);
-                vk::DescriptorSet const set = desc_alloc.GetHandle(descriptor_set_id);
-                if (set) {
-                    context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
-                                                              pipeline->Layout(),
-                                                              0,
-                                                              1,
-                                                              &set,
-                                                              0,
-                                                              nullptr);
-                }
+                desc_alloc.UpdateImageSamplerArray(descriptor_set_id,
+                                                   0,
+                                                   slot,
+                                                   sampler,
+                                                   texture->View(),
+                                                   vk::ImageLayout::eShaderReadOnlyOptimal);
             }
         }
-        context.command_buffer.drawIndexed(draw_range.index_count, 1, draw_range.first_index, 0, 0);
+
+        vk::DescriptorSet const set = desc_alloc.GetHandle(descriptor_set_id);
+        if (set) {
+            context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                      pipeline->Layout(),
+                                                      0,
+                                                      1,
+                                                      &set,
+                                                      0,
+                                                      nullptr);
+        }
     }
+
+    // 4. DRAW EVERYTHING IN ONE SINGLE BEAUTIFUL CALL!
+    context.command_buffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     EndSwapchainRendering(context);
 }
