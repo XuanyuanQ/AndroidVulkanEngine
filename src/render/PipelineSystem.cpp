@@ -23,12 +23,12 @@ DescriptorSetLayoutKey MakeFrameSetLayoutKey()
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
         },
         // Reserved for shadow map / global textures.
-        // DescriptorBinding{
-        //     .binding = 1,
-        //     .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-        //     .descriptor_count = 1,
-        //     .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        // },
+        DescriptorBinding{
+            .binding = 1,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
     };
     return key;
 }
@@ -364,7 +364,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         vkfw::PipelineRasterizationState rasterization;
         rasterization.polygon_mode = vk::PolygonMode::eFill;
         // Match the demo expectations (accept both windings) until we introduce proper render state keys.
-        rasterization.cull_mode = depth_only_pipeline ? vk::CullModeFlagBits::eBack : vk::CullModeFlagBits::eNone;
+        rasterization.cull_mode = vk::CullModeFlagBits::eNone;
         pipeline_info.rasterization = rasterization;
 
         pipeline_info.depth_stencil.depth_test_enable = depth_only_pipeline;
@@ -457,6 +457,15 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
             range.stageFlags = vk::ShaderStageFlagBits::eCompute;
             range.offset = 0;
             range.size = 112; // 6 planes (6 * 16 = 96 bytes) + total_instances (4 bytes) + 12 bytes padding = 112 bytes
+            push_constants.push_back(range);
+        } else if (!is_compute &&
+                   (key.layout_profile == PipelineLayoutProfile::Global_Set0_Only ||
+                    key.layout_profile == PipelineLayoutProfile::Material_Set0_Set1 ||
+                    key.layout_profile == PipelineLayoutProfile::Full_Set0_Set1_Set2)) {
+            vk::PushConstantRange range{};
+            range.stageFlags = vk::ShaderStageFlagBits::eVertex;
+            range.offset = 0;
+            range.size = sizeof(glm::mat4);
             push_constants.push_back(range);
         }
         uint32_t layout_id = pipeline_layout_cache_->GetOrCreateLayout(layout_key, push_constants);

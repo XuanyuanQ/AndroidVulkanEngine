@@ -6,7 +6,7 @@
             mesh="meshes/viking_room.obj" 
             material="materials/triangle.material.xml"
             visible="true"
-            casts_shadow="false"
+            casts_shadow="true"
             receives_shadow="true" />
             
         <Script class="com.example.trianglegame.PlayerController" />

@@ -118,7 +118,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
     }
     use_frame_data_path_ = true;
     if (renderer_.Graph().PassCount() == 0) {
-        // renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());

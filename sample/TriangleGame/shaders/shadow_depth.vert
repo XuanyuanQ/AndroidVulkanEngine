@@ -6,6 +6,11 @@ layout(set = 0, binding = 0) uniform FrameUbo {
     mat4 view_projection;
 } frame;
 
+layout(push_constant) uniform ObjectPushConstants {
+    mat4 world;
+} object_pc;
+
 void main() {
-    gl_Position = frame.view_projection * vec4(inPosition, 1.0);
+    vec4 worldPosition = object_pc.world * vec4(inPosition, 1.0);
+    gl_Position = frame.view_projection * worldPosition;
 }

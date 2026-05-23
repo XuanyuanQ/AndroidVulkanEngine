@@ -1,3 +1,4 @@
+
 #include "ave/render/RenderPasses.h"
 
 #include "ave/project/SharedDataContract.h"
@@ -60,7 +61,7 @@ vk::Sampler GetShadowSampler(vkfw::VkContext& ctx)
         create_info.maxLod = VK_LOD_CLAMP_NONE;
 
         // 【核心】开启硬件深度比较开关
-        create_info.compareEnable = VK_TRUE; 
+        create_info.compareEnable = VK_FALSE; 
         create_info.compareOp = vk::CompareOp::eLessOrEqual; // 如果当前像素深度小于或等于阴影图里的深度，则视为可见
 
         sampler = std::make_unique<vk::raii::Sampler>(ctx.Device(), create_info);
@@ -149,17 +150,28 @@ glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameDa
     }
 
     glm::vec3 light_direction{0.35f, -1.0f, 0.25f};
+    bool has_light_direction = false;
     for (auto const* light : view.lights) {
         if (!light || !light->cast_shadows) {
             continue;
         }
         if (light->type == "directional" || light->type.empty()) {
-            light_direction = light->direction;
-            break;
+            if (glm::length(light->direction) > 0.0001f) {
+                light_direction = light->direction;
+                has_light_direction = true;
+                break;
+            }
+        } else {
+            glm::vec3 const to_scene = scene_center - light->position;
+            if (glm::length(to_scene) > 0.0001f) {
+                light_direction = to_scene;
+                has_light_direction = true;
+                break;
+            }
         }
     }
 
-    if (glm::length(light_direction) < 0.0001f) {
+    if (!has_light_direction || glm::length(light_direction) < 0.0001f) {
         light_direction = glm::vec3{0.35f, -1.0f, 0.25f};
     }
     light_direction = glm::normalize(light_direction);
@@ -169,14 +181,15 @@ glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameDa
         : glm::vec3{0.0f, 1.0f, 0.0f};
 
     float radius = 20.0f;
+    // float radius = 500.0f;
     if (has_bounds) {
         glm::vec3 const extents = glm::abs(max_bounds - min_bounds);
         radius = std::max(std::max(extents.x, extents.y), std::max(extents.z, 10.0f)) * 0.8f;
     }
 
     glm::vec3 const eye = scene_center - light_direction * (radius * 2.5f);
-    glm::mat4 const light_view = glm::lookAt(eye, scene_center, up);
-    glm::mat4 const light_projection = glm::ortho(-radius, radius, -radius, radius, 0.1f, radius * 6.0f);
+    glm::mat4 const light_view = glm::lookAtRH(eye, scene_center, up);
+    glm::mat4 const light_projection = glm::orthoRH_ZO(-radius, radius, -radius, radius, 0.1f, radius * 6.0f);
     glm::mat4 shadow_view_projection = light_projection * light_view;
     shadow_view_projection[1][1] *= -1.0f;
     return shadow_view_projection;
@@ -456,7 +469,11 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
 
     struct FrameUbo {
-        glm::mat4 view_projection{1.0f};
+        glm::mat4 shadow_view_projection{1.0f};
+    };
+
+    struct ObjectPushConstants {
+        glm::mat4 world{1.0f};
     };
 
     if (!has_vk) {
@@ -491,7 +508,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     shadow_view_projection_ = BuildShadowViewProjection(view, context.frame);
 
     FrameUbo frame_ubo{};
-    frame_ubo.view_projection = shadow_view_projection_;
+    frame_ubo.shadow_view_projection = shadow_view_projection_;
 
     if (!frame_ubo_.IsInitialized()) {
         frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
@@ -503,16 +520,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
 
     if (frame_set_id_ == 0) {
-        DescriptorSetLayoutKey shadowkey;
-        shadowkey.bindings = {
-            DescriptorBinding{
-                .binding = 0,
-                .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
-                .descriptor_count = 1,
-                .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
-            },
-        };
-        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(shadowkey);
+        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
         frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
     }
     if (frame_set_id_ != 0) {
@@ -572,6 +580,14 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
 
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
+        ObjectPushConstants object_push{};
+        object_push.world = renderable->world;
+        context.command_buffer.pushConstants(pipeline->Layout(),
+                                             vk::ShaderStageFlagBits::eVertex,
+                                             0,
+                                             sizeof(ObjectPushConstants),
+                                             &object_push);
+
         if (frame_set_id_ != 0) {
             vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
             if (frame_set) {
@@ -607,6 +623,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
+    // __android_log_print(ANDROID_LOG_INFO, "setRenderVulkan", "Shadow map initialized");
     context.current_shadow_map = &shadow_map_;
     context.shadow_view_projection = shadow_view_projection_;
     shadow_map_initialized_ = true;
@@ -648,6 +665,10 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         glm::vec4 params{0.0f};
     };
 
+    struct ObjectPushConstants {
+        glm::mat4 world{1.0f};
+    };
+
     bool began_rendering = false;
     if (has_vk) {
         vk::ClearValue clear{};
@@ -665,6 +686,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     if (has_vk) {
         FrameUbo frame_ubo{};
         if (context.frame != nullptr) {
+            // frame_ubo.view_projection = context.shadow_view_projection;
             frame_ubo.view_projection = context.frame->view.view_projection;
             frame_ubo.shadow_view_projection = context.shadow_view_projection;  
         }
@@ -684,11 +706,12 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
         if (frame_set_id_ != 0) {
             desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
+            if(context.current_shadow_map) {
+            vk::Sampler sampler = GetShadowSampler(*context.vk);
+            desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
         }
-        // if(context.current_shadow_map) {
-        //     vk::Sampler sampler = GetShadowSampler(*context.vk);
-        //     desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
-        // }
+
     }
     uint32_t renderable_index = 0;
     for (auto const* renderable : view.renderables) {
@@ -801,6 +824,14 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
 
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+        ObjectPushConstants object_push{};
+        object_push.world = renderable->world;
+        context.command_buffer.pushConstants(pipeline->Layout(),
+                                             vk::ShaderStageFlagBits::eVertex,
+                                             0,
+                                             sizeof(ObjectPushConstants),
+                                             &object_push);
 
         vk::DescriptorSet sets[2]{};
         uint32_t set_count = 0;
