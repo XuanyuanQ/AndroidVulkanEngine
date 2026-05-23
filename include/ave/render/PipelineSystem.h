@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <glm/glm.hpp>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
@@ -45,6 +46,9 @@ namespace ave::render {
 
         /// @brief 计算空间剔除布局：仅包含一个用于 Compute Shader 的 Set 0（内含输入的物体列表和输出的剔除结果 SSBO）
         ComputeCulling_Set0_Only = 4,
+
+        /// @brief UI 贴图布局：仅包含一个 Set 0（单个 combined image sampler）
+        Texture_Set0_Only = 5,
     };
 
 // Pipeline key for caching
@@ -77,6 +81,12 @@ struct PipelineKey {
                viewport_width == other.viewport_width &&
                viewport_height == other.viewport_height;
     }
+};
+
+struct UiVertex {
+    glm::vec2 position;
+    glm::vec2 uv;
+    glm::vec4 color;
 };
 
 // Hash for PipelineKey

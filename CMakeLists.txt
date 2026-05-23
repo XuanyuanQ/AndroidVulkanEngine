@@ -14,6 +14,7 @@ add_library(ave_engine STATIC
     src/project/XmlSceneLoader.cpp
     src/game/GameObject.cpp
     src/scene/SceneWorld.cpp
+    src/ui/UIRuntime.cpp
     src/resource/AssetManager.cpp
     src/resource/GpuUploadQueue.cpp
     src/resource/ResourceSystem.cpp

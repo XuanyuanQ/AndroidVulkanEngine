@@ -66,6 +66,13 @@ public:
     std::string_view Name() const override { return "UIPass"; }
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    std::unordered_map<uint32_t, uint32_t> texture_descriptor_sets_{};
+    vkfw::VkBuffer ui_vertex_buffers_[2]{};
+    vkfw::VkBuffer ui_index_buffers_[2]{};
+    vkfw::VkTexture fallback_white_texture_{};
+    uint32_t ui_shader_id_ = 0;
 };
 
 class ToneMappingPass final : public RenderPass {

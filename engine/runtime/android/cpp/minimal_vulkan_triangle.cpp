@@ -120,6 +120,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
     if (renderer_.Graph().PassCount() == 0) {
         renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
     }
     if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
             logError("Failed to initialize FrameGraph backend.");
@@ -240,7 +241,10 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
         "Swapchain extent: %ux%u, aspect=%.4f", extent.width, extent.height, aspect);
     scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem(), aspect);
+    ui_runtime_.SetViewportSize(extent.width, extent.height);
+    ui_runtime_.RebuildFromScene(scene);
     scene_world_.BuildFrameData(frame_index_, frame_data_);
+    ui_runtime_.BuildFrameUi(frame_data_.ui_items);
 
 
 
@@ -293,6 +297,8 @@ void MinimalVulkanTriangle::drawFrame()
         if (use_frame_data_path_) {
             scene_world_.UpdateDebugCamera(delta_time);
             scene_world_.BuildFrameData(frame_index_, frame_data_);
+            ui_runtime_.Update(delta_time);
+            ui_runtime_.BuildFrameUi(frame_data_.ui_items);
             renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
             frame_index_++;
             // No early return; continue looping to process next frame

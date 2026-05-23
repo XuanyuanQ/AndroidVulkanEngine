@@ -73,7 +73,6 @@ private:
     core::FrameViewData view_{};
     std::vector<core::FrameRenderableData> renderables_;
     std::vector<core::FrameLightData> lights_;
-    std::vector<core::FrameUiData> ui_items_;
 };
 
 } // namespace ave::scene

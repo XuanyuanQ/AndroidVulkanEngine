@@ -244,7 +244,6 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
     view_ = {};
     renderables_.clear();
     lights_.clear();
-    ui_items_.clear();
 
     view_.view = glm::mat4(1.0f);
     view_.projection = glm::mat4(1.0f);
@@ -331,41 +330,6 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             lights_.push_back(std::move(frame_light));
         }
 
-        if (components.image.has_value()) {
-            auto const& image = *components.image;
-
-            core::FrameUiData ui{};
-            ui.object_id = object.id;
-            ui.debug_name = object.name;
-            ui.texture_id = image.texture;
-            ui.color = image.color;
-            ui.position = {world_transform.position[0], world_transform.position[1]};
-            ui.size = {100.0f, 100.0f};
-            ui.depth = world_transform.position[2];
-            ui.visible = true;
-            ui.interactable = components.button.has_value();
-
-            ui_items_.push_back(std::move(ui));
-        }
-
-        if (components.progress_bar.has_value()) {
-            auto const& progress_bar = *components.progress_bar;
-
-            core::FrameUiData ui{};
-            ui.object_id = object.id;
-            ui.debug_name = object.name.empty() ? object.id : object.name;
-            ui.position = {world_transform.position[0], world_transform.position[1]};
-            ui.size = {160.0f, 24.0f};
-            ui.depth = world_transform.position[2];
-            ui.visible = true;
-            ui.interactable = false;
-
-            float const denominator = std::max(progress_bar.max_value - progress_bar.min_value, 0.0001f);
-            float const normalized = std::clamp((progress_bar.value - progress_bar.min_value) / denominator, 0.0f, 1.0f);
-            ui.color = {0.20f + 0.60f * normalized, 0.75f, 0.30f, 1.0f};
-
-            ui_items_.push_back(std::move(ui));
-        }
     }
 }
 
@@ -376,7 +340,7 @@ void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame
 
     out_frame.renderables = renderables_;
     out_frame.lights = lights_;
-    out_frame.ui_items = ui_items_;
+    out_frame.ui_items.clear();
     out_frame.resources.meshes.clear();
     out_frame.resources.materials.clear();
     out_frame.resources.textures.clear();

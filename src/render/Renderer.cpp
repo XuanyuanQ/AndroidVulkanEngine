@@ -20,6 +20,8 @@ public:
     vkfw::VkCommandBuffer framegraph_command_buffers{};
     vkfw::VkRenderPass framegraph_render_pass{};
     vkfw::VkFramebufferSet framegraph_framebuffers{};
+    vkfw::VkRenderPass framegraph_load_render_pass{};
+    vkfw::VkFramebufferSet framegraph_load_framebuffers{};
 };
 
 Renderer::Renderer()
@@ -179,6 +181,26 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
             impl_->framegraph_render_pass.Shutdown(ctx);
             return false;
         }
+
+        color_attachment.load_op = vkfw::RenderPassLoadOp::Load;
+        vkfw::RenderPassSubpass load_subpass{};
+        load_subpass.color_attachments.push_back(color_attachment);
+
+        vkfw::RenderPassInfo load_render_pass_info{};
+        load_render_pass_info.subpasses.push_back(load_subpass);
+        load_render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+        if (!impl_->framegraph_load_render_pass.Init(ctx, load_render_pass_info)) {
+            impl_->framegraph_framebuffers.Shutdown(ctx);
+            impl_->framegraph_render_pass.Shutdown(ctx);
+            return false;
+        }
+        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass)) {
+            impl_->framegraph_load_render_pass.Shutdown(ctx);
+            impl_->framegraph_framebuffers.Shutdown(ctx);
+            impl_->framegraph_render_pass.Shutdown(ctx);
+            return false;
+        }
     }
 
     return impl_->framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
@@ -192,6 +214,8 @@ void Renderer::ShutdownFrameGraphBackend()
 {
     if (impl_ != nullptr && vk_context_ != nullptr) {
         impl_->framegraph_command_buffers.Shutdown(*vk_context_);
+        impl_->framegraph_load_framebuffers.Shutdown(*vk_context_);
+        impl_->framegraph_load_render_pass.Shutdown(*vk_context_);
         impl_->framegraph_framebuffers.Shutdown(*vk_context_);
         impl_->framegraph_render_pass.Shutdown(*vk_context_);
     }
@@ -255,6 +279,8 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     if (!ctx.SupportsDynamicRendering()) {
         pass_ctx.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
         pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
+        pass_ctx.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
+        pass_ctx.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
     }
     graph_.Execute(pass_ctx);
 

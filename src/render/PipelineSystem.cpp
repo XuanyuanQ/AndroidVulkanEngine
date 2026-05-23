@@ -80,6 +80,20 @@ DescriptorSetLayoutKey MakeObjectSetLayoutKey()
     return key;
 }
 
+DescriptorSetLayoutKey MakeTextureSetLayoutKey()
+{
+    DescriptorSetLayoutKey key;
+    key.bindings = {
+        DescriptorBinding{
+            .binding = 0,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
+    };
+    return key;
+}
+
 } // namespace
 
 // Descriptor Set Layout Cache
@@ -253,10 +267,40 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     if (!is_compute) {
         bool const depth_only_pipeline =
             (key.rt_format == 0) && (key.depth_format != 0 || key.stencil_format != 0);
+        bool const alpha_blended_pipeline = key.render_state_id == 2;
 
         // Set vertex input state (simplified for now)
         vkfw::PipelineVertexInputState vertex_input;
         vertex_input.topology = vk::PrimitiveTopology::eTriangleList;
+        if (key.vertex_layout_id == 2) {
+            // Lightweight 2D UI Vertex Format: UiVertex
+            vertex_input.vertex_inputs = {
+                // 0. position (glm::vec2) -> location 0
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 0,
+                    .stride = sizeof(ave::render::UiVertex),
+                    .format = vk::Format::eR32G32Sfloat,
+                    .offset = offsetof(ave::render::UiVertex, position),
+                },
+                // 1. uv (glm::vec2) -> location 3 (matches inTexcoord0 in ui_textured.vert)
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 3,
+                    .stride = sizeof(ave::render::UiVertex),
+                    .format = vk::Format::eR32G32Sfloat,
+                    .offset = offsetof(ave::render::UiVertex, uv),
+                },
+                // 2. color (glm::vec4) -> location 5 (matches inColor in ui_textured.vert)
+                vkfw::PipelineVertexInput{
+                    .binding = 0,
+                    .location = 5,
+                    .stride = sizeof(ave::render::UiVertex),
+                    .format = vk::Format::eR32G32B32A32Sfloat,
+                    .offset = offsetof(ave::render::UiVertex, color),
+                },
+            };
+        } else {
             // SharedDataContract::VertexData: position + color + texcoord0.
             vertex_input.vertex_inputs = {
                 // 0. position (glm::vec3)
@@ -308,6 +352,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     .offset = offsetof(ave::project::VertexData, color),
                 },
             };
+        }
         pipeline_info.vertex_input = vertex_input;
         
         // Set rasterization state
@@ -322,7 +367,17 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         pipeline_info.depth_stencil.depth_compare_op = vk::CompareOp::eLessOrEqual;
 
         if (!depth_only_pipeline) {
-            pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
+            vkfw::PipelineColorBlendAttachment blend_attachment{};
+            if (alpha_blended_pipeline) {
+                blend_attachment.blend_enable = true;
+                blend_attachment.src_color_blend = vk::BlendFactor::eSrcAlpha;
+                blend_attachment.dst_color_blend = vk::BlendFactor::eOneMinusSrcAlpha;
+                blend_attachment.color_blend_op = vk::BlendOp::eAdd;
+                blend_attachment.src_alpha_blend = vk::BlendFactor::eOne;
+                blend_attachment.dst_alpha_blend = vk::BlendFactor::eOneMinusSrcAlpha;
+                blend_attachment.alpha_blend_op = vk::BlendOp::eAdd;
+            }
+            pipeline_info.color_blend.attachments = {blend_attachment};
         }
     }
     
@@ -334,6 +389,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         uint32_t material_set_layout_id = 0;
         uint32_t object_set_layout_id = 0;
         uint32_t compute_set_layout_id = 0;
+        uint32_t texture_set_layout_id = 0;
 
         if (auto* desc_cache = pipeline_layout_cache_->GetDescriptorSetLayoutCache()) {
             if (is_compute) {
@@ -368,6 +424,9 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                 if (key.layout_profile == PipelineLayoutProfile::Full_Set0_Set1_Set2) {
                     object_set_layout_id = desc_cache->GetOrCreateLayout(MakeObjectSetLayoutKey());
                 }
+                if (key.layout_profile == PipelineLayoutProfile::Texture_Set0_Only) {
+                    texture_set_layout_id = desc_cache->GetOrCreateLayout(MakeTextureSetLayoutKey());
+                }
             }
         }
 
@@ -382,6 +441,9 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         }
         if (object_set_layout_id != 0) {
             layout_key.set_layout_ids.push_back(object_set_layout_id);
+        }
+        if (texture_set_layout_id != 0) {
+            layout_key.set_layout_ids.push_back(texture_set_layout_id);
         }
 
         std::vector<vk::PushConstantRange> push_constants;

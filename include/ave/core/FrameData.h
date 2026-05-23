@@ -67,6 +67,13 @@ struct FrameLightData {
 };
 
 struct FrameUiData {
+    enum class Kind : uint8_t {
+        Image,
+        ButtonBackground,
+        ProgressBarBackground,
+        ProgressBarFill,
+    };
+
     std::string object_id;
     std::string debug_name;
 
@@ -80,6 +87,7 @@ struct FrameUiData {
     float depth = 0.0f;
     bool visible = true;
     bool interactable = false;
+    Kind kind = Kind::Image;
 
     uint32_t layer_mask = ToMask(RenderLayer::UI);
     uint32_t pass_mask = DefaultUiPassMask();

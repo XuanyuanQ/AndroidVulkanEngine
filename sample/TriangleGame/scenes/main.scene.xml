@@ -9,4 +9,19 @@
         <MeshRenderer mesh="meshes/viking_room.obj" material="materials/triangle.material.xml" />
         <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
+        <GameObject id="ui_room_preview" name="Room Preview">
+        <Transform position="0.72,-0.72,0.02" rotation="0,0,0" scale="0.80,0.80,1" />
+        <Image texture="textures/viking_room.png" color="1,1,1,0.95" />
+    </GameObject>
+
+    <GameObject id="ui_interact_button" name="Interact Button">
+        <Transform position="-0.72,-0.76,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
+        <Image texture="textures/viking_room.png" color="0.85,0.92,1,0.78" />
+        <Button target="PlayerController" method="interact" />
+    </GameObject>
+
+    <GameObject id="ui_health_bar" name="Health Bar">
+        <Transform position="-0.48,0.82,0.00" rotation="0,0,0" scale="1.50,1.00,1" />
+        <ProgressBar value="0.72" min="0" max="1" />
+    </GameObject>
 </Scene>

@@ -6,6 +6,7 @@
 #include "ave/core/FrameData.h"
 #include "ave/render/Renderer.h"
 #include "ave/scene/SceneWorld.h"
+#include "ave/ui/UIRuntime.h"
 
 #include <android/asset_manager.h>
 #include <android/native_window.h>
@@ -48,6 +49,7 @@ private:
     uint32_t sync_frame_index_ = 0;
     ave::render::Renderer renderer_{};
     ave::scene::SceneWorld scene_world_{};
+    ave::ui::UIRuntime ui_runtime_{};
     ave::core::FrameData frame_data_{};
     std::vector<ave::render::RasterColorVertex> vertices_{};
     uint32_t model_mesh_id_ = 0;

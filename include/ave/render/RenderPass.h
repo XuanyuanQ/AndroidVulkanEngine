@@ -59,6 +59,8 @@ struct RenderPassContext {
     vk::CommandBuffer command_buffer = {};
     vk::RenderPass compatibility_render_pass = {};
     vk::Framebuffer compatibility_framebuffer = {};
+    vk::RenderPass compatibility_load_render_pass = {};
+    vk::Framebuffer compatibility_load_framebuffer = {};
 
     // Optional: capture debug strings per pass for early bring-up.
     std::vector<std::string>* debug_output = nullptr;
