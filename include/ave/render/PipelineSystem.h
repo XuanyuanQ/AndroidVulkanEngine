@@ -163,6 +163,10 @@ struct PipelineLayoutKey {
     }
 };
 
+DescriptorSetLayoutKey MakeFrameSetLayoutKey();
+DescriptorSetLayoutKey MakeMaterialSetLayoutKey();
+DescriptorSetLayoutKey MakeObjectSetLayoutKey();
+
 // Hash for PipelineLayoutKey
 struct PipelineLayoutKeyHash {
     std::size_t operator()(PipelineLayoutKey const& key) const {

@@ -196,6 +196,14 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             mesh.mesh = Attribute(tag_text, "mesh");
             mesh.material = Attribute(tag_text, "material");
             mesh.topology = Attribute(tag_text, "topology", mesh.topology);
+            
+            std::string cs = Attribute(tag_text, "casts_shadow");
+            if (cs.empty()) cs = Attribute(tag_text, "castsShadow");
+            mesh.casts_shadow = cs.empty() || (cs == "true");
+
+            std::string rs = Attribute(tag_text, "receives_shadow");
+            if (rs.empty()) rs = Attribute(tag_text, "receivesShadow");
+            mesh.receives_shadow = rs.empty() || (rs == "true");
 
             if (!tag_body.empty()) {
                 for (auto const& vertex_tag : MatchTags(tag_body, "Vertex")) {

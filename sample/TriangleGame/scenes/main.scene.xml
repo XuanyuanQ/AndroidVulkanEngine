@@ -1,12 +1,14 @@
 <Scene name="TriangleScene">
-    <GameObject id="camera" name="Main Camera">
-        <Transform position="0,0,3" rotation="0,0,0" scale="1,1,1" />
-        <Camera fov="60" />
-    </GameObject>
-
     <GameObject id="room" name="Viking Room">
         <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
-        <MeshRenderer mesh="meshes/viking_room.obj" material="materials/triangle.material.xml" />
+        
+        <MeshRenderer 
+            mesh="meshes/viking_room.obj" 
+            material="materials/triangle.material.xml"
+            visible="true"
+            casts_shadow="false"
+            receives_shadow="true" />
+            
         <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
         <GameObject id="ui_room_preview" name="Room Preview">

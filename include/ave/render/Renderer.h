@@ -52,7 +52,7 @@ public:
     void ShutdownRaster();
 
     // FrameGraph Vulkan backend (ForwardOpaque bring-up).
-    bool InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync);
+
     bool InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                      vkfw::VkSwapchain& swapchain,
                                      vkfw::VkFrameSync& sync);

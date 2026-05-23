@@ -10,7 +10,6 @@
 #include <cstddef>
 
 namespace ave::render {
-namespace {
 
 // Frame descriptor set layout: only Uniform Buffer needed for view_projection
 DescriptorSetLayoutKey MakeFrameSetLayoutKey()
@@ -93,8 +92,6 @@ DescriptorSetLayoutKey MakeTextureSetLayoutKey()
     };
     return key;
 }
-
-} // namespace
 
 // Descriptor Set Layout Cache
 DescriptorSetLayoutCache::DescriptorSetLayoutCache() = default;
@@ -740,6 +737,7 @@ void PipelineSystem::Clear()
     pipeline_layout_cache_.Clear();
     pipeline_cache_.Clear();
     descriptor_allocator_.Clear();
-}
 
-} // namespace ave::render
+} 
+
+}// namespace ave::render

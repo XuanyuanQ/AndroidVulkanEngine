@@ -18,6 +18,7 @@ import vulkan_hpp;
 namespace vkfw {
 class VkContext;
 class VkSwapchain;
+class VkTexture;
 }
 
 namespace ave::resource {
@@ -61,6 +62,9 @@ struct RenderPassContext {
     vk::Framebuffer compatibility_framebuffer = {};
     vk::RenderPass compatibility_load_render_pass = {};
     vk::Framebuffer compatibility_load_framebuffer = {};
+
+    mutable vkfw::VkTexture* current_shadow_map = nullptr;
+    mutable glm::mat4 shadow_view_projection{1.0f};//测试用
 
     // Optional: capture debug strings per pass for early bring-up.
     std::vector<std::string>* debug_output = nullptr;

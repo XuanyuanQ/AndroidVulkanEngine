@@ -152,6 +152,8 @@ struct MeshRendererData {
     std::string topology{"triangleList"};
     std::vector<VertexData> vertices;
     std::vector<uint32_t> indices;
+    bool casts_shadow = true;
+    bool receives_shadow = true;
 };
 
 struct HierarchyData {

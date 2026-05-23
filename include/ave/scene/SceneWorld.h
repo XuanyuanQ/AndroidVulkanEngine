@@ -65,6 +65,7 @@ bool IsKeyPressed(int32_t key_code) {
     return g_key_states[key_code]; // 如果没存过，默认返回 false
 }
 
+void UpdateDebugLight( float delta_time);
 void UpdateDebugCamera( float delta_time);
 void ConsumeMouseMovement(float& out_dx, float& out_dy);
 #endif

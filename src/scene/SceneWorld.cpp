@@ -156,6 +156,44 @@ void SceneWorld::ConsumeMouseMovement(float& out_dx, float& out_dy) {
     }
 }
 
+void SceneWorld::UpdateDebugLight( float delta_time){
+    static float sunTime_ = 0.0f;
+    static glm::vec3 lightPosition_{0.0f, 100.0f, -100.0f};
+
+    sunTime_ += delta_time * 1.0f; // 太阳绕 Y 轴旋转的速度
+    float const sunRadius = 100.0f;
+    lightPosition_.x = sin(sunTime_) * sunRadius;
+    lightPosition_.y = cos(sunTime_) * sunRadius;
+    lightPosition_.z = -100.0f;
+
+    // // 如果没有测试光源，就先添加一个
+    if (lights_.empty()) {
+        core::FrameLightData spot_light{
+        .object_id       = "light_player_flashlight",               // 唯一标识符，比如玩家的手电筒
+        .debug_name      = "Flashlight_Render_Node",               // 用于在渲染器或编辑器里显示的调试名称
+        .type            = "spot",                                 // 声明为聚光灯类型
+
+        .position        = lightPosition_, 
+        .direction       = glm::vec3(0.0f, 0.0f, -1.0f),           // 沿着 Z 轴负方向（前方）照射
+        .color           = glm::vec3(1.0f, 0.95f, 0.85f),          // 微黄的暖色白光
+
+        .intensity       = 5.0f,                                   // 光照强度系数
+        .range           = 25.0f,                                  // 最远照射距离 25 米
+        .inner_angle     = 15.0f,                                  // 内锥角 15 度（核心最亮区域）
+        .outer_angle     = 30.0f,                                  // 外锥角 30 度（边缘羽化衰减区域）
+
+        .cast_shadows    = true,                                   // 该光源需要开启阴影生成（Shadow Pass）
+        .light_group     = 1                                       // 分配到 1 号灯光组（例如用于区分室内/室外灯光）
+    };
+        lights_.push_back(spot_light);
+    }else{
+        // 否则就更新第一个光源的位置（假设它就是我们要测试的光源）
+        lights_[0].position[0] = lightPosition_.x;
+        lights_[0].position[1] = lightPosition_.y;
+        lights_[0].position[2] = lightPosition_.z;
+    }
+}
+
 void SceneWorld::UpdateDebugCamera(float delta_time)
 {
     // ────────────────────────────────────────────────────────
@@ -301,8 +339,8 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             renderable.index_count = static_cast<uint32_t>(mesh.indices.size());
             renderable.vertex_count = static_cast<uint32_t>(mesh.vertices.size());
             renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, world_transform.position);
-            renderable.casts_shadow = false;
-            renderable.receives_shadow = true;
+            renderable.casts_shadow = mesh.casts_shadow;
+            renderable.receives_shadow = mesh.receives_shadow;
             renderable.sort_key =
                 (static_cast<uint64_t>(renderable.material_handle) << 32)
                 ^ static_cast<uint64_t>(renderable.mesh_handle);
@@ -330,6 +368,16 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             lights_.push_back(std::move(frame_light));
         }
 
+    }
+
+    if (!has_camera) {
+        view_.camera_object_id = "default_camera";
+        view_.near_plane = 0.1f;
+        view_.far_plane = 1000.0f;
+        view_.world_position = glm::vec3(0.0f, 0.0f, 8.0f);
+        view_.view = SetInverseTranslation(view_.world_position);
+        view_.projection = SetPerspective(60.0f, aspect_ratio, 0.1f, 1000.0f);
+        view_.view_projection = view_.projection * view_.view;
     }
 }
 

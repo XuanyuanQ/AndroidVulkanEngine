@@ -114,7 +114,6 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
                                             RasterShaderCode const& shaders)
 {
     (void)shaders; // Unused for now but kept for signature compatibility
-      InitializeFrameGraphBackend(ctx, sync);
       graph_.AddPass(std::make_unique<ComputePass>());
       graph_.AddPass(std::make_unique<PBRPass>());
       graph_.AddPass(std::make_unique<ShadowPass>());
@@ -133,19 +132,6 @@ void Renderer::ShutdownRaster()
 }
 
 
-bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx, vkfw::VkFrameSync& sync)
-{
-    if (impl_ == nullptr) {
-        impl_ = std::make_unique<Impl>();
-    }
-    SetVkContext(&ctx);
-
-    return impl_->framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
-                                                          .level = vkfw::CommandBufferLevel::Primary,
-                                                          .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
-                                                          .count = sync.FramesInFlight(),
-                                                      });
-}
 
 bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                            vkfw::VkSwapchain& swapchain,

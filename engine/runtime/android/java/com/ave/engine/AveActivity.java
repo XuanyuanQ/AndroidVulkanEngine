@@ -74,7 +74,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     // 2. 响应鼠标右键拖动事件
     private float mLastX = 0;
     private float mLastY = 0;
-    private boolean mIsRightButtonPressed = false;
+    private boolean mHasLastTouch = false;
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
@@ -82,13 +82,18 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-                // 只要鼠标左键点下（或者手指按下），记录初始坐标
                 mLastX = event.getX();
                 mLastY = event.getY();
+                mHasLastTouch = true;
                 break;
 
             case MotionEvent.ACTION_MOVE:
-                // 只要按住并拖动，计算偏移量
+                if (!mHasLastTouch) {
+                    mLastX = event.getX();
+                    mLastY = event.getY();
+                    mHasLastTouch = true;
+                    break;
+                }
                 float dx = event.getX() - mLastX;
                 float dy = event.getY() - mLastY;
 
@@ -104,6 +109,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
                 break;
                 
             case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                mHasLastTouch = false;
                 break;
         }
 

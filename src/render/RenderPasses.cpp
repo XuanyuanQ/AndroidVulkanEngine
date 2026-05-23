@@ -40,6 +40,34 @@ vk::Sampler GetCommonSampler(vkfw::VkContext& ctx)
     return **sampler;
 }
 
+vk::Sampler GetShadowSampler(vkfw::VkContext& ctx)
+{
+    static std::unique_ptr<vk::raii::Sampler> sampler;
+    if (!sampler) {
+        vk::SamplerCreateInfo create_info{};
+        create_info.magFilter = vk::Filter::eLinear;
+        create_info.minFilter = vk::Filter::eLinear;
+        create_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
+        
+        // 阴影贴图边缘外不要重复，使用 Clamp 边界模式
+        create_info.addressModeU = vk::SamplerAddressMode::eClampToBorder;
+        create_info.addressModeV = vk::SamplerAddressMode::eClampToBorder;
+        create_info.addressModeW = vk::SamplerAddressMode::eClampToBorder;
+        
+        // 边界颜色设为不透明白色，代表阴影图外永远是亮部
+        create_info.borderColor = vk::BorderColor::eFloatOpaqueWhite;
+        
+        create_info.maxLod = VK_LOD_CLAMP_NONE;
+
+        // 【核心】开启硬件深度比较开关
+        create_info.compareEnable = VK_TRUE; 
+        create_info.compareOp = vk::CompareOp::eLessOrEqual; // 如果当前像素深度小于或等于阴影图里的深度，则视为可见
+
+        sampler = std::make_unique<vk::raii::Sampler>(ctx.Device(), create_info);
+    }
+    return **sampler;
+}
+
 void EnsureFallbackWhiteTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture)
 {
     if (texture.IsInitialized()) {
@@ -75,52 +103,6 @@ vkfw::VkTexture const* ResolveTextureOrFallback(vkfw::VkContext& ctx,
     return fallback_texture.IsInitialized() ? &fallback_texture : nullptr;
 }
 
-
-DescriptorSetLayoutKey MakeFrameSetLayoutKey()
-{
-    DescriptorSetLayoutKey key;
-    key.bindings = {
-        DescriptorBinding{
-            .binding = 0,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
-        },
-    };
-    return key;
-}
-
-DescriptorSetLayoutKey MakeMaterialSetLayoutKey()
-{
-    DescriptorSetLayoutKey key;
-    key.bindings = {
-        DescriptorBinding{
-            .binding = 0,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
-        DescriptorBinding{
-            .binding = 1,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
-        DescriptorBinding{
-            .binding = 2,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
-        DescriptorBinding{
-            .binding = 3,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
-    };
-    return key;
-}
 
 PipelineKey MakePipelineKey(uint32_t shader_id,
                             ave::resource::MeshRuntime const& mesh)
@@ -533,7 +515,16 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
 
     if (frame_set_id_ == 0) {
-        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
+        DescriptorSetLayoutKey shadowkey;
+        shadowkey.bindings = {
+            DescriptorBinding{
+                .binding = 0,
+                .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::UniformBuffer),
+                .descriptor_count = 1,
+                .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eAllGraphics),
+            },
+        };
+        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(shadowkey);
         frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
     }
     if (frame_set_id_ != 0) {
@@ -628,6 +619,8 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
+    context.current_shadow_map = &shadow_map_;
+    context.shadow_view_projection = shadow_view_projection_;
     shadow_map_initialized_ = true;
 }
 
@@ -659,6 +652,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
     struct FrameUbo {
         glm::mat4 view_projection{1.0f};
+        glm::mat4 shadow_view_projection{1.0f};
     };
 
     struct MaterialUbo {
@@ -669,9 +663,9 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     bool began_rendering = false;
     if (has_vk) {
         vk::ClearValue clear{};
-        clear.color.float32[0] = 0.03f;
-        clear.color.float32[1] = 0.04f;
-        clear.color.float32[2] = 0.06f;
+        clear.color.float32[0] = 1.0f;
+        clear.color.float32[1] = 1.0f;
+        clear.color.float32[2] = 1.0f;
         clear.color.float32[3] = 1.0f;
         began_rendering = BeginSwapchainRendering(context, clear, true);
         if (!began_rendering) {
@@ -684,6 +678,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         FrameUbo frame_ubo{};
         if (context.frame != nullptr) {
             frame_ubo.view_projection = context.frame->view.view_projection;
+            frame_ubo.shadow_view_projection = context.shadow_view_projection;  
         }
 
         if (!frame_ubo_.IsInitialized()) {
@@ -702,9 +697,16 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         if (frame_set_id_ != 0) {
             desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
         }
+        // if(context.current_shadow_map) {
+        //     vk::Sampler sampler = GetShadowSampler(*context.vk);
+        //     desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+        // }
     }
     uint32_t renderable_index = 0;
     for (auto const* renderable : view.renderables) {
+        if (!has_vk) {
+            continue;
+        }
         if (!renderable) {
             renderable_index++;
             continue;
@@ -716,7 +718,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             renderable_index++;
             continue;
         }
-        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "frame_index: %llu", context.frame->frame_index);
         auto const* material = renderable->material_handle != 0
             ? mat_mgr.GetMaterial(renderable->material_handle)
             : mat_mgr.GetMaterialByName(renderable->material_id);
@@ -751,10 +752,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  pipeline create failed: %s", renderable->debug_name.c_str());
-            continue;
-        }
-
-        if (!has_vk) {
             continue;
         }
 

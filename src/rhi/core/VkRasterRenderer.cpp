@@ -368,9 +368,9 @@ void VulkanRasterRenderer::recordCommandBuffer(vkfw::VkSwapchain& swapchain,
                                  {}, {}, {}, to_color);
 
   vk::ClearValue clear{};
-  clear.color.float32[0] = 0.03f;
-  clear.color.float32[1] = 0.04f;
-  clear.color.float32[2] = 0.06f;
+  clear.color.float32[0] = 1.0f;
+  clear.color.float32[1] = 1.0f;
+  clear.color.float32[2] = 1.0f;
   clear.color.float32[3] = 1.0f;
 
   if (use_dynamic_rendering_) {

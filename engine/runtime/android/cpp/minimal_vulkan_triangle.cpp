@@ -118,6 +118,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
     }
     use_frame_data_path_ = true;
     if (renderer_.Graph().PassCount() == 0) {
+        // renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
@@ -292,9 +293,9 @@ void MinimalVulkanTriangle::drawFrame()
         float delta_time = std::chrono::duration<float>(current_time - last_time).count();
         last_time = current_time;
         if (delta_time > 0.1f) delta_time = 0.1f; // 限制单帧最大时长
-
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
         if (use_frame_data_path_) {
+            scene_world_.UpdateDebugLight(delta_time);
             scene_world_.UpdateDebugCamera(delta_time);
             scene_world_.BuildFrameData(frame_index_, frame_data_);
             ui_runtime_.Update(delta_time);
