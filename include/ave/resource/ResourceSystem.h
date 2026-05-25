@@ -77,7 +77,7 @@ struct MaterialRuntime {
     uint32_t metallic_roughness_texture = 0;
     
     // PBR parameters
-    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 base_color{0.5f, 0.5f, 0.5f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
     

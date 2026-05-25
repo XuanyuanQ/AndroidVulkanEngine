@@ -180,8 +180,8 @@ glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameDa
         ? glm::vec3{0.0f, 0.0f, 1.0f}
         : glm::vec3{0.0f, 1.0f, 0.0f};
 
-    float radius = 20.0f;
-    // float radius = 500.0f;
+    // float radius = 20.0f;
+    float radius = 500.0f;
     if (has_bounds) {
         glm::vec3 const extents = glm::abs(max_bounds - min_bounds);
         radius = std::max(std::max(extents.x, extents.y), std::max(extents.z, 10.0f)) * 0.8f;
@@ -288,7 +288,7 @@ void EndShadowMapRendering(RenderPassContext const& context)
     }
 }
 
-bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue const& clear_value, bool clear_color)
+bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue const& clear_value, bool clear_color, vkfw::VkTexture const* depth_texture = nullptr)
 {
     if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{}) {
         return false;
@@ -299,6 +299,7 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
     if (context.vk->SupportsDynamicRendering()) {
+        vk::ClearDepthStencilValue clear_depth{1.0f, 0};
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo color_attachment{};
             color_attachment.imageView = context.swapchain->ImageView(context.swapchain_image_index);
@@ -307,11 +308,23 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
             color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             color_attachment.clearValue = clear_value;
 
+            vk::RenderingAttachmentInfo depth_attachment{};
+            if (depth_texture && depth_texture->IsInitialized()) {
+                depth_attachment.imageView = depth_texture->View();
+                depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+                depth_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
+                depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+                depth_attachment.clearValue.depthStencil = clear_depth;
+            }
+
             vk::RenderingInfo rendering_info{};
             rendering_info.renderArea = vk::Rect2D{{0, 0}, extent};
             rendering_info.layerCount = 1;
             rendering_info.colorAttachmentCount = 1;
             rendering_info.pColorAttachments = &color_attachment;
+            if (depth_texture && depth_texture->IsInitialized()) {
+                rendering_info.pDepthAttachment = &depth_attachment;
+            }
 
             context.command_buffer.beginRendering(rendering_info);
         } else {
@@ -322,11 +335,23 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
             color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             color_attachment.clearValue = clear_value;
 
+            vk::RenderingAttachmentInfoKHR depth_attachment{};
+            if (depth_texture && depth_texture->IsInitialized()) {
+                depth_attachment.imageView = depth_texture->View();
+                depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+                depth_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
+                depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+                depth_attachment.clearValue.depthStencil = clear_depth;
+            }
+
             vk::RenderingInfoKHR rendering_info{};
             rendering_info.renderArea = vk::Rect2D{{0, 0}, extent};
             rendering_info.layerCount = 1;
             rendering_info.colorAttachmentCount = 1;
             rendering_info.pColorAttachments = &color_attachment;
+            if (depth_texture && depth_texture->IsInitialized()) {
+                rendering_info.pDepthAttachment = &depth_attachment;
+            }
 
             context.command_buffer.beginRenderingKHR(rendering_info);
         }
@@ -671,12 +696,46 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
     bool began_rendering = false;
     if (has_vk) {
+        uint32_t const width = context.swapchain->Extent().width;
+        uint32_t const height = context.swapchain->Extent().height;
+
+        if (depth_stencil_.IsInitialized()) {
+            auto const extent = depth_stencil_.Extent();
+            if (extent.width != width || extent.height != height) {
+                depth_stencil_.Shutdown(*context.vk);
+            }
+        }
+
+        if (!depth_stencil_.IsInitialized()) {
+            if (!depth_stencil_.Init(*context.vk, vkfw::TextureInfo{
+                                                   .width = width,
+                                                   .height = height,
+                                                   .mip_levels = 1,
+                                                   .format = vkfw::TextureFormat::D32_SFLOAT,
+                                                   .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                   .mipmap = false,
+                                               })) {
+                __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "PBRPass failed to create depth stencil texture");
+                return;
+            }
+        }
+
+        TransitionImageLayout(context.command_buffer,
+                              depth_stencil_.Handle(),
+                              vk::ImageAspectFlagBits::eDepth,
+                              vk::ImageLayout::eUndefined,
+                              vk::ImageLayout::eDepthAttachmentOptimal,
+                              {},
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentRead,
+                              vk::PipelineStageFlagBits::eTopOfPipe,
+                              vk::PipelineStageFlagBits::eEarlyFragmentTests);
+
         vk::ClearValue clear{};
         clear.color.float32[0] = 1.0f;
         clear.color.float32[1] = 1.0f;
         clear.color.float32[2] = 1.0f;
         clear.color.float32[3] = 1.0f;
-        began_rendering = BeginSwapchainRendering(context, clear, true);
+        began_rendering = BeginSwapchainRendering(context, clear, true, &depth_stencil_);
         if (!began_rendering) {
             __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "PBRPass failed to begin rendering");
             return;
@@ -733,6 +792,18 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             ? mat_mgr.GetMaterial(renderable->material_handle)
             : mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
+            if (fallback_material_id_ == 0) {
+                uint32_t fallback_shader_id = shader_mgr.LoadShader("compiled_shaders/solid_triangle");
+                if (fallback_shader_id != 0) {
+                    fallback_material_id_ = mat_mgr.CreateMaterial("__fallback/default_material__", fallback_shader_id);
+                    mat_mgr.SetBaseColor(fallback_material_id_, glm::vec4{0.85f, 0.85f, 0.88f, 1.0f});
+                }
+            }
+            if (fallback_material_id_ != 0) {
+                material = mat_mgr.GetMaterial(fallback_material_id_);
+            }
+        }
+        if (!material) {
             __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip material: %s", renderable->material_id.c_str());
             continue;
         }
@@ -755,6 +826,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         if (has_vk) {
             key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
+            key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
             key.viewport_width = context.swapchain->Extent().width;
             key.viewport_height = context.swapchain->Extent().height;
         }

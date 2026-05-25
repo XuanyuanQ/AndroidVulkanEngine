@@ -47,6 +47,8 @@ private:
     uint32_t frame_set_id_ = 0;
     std::unordered_map<uint32_t, MaterialBinding> material_bindings_{};
     vkfw::VkTexture fallback_white_texture_{};
+    uint32_t fallback_material_id_ = 0;
+    vkfw::VkTexture depth_stencil_{};
 };
 
 class ComputePass final : public RenderPass {

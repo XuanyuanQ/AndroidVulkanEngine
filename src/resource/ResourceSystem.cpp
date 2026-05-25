@@ -4,9 +4,14 @@
 #include "VkShader.hpp"
 #include <glm/glm.hpp>
 #include <filesystem>
+#include <algorithm>
+#include <array>
+#include <optional>
+#include <sstream>
 // #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include <android/log.h>
+#include <numbers>
 
 
 namespace ave::resource {
@@ -134,6 +139,196 @@ void PreparePreviewMeshData(project::MeshData& mesh)
     }
 }
 
+project::VertexData MakeVertex(glm::vec3 const& position,
+                               glm::vec3 const& normal,
+                               glm::vec2 const& uv,
+                               glm::vec4 const& tangent = glm::vec4{1.0f, 0.0f, 0.0f, 1.0f})
+{
+    project::VertexData vertex{};
+    vertex.position = position;
+    vertex.normal = normal;
+    vertex.tangent = tangent;
+    vertex.texcoord0 = uv;
+    vertex.color = glm::vec4{1.0f};
+    return vertex;
+}
+
+project::MeshData BuildPlaneMeshData(std::string const& name)
+{
+    project::MeshData mesh{};
+    mesh.id = name;
+    mesh.source = name;
+    mesh.topology = "triangleList";
+    mesh.vertices = {
+        MakeVertex({-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}),
+        MakeVertex({ 0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}),
+        MakeVertex({ 0.5f, 0.0f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}),
+        MakeVertex({-0.5f, 0.0f,  0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}),
+    };
+    mesh.indices = {0, 1, 2, 0, 2, 3};
+    return mesh;
+}
+
+project::MeshData BuildCubeMeshData(std::string const& name)
+{
+    project::MeshData mesh{};
+    mesh.id = name;
+    mesh.source = name;
+    mesh.topology = "triangleList";
+
+    auto append_face = [&mesh](glm::vec3 const& normal,
+                               glm::vec4 const& tangent,
+                               std::array<glm::vec3, 4> const& positions) {
+        uint32_t const base_index = static_cast<uint32_t>(mesh.vertices.size());
+        mesh.vertices.push_back(MakeVertex(positions[0], normal, {0.0f, 1.0f}, tangent));
+        mesh.vertices.push_back(MakeVertex(positions[1], normal, {1.0f, 1.0f}, tangent));
+        mesh.vertices.push_back(MakeVertex(positions[2], normal, {1.0f, 0.0f}, tangent));
+        mesh.vertices.push_back(MakeVertex(positions[3], normal, {0.0f, 0.0f}, tangent));
+        mesh.indices.insert(mesh.indices.end(), {
+            base_index + 0, base_index + 1, base_index + 2,
+            base_index + 0, base_index + 2, base_index + 3,
+        });
+    };
+
+    append_face({ 0.0f,  0.0f,  1.0f}, {1.0f, 0.0f, 0.0f, 1.0f},
+                {{{-0.5f, -0.5f,  0.5f}, { 0.5f, -0.5f,  0.5f}, { 0.5f,  0.5f,  0.5f}, {-0.5f,  0.5f,  0.5f}}});
+    append_face({ 0.0f,  0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f, 1.0f},
+                {{{ 0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f,  0.5f, -0.5f}, { 0.5f,  0.5f, -0.5f}}});
+    append_face({ 1.0f,  0.0f,  0.0f}, {0.0f, 0.0f, -1.0f, 1.0f},
+                {{{ 0.5f, -0.5f,  0.5f}, { 0.5f, -0.5f, -0.5f}, { 0.5f,  0.5f, -0.5f}, { 0.5f,  0.5f,  0.5f}}});
+    append_face({-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f, 1.0f, 1.0f},
+                {{{-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f,  0.5f}, {-0.5f,  0.5f,  0.5f}, {-0.5f,  0.5f, -0.5f}}});
+    append_face({ 0.0f,  1.0f,  0.0f}, {1.0f, 0.0f, 0.0f, 1.0f},
+                {{{-0.5f,  0.5f,  0.5f}, { 0.5f,  0.5f,  0.5f}, { 0.5f,  0.5f, -0.5f}, {-0.5f,  0.5f, -0.5f}}});
+    append_face({ 0.0f, -1.0f,  0.0f}, {1.0f, 0.0f, 0.0f, 1.0f},
+                {{{-0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f,  0.5f}, {-0.5f, -0.5f,  0.5f}}});
+
+    return mesh;
+}
+
+project::MeshData BuildSphereMeshData(std::string const& name, uint32_t rings = 16, uint32_t segments = 32)
+{
+    project::MeshData mesh{};
+    mesh.id = name;
+    mesh.source = name;
+    mesh.topology = "triangleList";
+
+    for (uint32_t ring = 0; ring <= rings; ++ring) {
+        float const v = static_cast<float>(ring) / static_cast<float>(rings);
+        float const phi = v * std::numbers::pi_v<float>;
+        float const y = std::cos(phi) * 0.5f;
+        float const radius = std::sin(phi) * 0.5f;
+
+        for (uint32_t segment = 0; segment <= segments; ++segment) {
+            float const u = static_cast<float>(segment) / static_cast<float>(segments);
+            float const theta = u * std::numbers::pi_v<float> * 2.0f;
+
+            glm::vec3 const position{
+                radius * std::cos(theta),
+                y,
+                radius * std::sin(theta),
+            };
+            glm::vec3 const normal = glm::normalize(position);
+            glm::vec4 const tangent{-std::sin(theta), 0.0f, std::cos(theta), 1.0f};
+            mesh.vertices.push_back(MakeVertex(position, normal, {u, 1.0f - v}, tangent));
+        }
+    }
+
+    uint32_t const stride = segments + 1;
+    for (uint32_t ring = 0; ring < rings; ++ring) {
+        for (uint32_t segment = 0; segment < segments; ++segment) {
+            uint32_t const a = ring * stride + segment;
+            uint32_t const b = a + stride;
+            mesh.indices.insert(mesh.indices.end(), {a, b, a + 1, a + 1, b, b + 1});
+        }
+    }
+
+    return mesh;
+}
+
+project::MeshData BuildCylinderMeshData(std::string const& name, uint32_t segments = 24)
+{
+    project::MeshData mesh{};
+    mesh.id = name;
+    mesh.source = name;
+    mesh.topology = "triangleList";
+
+    float constexpr half_height = 0.5f;
+    float constexpr radius = 0.5f;
+
+    for (uint32_t segment = 0; segment <= segments; ++segment) {
+        float const u = static_cast<float>(segment) / static_cast<float>(segments);
+        float const angle = u * std::numbers::pi_v<float> * 2.0f;
+        float const x = std::cos(angle) * radius;
+        float const z = std::sin(angle) * radius;
+        glm::vec3 const normal = glm::normalize(glm::vec3{x, 0.0f, z});
+        glm::vec4 const tangent{-std::sin(angle), 0.0f, std::cos(angle), 1.0f};
+        mesh.vertices.push_back(MakeVertex({x, -half_height, z}, normal, {u, 1.0f}, tangent));
+        mesh.vertices.push_back(MakeVertex({x,  half_height, z}, normal, {u, 0.0f}, tangent));
+    }
+
+    for (uint32_t segment = 0; segment < segments; ++segment) {
+        uint32_t const base = segment * 2;
+        mesh.indices.insert(mesh.indices.end(), {
+            base + 0, base + 1, base + 2,
+            base + 2, base + 1, base + 3,
+        });
+    }
+
+    uint32_t const top_center_index = static_cast<uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back(MakeVertex({0.0f, half_height, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 0.5f}));
+    uint32_t const bottom_center_index = static_cast<uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back(MakeVertex({0.0f, -half_height, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}));
+
+    uint32_t const top_ring_start = static_cast<uint32_t>(mesh.vertices.size());
+    for (uint32_t segment = 0; segment <= segments; ++segment) {
+        float const u = static_cast<float>(segment) / static_cast<float>(segments);
+        float const angle = u * std::numbers::pi_v<float> * 2.0f;
+        float const x = std::cos(angle) * radius;
+        float const z = std::sin(angle) * radius;
+        mesh.vertices.push_back(MakeVertex({x, half_height, z},
+                                           {0.0f, 1.0f, 0.0f},
+                                           {x / radius * 0.5f + 0.5f, z / radius * 0.5f + 0.5f}));
+    }
+
+    uint32_t const bottom_ring_start = static_cast<uint32_t>(mesh.vertices.size());
+    for (uint32_t segment = 0; segment <= segments; ++segment) {
+        float const u = static_cast<float>(segment) / static_cast<float>(segments);
+        float const angle = u * std::numbers::pi_v<float> * 2.0f;
+        float const x = std::cos(angle) * radius;
+        float const z = std::sin(angle) * radius;
+        mesh.vertices.push_back(MakeVertex({x, -half_height, z},
+                                           {0.0f, -1.0f, 0.0f},
+                                           {x / radius * 0.5f + 0.5f, z / radius * 0.5f + 0.5f}));
+    }
+
+    for (uint32_t segment = 0; segment < segments; ++segment) {
+        mesh.indices.insert(mesh.indices.end(), {
+            top_center_index, top_ring_start + segment, top_ring_start + segment + 1,
+            bottom_center_index, bottom_ring_start + segment + 1, bottom_ring_start + segment,
+        });
+    }
+
+    return mesh;
+}
+
+std::optional<project::MeshData> BuildPrimitiveMeshData(std::string const& name)
+{
+    switch (project::PrimitiveTypeFromString(name)) {
+    case project::PrimitiveType::Plane:
+        return BuildPlaneMeshData(name);
+    case project::PrimitiveType::Cube:
+        return BuildCubeMeshData(name);
+    case project::PrimitiveType::Sphere:
+        return BuildSphereMeshData(name);
+    case project::PrimitiveType::Cylinder:
+        return BuildCylinderMeshData(name);
+    case project::PrimitiveType::None:
+    default:
+        return std::nullopt;
+    }
+}
+
 } // namespace
 
 bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& out_mesh) const
@@ -241,6 +436,10 @@ uint32_t MeshManager::LoadMesh(std::string const& path)
     auto it = path_to_id_.find(path);
     if (it != path_to_id_.end()) {
         return it->second;
+    }
+
+    if (auto primitive_mesh = BuildPrimitiveMeshData(path)) {
+        return LoadMeshFromData(path, *primitive_mesh);
     }
 
     if (!text_asset_loader_) {

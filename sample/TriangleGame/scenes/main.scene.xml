@@ -8,10 +8,28 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
-            
         <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
-        <GameObject id="ui_room_preview" name="Room Preview">
+
+    <GameObject id="Ground" name="Ground">
+        <Transform position="0,-1,0" rotation="0,0,0" scale="12,1,12" />
+        <MeshRenderer 
+            mesh="Plane" 
+            visible="true"
+            casts_shadow="true"
+            receives_shadow="true" />
+    </GameObject>
+
+    <GameObject id="Sphere" name="Sphere">
+        <Transform position="0,0.5,0" rotation="0,0,0" scale="1,1,1" />
+        <MeshRenderer 
+            mesh="Sphere" 
+            visible="true"
+            casts_shadow="true"
+            receives_shadow="true" />
+    </GameObject>
+
+    <GameObject id="ui_room_preview" name="Room Preview">
         <Transform position="0.72,-0.72,0.02" rotation="0,0,0" scale="0.80,0.80,1" />
         <Image texture="textures/viking_room.png" color="1,1,1,0.95" />
     </GameObject>

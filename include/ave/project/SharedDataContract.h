@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <cstring>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -35,6 +36,23 @@ struct MeshData {
     std::vector<VertexData> vertices;
     std::vector<uint32_t> indices;
 };
+
+enum class PrimitiveType : uint8_t {
+    None = 0,
+    Plane,
+    Cube,
+    Sphere,
+    Cylinder,
+};
+
+inline PrimitiveType PrimitiveTypeFromString(std::string_view value)
+{
+    if (value == "Plane") return PrimitiveType::Plane;
+    if (value == "Cube") return PrimitiveType::Cube;
+    if (value == "Sphere") return PrimitiveType::Sphere;
+    if (value == "Cylinder") return PrimitiveType::Cylinder;
+    return PrimitiveType::None;
+}
 
 struct TextureData {
     std::string id;

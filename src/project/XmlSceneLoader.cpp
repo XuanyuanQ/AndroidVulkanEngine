@@ -10,6 +10,12 @@ namespace ave::project {
 
 namespace {
 
+std::string StripXmlComments(std::string text)
+{
+    static std::regex const comment_pattern(R"(<!--[\s\S]*?-->)");
+    return std::regex_replace(text, comment_pattern, "");
+}
+
 std::string Attribute(std::string const& tag, std::string const& name, std::string fallback = {})
 {
     std::regex const pattern(name + "=\"([^\"]*)\"");
@@ -115,9 +121,10 @@ ProjectConfig XmlSceneLoader::LoadProject(std::filesystem::path const& project_x
 
 ProjectConfig XmlSceneLoader::LoadProjectText(std::string const& text) const
 {
+    std::string const sanitized_text = StripXmlComments(text);
     std::regex const pattern(R"(<Project\b[^>]*>)");
     std::smatch match;
-    if (!std::regex_search(text, match, pattern)) {
+    if (!std::regex_search(sanitized_text, match, pattern)) {
         throw std::runtime_error("Project XML must contain a <Project> root tag.");
     }
 
@@ -138,9 +145,10 @@ SceneDocument XmlSceneLoader::LoadScene(std::filesystem::path const& scene_xml) 
 
 SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
 {
+    std::string const sanitized_text = StripXmlComments(text);
     std::regex const scene_pattern(R"(<Scene\b[^>]*>)");
     std::smatch scene_match;
-    if (!std::regex_search(text, scene_match, scene_pattern)) {
+    if (!std::regex_search(sanitized_text, scene_match, scene_pattern)) {
         throw std::runtime_error("Scene XML must contain a <Scene> root tag.");
     }
 
@@ -148,14 +156,14 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
     scene.version = Attribute(scene_match[0].str(), "version", "1");
     scene.name = Attribute(scene_match[0].str(), "name", "MainScene");
 
-    auto environment_tags = MatchTags(text, "Environment");
+    auto environment_tags = MatchTags(sanitized_text, "Environment");
     if (!environment_tags.empty()) {
         scene.environment.clear_color = Float4(Attribute(environment_tags.front(), "clearColor"), scene.environment.clear_color);
         scene.environment.ambient_color = Float3(Attribute(environment_tags.front(), "ambientColor"), scene.environment.ambient_color);
     }
 
     std::regex const object_pattern(R"(<GameObject\b([^>]*)>([\s\S]*?)</GameObject>)");
-    for (std::sregex_iterator it(text.begin(), text.end(), object_pattern), end; it != end; ++it) {
+    for (std::sregex_iterator it(sanitized_text.begin(), sanitized_text.end(), object_pattern), end; it != end; ++it) {
         auto const object_tag = "<GameObject" + (*it)[1].str() + ">";
         auto const body = (*it)[2].str();
 
@@ -312,9 +320,10 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
 
 MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
 {
+    std::string const sanitized_text = StripXmlComments(text);
     std::regex const pattern(R"(<Material\b[^>]*>)");
     std::smatch match;
-    if (!std::regex_search(text, match, pattern)) {
+    if (!std::regex_search(sanitized_text, match, pattern)) {
         throw std::runtime_error("Material XML must contain a <Material> root tag.");
     }
 
@@ -323,7 +332,7 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
     doc.name = Attribute(tag, "name");
     doc.shader = Attribute(tag, "shader");
 
-    auto color_tags = MatchTags(text, "Color");
+    auto color_tags = MatchTags(sanitized_text, "Color");
     for (auto const& color_tag : color_tags) {
         auto name = Attribute(color_tag, "name");
         if (name == "baseColor") {
@@ -331,7 +340,7 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
         }
     }
 
-    auto float_tags = MatchTags(text, "Float");
+    auto float_tags = MatchTags(sanitized_text, "Float");
     for (auto const& float_tag : float_tags) {
         auto name = Attribute(float_tag, "name");
         if (name == "metallic") {
@@ -341,7 +350,7 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
         }
     }
 
-    auto texture_tags = MatchTags(text, "Texture");
+    auto texture_tags = MatchTags(sanitized_text, "Texture");
     for (auto const& texture_tag : texture_tags) {
         auto name = Attribute(texture_tag, "name");
         if (name == "baseColor") {

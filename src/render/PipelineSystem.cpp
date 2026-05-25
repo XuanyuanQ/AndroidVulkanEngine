@@ -367,8 +367,8 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         rasterization.cull_mode = vk::CullModeFlagBits::eNone;
         pipeline_info.rasterization = rasterization;
 
-        pipeline_info.depth_stencil.depth_test_enable = depth_only_pipeline;
-        pipeline_info.depth_stencil.depth_write_enable = depth_only_pipeline;
+        pipeline_info.depth_stencil.depth_test_enable = (key.depth_format != 0);
+        pipeline_info.depth_stencil.depth_write_enable = (key.depth_format != 0) && !alpha_blended_pipeline;
         pipeline_info.depth_stencil.depth_compare_op = vk::CompareOp::eLessOrEqual;
 
         if (!depth_only_pipeline) {
