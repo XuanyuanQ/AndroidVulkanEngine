@@ -1,7 +1,7 @@
 #include "VkBuffer.hpp"
 #include "VkContext.hpp"
 #include <cstring>
-#include <android/log.h>
+#include "LogUtil.h"
 
 namespace vkfw {
 
@@ -56,7 +56,7 @@ bool VkBuffer::Init(VkContext& ctx, BufferInfo const& info) {
     try {
         buffer_ = std::make_unique<vk::raii::Buffer>(ctx.Device(), buffer_info);
     } catch (vk::SystemError& e) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "createBuffer failed: %s", e.what());
+        LOGE( kLogTag, "createBuffer failed: %s", e.what());
         return false;
     }
 
@@ -72,7 +72,7 @@ bool VkBuffer::Init(VkContext& ctx, BufferInfo const& info) {
     try {
         memory_ = std::make_unique<vk::raii::DeviceMemory>(ctx.Device(), alloc_info);
     } catch (vk::SystemError& e) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "allocateMemory failed: %s", e.what());
+        LOGE( kLogTag, "allocateMemory failed: %s", e.what());
         return false;
     }
 

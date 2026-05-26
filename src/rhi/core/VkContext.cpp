@@ -2,7 +2,7 @@
 
 #if defined(__ANDROID__)
 #include <android/asset_manager.h>
-#include <android/log.h>
+#include "LogUtil.h"
 #include <android/native_window.h>
 #include <vulkan/vulkan_android.h>
 #else

@@ -10,7 +10,7 @@
 #include <sstream>
 // #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-#include <android/log.h>
+#include "LogUtil.h"
 #include <numbers>
 
 
@@ -633,7 +633,7 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
                                            &texChannels,
                                            STBI_rgb_alpha);
             if (!pixels) {
-                __android_log_print(ANDROID_LOG_ERROR,
+                LOGE(
                                     "TextureManager",
                                     "Failed to decode texture asset: %s (%s)",
                                     path.c_str(),
@@ -649,7 +649,7 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
 
 
     if (!pixels) {
-        __android_log_print(ANDROID_LOG_ERROR,
+        LOGE(
                             "TextureManager",
                             "Failed to load texture: %s (%s)",
                             path.c_str(),
@@ -766,13 +766,13 @@ uint32_t ShaderManager::LoadShader(std::string const& path)
     }
 
     if (!shader_asset_loader_) {
-        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "ShaderAssetLoader is not registered, cannot load shader: %s", normalized_path.c_str());
+        LOGE( "ShaderManager", "ShaderAssetLoader is not registered, cannot load shader: %s", normalized_path.c_str());
         return 0;
     }
 
     std::vector<uint32_t> vertex_spirv = shader_asset_loader_(normalized_path + ".vert.spv");
     if (vertex_spirv.empty()) {
-        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "Failed to load vertex shader: %s.vert.spv", normalized_path.c_str());
+        LOGE( "ShaderManager", "Failed to load vertex shader: %s.vert.spv", normalized_path.c_str());
         return 0;
     }
 
@@ -843,13 +843,13 @@ uint32_t ShaderManager::LoadComputeShader(std::string const& path)
     }
     
     if (!shader_asset_loader_) {
-        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "ShaderAssetLoader is not registered, cannot load compute shader: %s", path.c_str());
+        LOGE( "ShaderManager", "ShaderAssetLoader is not registered, cannot load compute shader: %s", path.c_str());
         return 0;
     }
 
     std::vector<uint32_t> compute_spirv = shader_asset_loader_(path);
     if (compute_spirv.empty()) {
-        __android_log_print(ANDROID_LOG_ERROR, "ShaderManager", "Failed to load compute shader: %s", path.c_str());
+        LOGE( "ShaderManager", "Failed to load compute shader: %s", path.c_str());
         return 0;
     }
 

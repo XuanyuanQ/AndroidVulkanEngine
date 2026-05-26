@@ -8,7 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include <glm/glm.hpp>
-#include <android/log.h>
+#include "LogUtil.h"
 
 namespace ave::scene {
 

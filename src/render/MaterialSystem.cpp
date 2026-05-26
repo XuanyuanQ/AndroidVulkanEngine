@@ -1,7 +1,7 @@
 #include "ave/render/MaterialSystem.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/project/XmlSceneLoader.h"
-#include <android/log.h>
+#include "LogUtil.h"
 #include <filesystem>
 
 namespace ave::render {
@@ -243,7 +243,7 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
             if (id != 0) {
                 shader_id = id;
             }else {
-                __android_log_print(ANDROID_LOG_ERROR, "MaterialSystem", "Failed to load shader for material %s: %s", logical_mat.name.c_str(), logical_mat.shader_name.c_str());
+                LOGE( "MaterialSystem", "Failed to load shader for material %s: %s", logical_mat.name.c_str(), logical_mat.shader_name.c_str());
                 // Failed to load shader, cannot create material
                 return;
             }

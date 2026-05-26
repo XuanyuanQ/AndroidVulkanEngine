@@ -1,5 +1,5 @@
 #include "ave/project/XmlSceneLoader.h"
-#include <android/log.h>
+#include "LogUtil.h"
 
 #include <fstream>
 #include <sstream>
@@ -281,7 +281,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
 
         auto script_tags = MatchTags(body, "Script");
         if (!script_tags.empty()) {
-            __android_log_print(ANDROID_LOG_INFO, "XmlSceneLoader",
+            LOGI( "XmlSceneLoader",
                               "Found Script component in GameObject %s with class %s and method %s",
                               object.id.c_str(),
                               Attribute(script_tags.front(), "class").c_str(),

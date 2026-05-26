@@ -8,7 +8,7 @@
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
 #include "VkSwapchain.hpp"
-#include <android/log.h>
+#include "LogUtil.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -543,7 +543,7 @@ PassDataFilter DepthPrepass::GetDataFilter() const
 
 void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: DepthPrepass");
+    LOGI( "RenderVulkan", "Pass: DepthPrepass");
     (void)context;
     (void)view;
 }
@@ -559,7 +559,7 @@ PassDataFilter ShadowPass::GetDataFilter() const
 
 void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ShadowPass");
+    LOGI( "RenderVulkan", "Pass: ShadowPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -588,7 +588,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     if (shadow_shader_id_ == 0) {
         shadow_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
         if (shadow_shader_id_ == 0) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to load shadow shader");
+            LOGE( "RenderVulkan", "ShadowPass failed to load shadow shader");
             return;
         }
     }
@@ -604,7 +604,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                                                    static_cast<uint32_t>(vkfw::TextureUsage::Sampled)),
                                                .mipmap = false,
                                            })) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to create shadow map");
+            LOGE( "RenderVulkan", "ShadowPass failed to create shadow map");
             return;
         }
         shadow_map_initialized_ = false;
@@ -649,7 +649,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     clear_depth.depth = 1.0f;
     clear_depth.stencil = 0;
     if (!BeginShadowMapRendering(context, shadow_map_, kShadowMapSize, clear_depth)) {
-        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "ShadowPass failed to begin shadow-map rendering");
+        LOGE( "RenderVulkan", "ShadowPass failed to begin shadow-map rendering");
         return;
     }
 
@@ -731,7 +731,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
-    // __android_log_print(ANDROID_LOG_INFO, "setRenderVulkan", "Shadow map initialized");
+    // LOGI( "setRenderVulkan", "Shadow map initialized");
     context.current_shadow_map = &shadow_map_;
     context.shadow_view_projection = shadow_view_projection_;
     shadow_map_initialized_ = true;
@@ -747,7 +747,7 @@ PassDataFilter PBRPass::GetDataFilter() const
 
 void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: PBRPass");
+    LOGI( "RenderVulkan", "Pass: PBRPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -798,7 +798,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                                                    .usage = vkfw::TextureUsage::DepthStencilAttachment,
                                                    .mipmap = false,
                                                })) {
-                __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "PBRPass failed to create depth stencil texture");
+                LOGE( "RenderVulkan", "PBRPass failed to create depth stencil texture");
                 return;
             }
         }
@@ -820,7 +820,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         clear.color.float32[3] = 1.0f;
         began_rendering = BeginSwapchainRendering(context, clear, true, &depth_stencil_);
         if (!began_rendering) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "PBRPass failed to begin rendering");
+            LOGE( "RenderVulkan", "PBRPass failed to begin rendering");
             return;
         }
     }
@@ -867,7 +867,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
         // Apply GPU-based/CPU-fallback Frustum Culling
         if (renderable_index < g_culling_visibility.size() && g_culling_visibility[renderable_index] == 0) {
-            __android_log_print(ANDROID_LOG_INFO, "CullingSystem", "  Skip draw call (culled): %s", renderable->debug_name.c_str());
+            LOGI( "CullingSystem", "  Skip draw call (culled): %s", renderable->debug_name.c_str());
             renderable_index++;
             continue;
         }
@@ -887,7 +887,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             }
         }
         if (!material) {
-            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip material: %s", renderable->material_id.c_str());
+            LOGI( "RenderVulkan", "  skip material: %s", renderable->material_id.c_str());
             continue;
         }
 
@@ -895,13 +895,13 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             ? mesh_mgr.GetMesh(renderable->mesh_handle)
             : mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
-            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip mesh: %s", renderable->mesh_id.c_str());
+            LOGI( "RenderVulkan", "  skip mesh: %s", renderable->mesh_id.c_str());
             continue;
         }
 
         auto const* shader = material->shader_id != 0 ? shader_mgr.GetShader(material->shader_id) : nullptr;
         if (!shader) {
-            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  skip shader for material: %s", material->name.c_str());
+            LOGI( "RenderVulkan", "  skip shader for material: %s", material->name.c_str());
             continue;
         }
 
@@ -917,7 +917,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         uint32_t const pipeline_id =
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
-            __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  pipeline create failed: %s", renderable->debug_name.c_str());
+            LOGI( "RenderVulkan", "  pipeline create failed: %s", renderable->debug_name.c_str());
             continue;
         }
 
@@ -1023,7 +1023,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             context.command_buffer.draw(vertex_count, 1, renderable->first_vertex, 0);
         }
 
-        __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
+        LOGI( "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
     }
 
     if (began_rendering) {
@@ -1040,7 +1040,7 @@ PassDataFilter ComputePass::GetDataFilter() const
 
 void ComputePass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ComputePass");
+    LOGI( "RenderVulkan", "Pass: ComputePass");
     (void)view;
     uint32_t const object_count = static_cast<uint32_t>(view.renderables.size());
     
@@ -1273,7 +1273,7 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
     for (uint32_t i = 0; i < object_count; ++i) {
         if (g_culling_visibility[i] != 0) visible_count++;
     }
-    __android_log_print(ANDROID_LOG_INFO, "CullingSystem", "GPU Culling: %u / %u visible (Ratio: %.2f%%)",
+    LOGI( "CullingSystem", "GPU Culling: %u / %u visible (Ratio: %.2f%%)",
                         visible_count, object_count, (float)visible_count / (float)object_count * 100.0f);
 }
 
@@ -1287,7 +1287,7 @@ PassDataFilter UIPass::GetDataFilter() const
 
 void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: UIPass");
+    LOGI( "RenderVulkan", "Pass: UIPass");
     if (view.ui_items.empty()) {
         return;
     }
@@ -1348,7 +1348,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         if (!item || !item->visible) {
             continue;
         }
-        __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "  ui: %s", item->debug_name.c_str());
+        LOGI( "RenderVulkan", "  ui: %s", item->debug_name.c_str());
         
         uint32_t texture_index = 0; // Default to fallback white slot
         if (!item->texture_id.empty()) {
@@ -1369,7 +1369,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     if (ui_shader_id_ == 0) {
         ui_shader_id_ = shader_mgr.LoadShader("compiled_shaders/ui_textured");
         if (ui_shader_id_ == 0) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "UIPass failed to load ui_textured shader");
+            LOGE( "RenderVulkan", "UIPass failed to load ui_textured shader");
             return;
         }
     }
@@ -1387,7 +1387,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                      .usage = vkfw::BufferUsage::Vertex,
                                                      .mappable = true,
                                                  })) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "UIPass failed to create vertex buffer");
+            LOGE( "RenderVulkan", "UIPass failed to create vertex buffer");
             return;
         }
     }
@@ -1400,7 +1400,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                     .usage = vkfw::BufferUsage::Index,
                                                     .mappable = true,
                                                 })) {
-            __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "UIPass failed to create index buffer");
+            LOGE( "RenderVulkan", "UIPass failed to create index buffer");
             return;
         }
     }
@@ -1414,7 +1414,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     clear.color.float32[2] = 0.0f;
     clear.color.float32[3] = 0.0f;
     if (!BeginSwapchainRendering(context, clear, false)) {
-        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "UIPass failed to begin rendering");
+        LOGE( "RenderVulkan", "UIPass failed to begin rendering");
         return;
     }
 
@@ -1438,7 +1438,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
     if (!pipeline) {
         EndSwapchainRendering(context);
-        __android_log_print(ANDROID_LOG_ERROR, "RenderVulkan", "UIPass failed to create pipeline");
+        LOGE( "RenderVulkan", "UIPass failed to create pipeline");
         return;
     }
 
@@ -1518,7 +1518,7 @@ PassDataFilter ToneMappingPass::GetDataFilter() const
 
 void ToneMappingPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RenderVulkan", "Pass: ToneMappingPass");
+    LOGI( "RenderVulkan", "Pass: ToneMappingPass");
     (void)context;
     (void)view;
 }
