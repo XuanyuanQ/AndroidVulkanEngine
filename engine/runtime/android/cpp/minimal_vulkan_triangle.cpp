@@ -77,6 +77,16 @@ void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, floa
     scene_world_.SetObjectPosition(object_id, glm::vec3{x, y, z});
 }
 
+void MinimalVulkanTriangle::setObjectRotation(std::string const& object_id, float x, float y, float z)
+{
+    scene_world_.SetObjectRotation(object_id, glm::vec3{x, y, z});
+}
+
+void MinimalVulkanTriangle::setObjectScale(std::string const& object_id, float x, float y, float z)
+{
+    scene_world_.SetObjectScale(object_id, glm::vec3{x, y, z});
+}
+
 void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool visible)
 {
     scene_world_.SetObjectVisible(object_id, visible);

@@ -24,6 +24,18 @@ public class AveScript {
         }
     }
 
+    protected final void setRotation(float x, float y, float z) {
+        if (!objectId.isEmpty()) {
+            AveActivity.jniSetObjectRotation(objectId, x, y, z);
+        }
+    }
+
+    protected final void setScale(float x, float y, float z) {
+        if (!objectId.isEmpty()) {
+            AveActivity.jniSetObjectScale(objectId, x, y, z);
+        }
+    }
+
     protected final void setVisible(boolean visible) {
         if (!objectId.isEmpty()) {
             AveActivity.jniSetObjectVisible(objectId, visible);

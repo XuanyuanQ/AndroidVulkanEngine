@@ -149,6 +149,26 @@ Java_com_ave_engine_AveActivity_nativeSetObjectPosition(JNIEnv* env, jclass, jst
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectRotation(JNIEnv* env, jclass, jstring object_id, jfloat x, jfloat y, jfloat z)
+{
+    if (!g_runtime || !object_id) return;
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) return;
+    g_runtime->setObjectRotation(chars, x, y, z);
+    env->ReleaseStringUTFChars(object_id, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectScale(JNIEnv* env, jclass, jstring object_id, jfloat x, jfloat y, jfloat z)
+{
+    if (!g_runtime || !object_id) return;
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) return;
+    g_runtime->setObjectScale(chars, x, y, z);
+    env->ReleaseStringUTFChars(object_id, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeSetObjectVisible(JNIEnv* env, jclass, jstring object_id, jboolean visible)
 {
     if (!g_runtime || !object_id) return;

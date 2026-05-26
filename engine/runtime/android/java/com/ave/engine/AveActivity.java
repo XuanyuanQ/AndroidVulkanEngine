@@ -146,6 +146,14 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         nativeSetObjectPosition(objectId, x, y, z);
     }
 
+    static void jniSetObjectRotation(String objectId, float x, float y, float z) {
+        nativeSetObjectRotation(objectId, x, y, z);
+    }
+
+    static void jniSetObjectScale(String objectId, float x, float y, float z) {
+        nativeSetObjectScale(objectId, x, y, z);
+    }
+
     static void jniSetObjectVisible(String objectId, boolean visible) {
         nativeSetObjectVisible(objectId, visible);
     }
@@ -162,6 +170,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeMotionEvent(float dx, float dy, int action);
     private static native void nativeTouchEvent(float x, float y, int action);
     private static native void nativeSetObjectPosition(String objectId, float x, float y, float z);
+    private static native void nativeSetObjectRotation(String objectId, float x, float y, float z);
+    private static native void nativeSetObjectScale(String objectId, float x, float y, float z);
     private static native void nativeSetObjectVisible(String objectId, boolean visible);
     private static native void nativeSetObjectColor(String objectId, float r, float g, float b, float a);
     private static native void nativeResize(int width, int height);

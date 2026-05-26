@@ -35,45 +35,6 @@ glm::mat4 GetLocalMatrix(project::TransformData const& local)
     return matrix;
 }
 
-glm::mat4 ResolveWorldMatrix(project::SceneData const& scene,
-                             std::unordered_map<std::string, size_t> const& object_indices,
-                             std::unordered_map<std::string, glm::mat4>& cache,
-                             std::string const& object_id)
-{
-    // 1. 检查缓存，避免重复计算
-    auto it = cache.find(object_id);
-    if (it != cache.end()) {
-        return it->second;
-    }
-
-    // 2. 寻找当前节点在场景列表中的索引
-    auto found = object_indices.find(object_id);
-    if (found == object_indices.end()) {
-        return glm::mat4(1.0f);
-    }
-
-    auto const& object = scene.objects[found->second];
-    project::TransformData local{};
-    if (object.components.transform.has_value()) {
-        local = *object.components.transform;
-    }
-
-    // 3. 计算本地局部变换矩阵
-    glm::mat4 local_matrix = GetLocalMatrix(local);
-    glm::mat4 world_matrix = local_matrix;
-
-    // 4. 层级树的核心：如果存在父节点，递归计算父节点的世界矩阵并相乘
-    if (!object.hierarchy.parent.empty()) {
-        glm::mat4 parent_matrix = ResolveWorldMatrix(scene, object_indices, cache, object.hierarchy.parent);
-        // 齐次矩阵相乘：M_world = M_parent * M_local
-        world_matrix = parent_matrix * local_matrix;
-    }
-
-    // 5. 存入缓存并返回
-    cache.emplace(object_id, world_matrix);
-    return world_matrix;
-}
-
 glm::mat4 SetPerspective(float fov_degrees, float aspect_ratio, float near_plane, float far_plane)
 {
     float const fov_radians = fov_degrees * 3.14159265358979323846f / 180.0f;
@@ -270,16 +231,295 @@ int32_t SceneWorld::FindRenderableIndex(std::string const& object_id) const
     return -1;
 }
 
-bool SceneWorld::SetObjectPosition(std::string const& object_id, glm::vec3 const& position)
+int32_t SceneWorld::FindTransformNodeIndex(std::string const& object_id) const
 {
-    int32_t const idx = FindRenderableIndex(object_id);
-    if (idx < 0) {
+    auto const found = object_to_node_.find(object_id);
+    if (found == object_to_node_.end()) {
+        return -1;
+    }
+    return found->second;
+}
+
+void SceneWorld::MarkTransformSubtreeDirty(int32_t node_index)
+{
+    if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
+        return;
+    }
+
+    auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+    if (node.dirty) {
+        return;
+    }
+
+    node.dirty = true;
+    dirty_node_indices_.push_back(node_index);
+    for (int32_t child_index : node.children) {
+        MarkTransformSubtreeDirty(child_index);
+    }
+}
+
+void SceneWorld::RebuildTransformNodes(project::SceneData const& scene)
+{
+    transform_nodes_.clear();
+    object_to_node_.clear();
+    object_to_renderable_.clear();
+    object_to_light_.clear();
+    root_nodes_.clear();
+    dirty_node_indices_.clear();
+
+    transform_nodes_.reserve(scene.objects.size());
+    object_to_node_.reserve(scene.objects.size());
+
+    for (auto const& object : scene.objects) {
+        TransformNode node{};
+        node.object_id = object.id;
+        if (object.components.transform.has_value()) {
+            node.local = *object.components.transform;
+        }
+        node.local_matrix = GetLocalMatrix(node.local);
+        transform_nodes_.push_back(std::move(node));
+        object_to_node_.emplace(object.id, static_cast<int32_t>(transform_nodes_.size() - 1));
+        dirty_node_indices_.push_back(static_cast<int32_t>(transform_nodes_.size() - 1));
+    }
+
+    for (auto const& object : scene.objects) {
+        int32_t const node_index = FindTransformNodeIndex(object.id);
+        if (node_index < 0) {
+            continue;
+        }
+
+        auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+        if (!object.hierarchy.parent.empty()) {
+            int32_t const parent_index = FindTransformNodeIndex(object.hierarchy.parent);
+            if (parent_index >= 0) {
+                node.parent_index = parent_index;
+                transform_nodes_[static_cast<size_t>(parent_index)].children.push_back(node_index);
+                continue;
+            }
+        }
+
+        root_nodes_.push_back(node_index);
+    }
+}
+
+void SceneWorld::UpdateWorldRecursive(int32_t node_index, glm::mat4 const& parent_world, bool parent_dirty)
+{
+    auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+    bool const needs_update = parent_dirty || node.dirty;
+    if (needs_update) {
+        node.local_matrix = GetLocalMatrix(node.local);
+        node.world_matrix = parent_world * node.local_matrix;
+        node.dirty = false;
+    }
+
+    for (int32_t child_index : node.children) {
+        UpdateWorldRecursive(child_index, node.world_matrix, needs_update);
+    }
+}
+
+void SceneWorld::UpdateAllTransforms()
+{
+    for (int32_t root_index : root_nodes_) {
+        UpdateWorldRecursive(root_index, glm::mat4(1.0f), false);
+    }
+}
+
+void SceneWorld::RefreshViewFromTransformState()
+{
+    if (!has_scene_camera_ || camera_node_index_ < 0 || static_cast<size_t>(camera_node_index_) >= transform_nodes_.size()) {
+        view_.camera_object_id = "default_camera";
+        view_.near_plane = 0.1f;
+        view_.far_plane = 1000.0f;
+        view_.world_position = glm::vec3(0.0f, 0.0f, 8.0f);
+        view_.view = glm::translate(glm::mat4(1.0f), -view_.world_position);
+        view_.projection = SetPerspective(60.0f, aspect_ratio_, 0.1f, 1000.0f);
+        view_.view_projection = view_.projection * view_.view;
+        return;
+    }
+
+    auto const& camera_world = transform_nodes_[static_cast<size_t>(camera_node_index_)].world_matrix;
+    view_.world_position = glm::vec3(camera_world[3]);
+    view_.view = glm::inverse(camera_world);
+    view_.projection = SetPerspective(camera_data_.fov, aspect_ratio_, camera_data_.near_plane, camera_data_.far_plane);
+    view_.view_projection = view_.projection * view_.view;
+}
+
+void SceneWorld::RefreshRenderableFromTransformState(int32_t renderable_index)
+{
+    if (renderable_index < 0 || static_cast<size_t>(renderable_index) >= renderables_.size()) {
+        return;
+    }
+
+    auto& renderable = renderables_[static_cast<size_t>(renderable_index)];
+    int32_t const node_index = FindTransformNodeIndex(renderable.object_id);
+    if (node_index < 0) {
+        return;
+    }
+
+    auto const& world_matrix = transform_nodes_[static_cast<size_t>(node_index)].world_matrix;
+    renderable.world = world_matrix;
+    renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, glm::vec3(world_matrix[3]));
+}
+
+void SceneWorld::RefreshLightFromTransformState(int32_t light_index)
+{
+    if (light_index < 0 || static_cast<size_t>(light_index) >= lights_.size()) {
+        return;
+    }
+
+    auto& light = lights_[static_cast<size_t>(light_index)];
+    int32_t const node_index = FindTransformNodeIndex(light.object_id);
+    if (node_index < 0) {
+        return;
+    }
+
+    auto const& world_matrix = transform_nodes_[static_cast<size_t>(node_index)].world_matrix;
+    light.position = glm::vec3(world_matrix[3]);
+    light.direction = glm::normalize(glm::vec3(world_matrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+}
+
+void SceneWorld::RefreshAllRenderablesFromTransformState()
+{
+    for (size_t i = 0; i < renderables_.size(); ++i) {
+        RefreshRenderableFromTransformState(static_cast<int32_t>(i));
+    }
+}
+
+void SceneWorld::RefreshAllLightsFromTransformState()
+{
+    for (size_t i = 0; i < lights_.size(); ++i) {
+        RefreshLightFromTransformState(static_cast<int32_t>(i));
+    }
+}
+
+bool SceneWorld::IsTransformDirty(int32_t node_index) const
+{
+    if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
         return false;
     }
-    auto& world = renderables_[static_cast<size_t>(idx)].world;
+    return transform_nodes_[static_cast<size_t>(node_index)].dirty;
+}
+
+bool SceneWorld::IsCameraNodeDirty() const
+{
+    if (camera_node_index_ < 0) {
+        return false;
+    }
+
+    return std::find(dirty_node_indices_.begin(), dirty_node_indices_.end(), camera_node_index_) != dirty_node_indices_.end();
+}
+
+void SceneWorld::ClearDirtyTracking()
+{
+    dirty_node_indices_.clear();
+}
+
+void SceneWorld::RefreshAllDerivedState()
+{
+    RefreshViewFromTransformState();
+    RefreshAllRenderablesFromTransformState();
+    RefreshAllLightsFromTransformState();
+    ClearDirtyTracking();
+}
+
+void SceneWorld::RefreshDirtyDerivedState()
+{
+    bool const camera_dirty = IsCameraNodeDirty();
+    if (camera_dirty) {
+        RefreshViewFromTransformState();
+        RefreshAllRenderablesFromTransformState();
+        RefreshAllLightsFromTransformState();
+        ClearDirtyTracking();
+        return;
+    }
+
+    for (int32_t node_index : dirty_node_indices_) {
+        if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
+            continue;
+        }
+
+        auto const& object_id = transform_nodes_[static_cast<size_t>(node_index)].object_id;
+
+        auto const renderable_found = object_to_renderable_.find(object_id);
+        if (renderable_found != object_to_renderable_.end()) {
+            RefreshRenderableFromTransformState(renderable_found->second);
+        }
+
+        auto const light_found = object_to_light_.find(object_id);
+        if (light_found != object_to_light_.end()) {
+            RefreshLightFromTransformState(light_found->second);
+        }
+    }
+
+    ClearDirtyTracking();
+}
+
+bool SceneWorld::SetObjectTransform(std::string const& object_id, project::TransformData const& transform)
+{
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index < 0) {
+        return false;
+    }
+
+    auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+    node.local = transform;
+    MarkTransformSubtreeDirty(node_index);
+    UpdateAllTransforms();
+    RefreshDirtyDerivedState();
+    return true;
+}
+
+bool SceneWorld::SetObjectPosition(std::string const& object_id, glm::vec3 const& position)
+{
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index >= 0) {
+        auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+        node.local.position = position;
+        MarkTransformSubtreeDirty(node_index);
+        UpdateAllTransforms();
+        RefreshDirtyDerivedState();
+        return true;
+    }
+
+    int32_t const renderable_index = FindRenderableIndex(object_id);
+    if (renderable_index < 0) {
+        return false;
+    }
+
+    auto& world = renderables_[static_cast<size_t>(renderable_index)].world;
     world[3][0] = position.x;
     world[3][1] = position.y;
     world[3][2] = position.z;
+    return true;
+}
+
+bool SceneWorld::SetObjectRotation(std::string const& object_id, glm::vec3 const& rotation)
+{
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index < 0) {
+        return false;
+    }
+
+    auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+    node.local.rotation = rotation;
+    MarkTransformSubtreeDirty(node_index);
+    UpdateAllTransforms();
+    RefreshDirtyDerivedState();
+    return true;
+}
+
+bool SceneWorld::SetObjectScale(std::string const& object_id, glm::vec3 const& scale)
+{
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index < 0) {
+        return false;
+    }
+
+    auto& node = transform_nodes_[static_cast<size_t>(node_index)];
+    node.local.scale = scale;
+    MarkTransformSubtreeDirty(node_index);
+    UpdateAllTransforms();
+    RefreshDirtyDerivedState();
     return true;
 }
 
@@ -313,40 +553,33 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
     view_ = {};
     renderables_.clear();
     lights_.clear();
+    aspect_ratio_ = aspect_ratio;
+    camera_node_index_ = -1;
+    has_scene_camera_ = false;
 
     view_.view = glm::mat4(1.0f);
     view_.projection = glm::mat4(1.0f);
     view_.view_projection = glm::mat4(1.0f);
 
-    bool has_camera = false;
-    std::unordered_map<std::string, size_t> object_indices;
-    object_indices.reserve(scene.objects.size());
-    for (size_t i = 0; i < scene.objects.size(); ++i) {
-        object_indices.emplace(scene.objects[i].id, i);
-    }
-    std::unordered_map<std::string, glm::mat4> world_cache;
+    RebuildTransformNodes(scene);
+    UpdateAllTransforms();
 
     for (auto const& object : scene.objects) {
         auto const& components = object.components;
-
-        project::TransformData transform{};
-        if (components.transform.has_value()) {
-            transform = *components.transform;
+        int32_t const node_index = FindTransformNodeIndex(object.id);
+        glm::mat4 world_matrix = glm::mat4(1.0f);
+        if (node_index >= 0) {
+            world_matrix = transform_nodes_[static_cast<size_t>(node_index)].world_matrix;
         }
-        glm::mat4 world_matrix = ResolveWorldMatrix(scene, object_indices, world_cache, object.id);
 
-        if (components.camera.has_value() && !has_camera) {
+        if (components.camera.has_value() && !has_scene_camera_) {
             auto const& camera = *components.camera;
             view_.camera_object_id = object.id;
             view_.near_plane = camera.near_plane;
             view_.far_plane = camera.far_plane;
-            // 提取 4x4 矩阵最后一列作为相机在世界空间的三维坐标
-            view_.world_position = glm::vec3(world_matrix[3]);
-            // 相机的 View 矩阵就是相机世界变换矩阵的逆矩阵！
-            view_.view = glm::inverse(world_matrix);
-            view_.projection = SetPerspective(camera.fov, aspect_ratio, camera.near_plane, camera.far_plane);
-            view_.view_projection = view_.projection * view_.view;
-            has_camera = true;
+            camera_data_ = camera;
+            camera_node_index_ = node_index;
+            has_scene_camera_ = true;
         }
 
         if (components.mesh_renderer.has_value()) {
@@ -380,6 +613,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                 ^ static_cast<uint64_t>(renderable.mesh_handle);
 
             renderable.world = world_matrix;
+            object_to_renderable_[object.id] = static_cast<int32_t>(renderables_.size());
             renderables_.push_back(std::move(renderable));
         }
 
@@ -400,20 +634,13 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             // 将光源在本地空间的默认朝向 (0, 0, -1) 乘以世界矩阵，推导出真实的世界照射方向
             frame_light.direction = glm::normalize(glm::vec3(world_matrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 
+            object_to_light_[object.id] = static_cast<int32_t>(lights_.size());
             lights_.push_back(std::move(frame_light));
         }
 
     }
 
-    if (!has_camera) {
-        view_.camera_object_id = "default_camera";
-        view_.near_plane = 0.1f;
-        view_.far_plane = 1000.0f;
-        view_.world_position = glm::vec3(0.0f, 0.0f, 8.0f);
-        view_.view = glm::translate(glm::mat4(1.0f), -view_.world_position);
-        view_.projection = SetPerspective(60.0f, aspect_ratio, 0.1f, 1000.0f);
-        view_.view_projection = view_.projection * view_.view;
-    }
+    RefreshAllDerivedState();
 }
 
 void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const
