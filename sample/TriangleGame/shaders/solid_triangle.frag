@@ -25,7 +25,7 @@ void main() {
         projCoord.x >= 0.0 && projCoord.x <= 1.0 &&
         projCoord.y >= 0.0 && projCoord.y <= 1.0) {
         float closestDepth = texture(u_ShadowMap, projCoord.xy).r;
-        float bias = 0.0025;
+        float bias = 0.03;
         shadowFactor = (currentDepth - bias) <= closestDepth ? 1.0 : 0.35;
     }
 

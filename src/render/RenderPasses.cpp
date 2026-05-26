@@ -24,6 +24,10 @@ static std::vector<uint32_t> g_culling_visibility;
 static uint32_t g_culling_shader_id = 0;
 // ----------------------------------------------
 
+static std::unique_ptr<vk::raii::RenderPass> g_compatibility_shadow_render_pass;
+static std::unique_ptr<vk::raii::Framebuffer> g_compatibility_shadow_framebuffer;
+static vk::ImageView g_last_shadow_image_view = {};
+
 vk::Sampler GetCommonSampler(vkfw::VkContext& ctx)
 {
     static std::unique_ptr<vk::raii::Sampler> sampler;
@@ -230,10 +234,8 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
     if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} || !shadow_map.IsInitialized()) {
         return false;
     }
-
     bool const core_dynamic_rendering =
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
-
     // ==========================================
     // 通道 A：支持动态渲染
     // ==========================================
@@ -245,13 +247,11 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
             depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
             depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             depth_attachment.clearValue.depthStencil = clear_depth;
-
             vk::RenderingInfo rendering_info{};
             rendering_info.renderArea = vk::Rect2D{{0, 0}, vk::Extent2D{shadow_map_size, shadow_map_size}};
             rendering_info.layerCount = 1;
             rendering_info.colorAttachmentCount = 0;
             rendering_info.pDepthAttachment = &depth_attachment;
-
             context.command_buffer.beginRendering(rendering_info);
         } else {
             vk::RenderingAttachmentInfoKHR depth_attachment{};
@@ -260,52 +260,93 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
             depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
             depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             depth_attachment.clearValue.depthStencil = clear_depth;
-
             vk::RenderingInfoKHR rendering_info{};
             rendering_info.renderArea = vk::Rect2D{{0, 0}, vk::Extent2D{shadow_map_size, shadow_map_size}};
             rendering_info.layerCount = 1;
             rendering_info.colorAttachmentCount = 0;
             rendering_info.pDepthAttachment = &depth_attachment;
-
             context.command_buffer.beginRenderingKHR(rendering_info);
         }
         return true;
     }
-
     // ==========================================
-    // 通道 B：不支持动态渲染（传统兼容路线）
+    // 通道 B：不支持动态渲染（传统兼容路线 - RAII安全版）
     // ==========================================
     
-    // 【修改 1】阴影贴图不需要判断 clear_color。直接使用你 context 里的传统 shadowpass 即可。
-    // 如果你的 context 里对阴影有单独的命名的 pass，可以换成对应的字段（例如 compatibility_shadow_render_pass）。
-    // 这里暂时沿用你的兼容变量名：
-    vk::RenderPass compatibility_render_pass = context.compatibility_render_pass;
-    vk::Framebuffer compatibility_framebuffer = context.compatibility_framebuffer;
-
-    // 检查传统对象是否有效
-    if (compatibility_render_pass == vk::RenderPass{} ||
-        compatibility_framebuffer == vk::Framebuffer{}) {
-        return false;
+    // 1. 现场定制：如果阴影专属 RenderPass 还没创建，使用 RAII 容器创建它
+    if (!g_compatibility_shadow_render_pass) {
+        vk::AttachmentDescription depth_attachment{};
+        depth_attachment.format = shadow_map.Format(); // 自动匹配 D32Sfloat
+        depth_attachment.samples = vk::SampleCountFlagBits::e1;
+        depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+        depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+        depth_attachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+        depth_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+        // We transition the shadow map into DepthAttachmentOptimal before beginning
+        // the fallback render pass, so the attachment description must agree with
+        // the actual image layout at render-pass begin time.
+        depth_attachment.initialLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+        depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal;
+        vk::AttachmentReference depth_attachment_ref{};
+        depth_attachment_ref.attachment = 0;
+        depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+        vk::SubpassDescription subpass{};
+        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+        subpass.pDepthStencilAttachment = &depth_attachment_ref;
+        std::array<vk::SubpassDependency, 2> dependencies;
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+        dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        dependencies[0].srcAccessMask = vk::AccessFlagBits::eShaderRead;
+        dependencies[0].dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        dependencies[0].dependencyFlags = vk::DependencyFlagBits::eByRegion;
+        dependencies[1].srcSubpass = 0;
+        dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eLateFragmentTests;
+        dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+        dependencies[1].srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+        dependencies[1].dependencyFlags = vk::DependencyFlagBits::eByRegion;
+        vk::RenderPassCreateInfo render_pass_info{};
+        render_pass_info.attachmentCount = 1;
+        render_pass_info.pAttachments = &depth_attachment;
+        render_pass_info.subpassCount = 1;
+        render_pass_info.pSubpasses = &subpass;
+        render_pass_info.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        render_pass_info.pDependencies = dependencies.data();
+        // 💡 使用 std::make_unique 创建 RAII 托管的 RenderPass
+        g_compatibility_shadow_render_pass = std::make_unique<vk::raii::RenderPass>(context.vk->Device(), render_pass_info);
     }
-
-    // 【修改 2】定义传统通道需要的 clear_value，并将传入的 clear_depth 赋值给它
+    // 2. 现场定制：如果阴影贴图的 View 变更，调用 reset() 即可自动安全释放旧的 Framebuffer
+    if (g_compatibility_shadow_framebuffer && g_last_shadow_image_view != shadow_map.View()) {
+        g_compatibility_shadow_framebuffer.reset(); // 👈 这一行代替了手动的 destroyFramebuffer！
+    }
+    // 3. 现场定制：将专属的 shadow_map.View() 绑定到专属的 Framebuffer 上
+    if (!g_compatibility_shadow_framebuffer) {
+        g_last_shadow_image_view = shadow_map.View();
+        vk::ImageView attachment = shadow_map.View();
+        vk::FramebufferCreateInfo framebuffer_info{};
+        framebuffer_info.renderPass = **g_compatibility_shadow_render_pass; // 双星号解引用出原生 vk::RenderPass 句柄
+        framebuffer_info.attachmentCount = 1;
+        framebuffer_info.pAttachments = &attachment;
+        framebuffer_info.width = shadow_map_size;
+        framebuffer_info.height = shadow_map_size;
+        framebuffer_info.layers = 1;
+        // 💡 使用 std::make_unique 创建 RAII 托管的 Framebuffer
+        g_compatibility_shadow_framebuffer = std::make_unique<vk::raii::Framebuffer>(context.vk->Device(), framebuffer_info);
+    }
+    // 4. 正式开启阴影专属的渲染通道
+    vk::RenderPassBeginInfo render_pass_begin{};
+    render_pass_begin.renderPass = **g_compatibility_shadow_render_pass;  // 双星号解引用
+    render_pass_begin.framebuffer = **g_compatibility_shadow_framebuffer; // 双星号解引用
+    render_pass_begin.renderArea = vk::Rect2D{{0, 0}, vk::Extent2D{shadow_map_size, shadow_map_size}};
     vk::ClearValue clear_value{};
     clear_value.depthStencil = clear_depth;
-
-    // 【修改 3】统一尺寸。将未定义的 extent 替换为具体的 shadow_map_size
-    vk::Extent2D render_extent{shadow_map_size, shadow_map_size};
-
-    vk::RenderPassBeginInfo render_pass_begin{};
-    render_pass_begin.renderPass = compatibility_render_pass;
-    render_pass_begin.framebuffer = compatibility_framebuffer;
-    render_pass_begin.renderArea = vk::Rect2D{{0, 0}, render_extent};
     render_pass_begin.clearValueCount = 1;
     render_pass_begin.pClearValues = &clear_value;
-    
     context.command_buffer.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
-
-    // 【修改 4】成功开启 RenderPass 后，应该返回 true
-    return true; 
+    return true;
 }
 
 void EndShadowMapRendering(RenderPassContext const& context)
@@ -322,6 +363,8 @@ void EndShadowMapRendering(RenderPassContext const& context)
         } else {
             context.command_buffer.endRenderingKHR();
         }
+    } else {
+        context.command_buffer.endRenderPass();
     }
 }
 
@@ -629,8 +672,11 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         key.viewport_width = kShadowMapSize;
         key.viewport_height = kShadowMapSize;
 
+        vk::RenderPass active_render_pass = context.vk->SupportsDynamicRendering() 
+            ? vk::RenderPass{} 
+            : **g_compatibility_shadow_render_pass; // 👈 增加双星号解引用
         uint32_t const pipeline_id =
-            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, active_render_pass);
         if (pipeline_id == 0) {
             continue;
         }
