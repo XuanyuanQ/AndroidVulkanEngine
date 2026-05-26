@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "ave/core/JobSystem.h"
-#include "ave/resource/GpuUploadQueue.h"
 
 #include <future>
 #include <mutex>
@@ -21,13 +20,12 @@ struct PendingAsset {
 
 class AssetManager {
 public:
-    void Initialize(core::JobSystem& jobs, GpuUploadQueue& upload_queue);
+    void Initialize(core::JobSystem& jobs);
     std::future<AssetHandle> LoadAsync(std::string path);
     std::vector<PendingAsset> CompletedAssets() const;
 
 private:
     core::JobSystem* jobs_ = nullptr;
-    GpuUploadQueue* upload_queue_ = nullptr;
     mutable std::mutex mutex_;
     std::vector<PendingAsset> completed_;
     uint32_t next_asset_id_ = 1;

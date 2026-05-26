@@ -7,7 +7,6 @@
 #include "VkCommandBuffer.hpp"
 #include "VkFramebufferSet.hpp"
 #include "VkRenderPass.hpp"
-#include "ave/resource/GpuUploadQueue.h"
 #include "ave/render/RenderPasses.h"
 #include "ave/render/RenderPass.h"
 #include <android/log.h>
@@ -31,27 +30,21 @@ Renderer::Renderer()
 
 Renderer::~Renderer() = default;
 
-bool Renderer::Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads)
+bool Renderer::Initialize(RendererConfig const& config)
 {
     (void)config;
-    uploads_ = &uploads;
     return true;
 }
 
 void Renderer::Shutdown()
 {
     ShutdownRaster();
-    uploads_ = nullptr;
+
 }
 
 void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)
 {
     (void)jobs;
-    if (uploads_ != nullptr) {
-        auto uploads = uploads_->Drain();
-        // TODO: Process uploads through RHI
-    }
-
     // TODO: Convert FrameData.resources (string ids) into ResourceSystem's numeric ids
     // and call resource_system_.EnsureResources(...) once the id mapping is wired.
 

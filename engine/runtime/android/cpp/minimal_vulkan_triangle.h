@@ -13,6 +13,7 @@
 
 #include <string>
 #include <vector>
+#include <thread>
 
 namespace ave::android {
 

@@ -3,7 +3,6 @@
 #include "ave/render/RenderTypes.h"
 #include "ave/core/FrameData.h"
 #include "ave/render/FrameGraph.h"
-#include "ave/render/CommandRecorder.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/PipelineSystem.h"
 #include "ave/render/MaterialSystem.h"
@@ -13,10 +12,6 @@
 
 namespace ave::core {
 class JobSystem;
-}
-
-namespace ave::resource {
-class GpuUploadQueue;
 }
 
 namespace vkfw {
@@ -36,7 +31,7 @@ public:
     Renderer();
     ~Renderer();
 
-    bool Initialize(RendererConfig const& config, resource::GpuUploadQueue& uploads);
+    bool Initialize(RendererConfig const& config);
     void Shutdown();
     void Render(core::FrameData const& frame, core::JobSystem& jobs);
     bool InitializeRaster(vkfw::VkContext& ctx,
@@ -71,10 +66,8 @@ public:
 
 private:
     class Impl;
-    resource::GpuUploadQueue* uploads_ = nullptr;
     vkfw::VkContext* vk_context_ = nullptr;
     FrameGraph graph_;
-    CommandRecorder recorder_;
     resource::ResourceSystem resource_system_;
     PipelineSystem pipeline_system_;
     MaterialSystem material_system_;

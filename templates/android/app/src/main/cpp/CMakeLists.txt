@@ -33,7 +33,6 @@ add_library(ave_runtime SHARED
     "${AVE_ANDROID_RUNTIME}/minimal_vulkan_triangle.cpp"
     "${AVE_ENGINE_ROOT}/src/core/JobSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/project/XmlSceneLoader.cpp"
-    "${AVE_ENGINE_ROOT}/src/resource/GpuUploadQueue.cpp"
     "${AVE_ENGINE_ROOT}/src/resource/ResourceSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/scene/SceneWorld.cpp"
     "${AVE_ENGINE_ROOT}/src/ui/UIRuntime.cpp"

@@ -16,7 +16,6 @@ add_library(ave_engine STATIC
     src/scene/SceneWorld.cpp
     src/ui/UIRuntime.cpp
     src/resource/AssetManager.cpp
-    src/resource/GpuUploadQueue.cpp
     src/resource/ResourceSystem.cpp
     src/render/CommandRecorder.cpp
     src/render/FrameGraph.cpp

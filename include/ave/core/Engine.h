@@ -5,7 +5,6 @@
 #include "ave/core/Profiler.h"
 #include "ave/render/Renderer.h"
 #include "ave/resource/AssetManager.h"
-#include "ave/resource/GpuUploadQueue.h"
 #include "ave/scene/SceneWorld.h"
 
 #include <cstdint>
@@ -34,7 +33,6 @@ private:
     JobSystem jobs_;
     Profiler profiler_;
     scene::SceneWorld scene_;
-    resource::GpuUploadQueue uploads_;
     resource::AssetManager assets_;
     render::Renderer renderer_;
 };

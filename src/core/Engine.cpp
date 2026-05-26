@@ -6,12 +6,12 @@ bool Engine::Initialize(EngineConfig const& config)
 {
     jobs_.Start(config.worker_threads);
 
-    if (!renderer_.Initialize(render::RendererConfig{config.enable_validation}, uploads_)) {
+    if (!renderer_.Initialize(render::RendererConfig{config.enable_validation})) {
         jobs_.Stop();
         return false;
     }
 
-    assets_.Initialize(jobs_, uploads_);
+    assets_.Initialize(jobs_);
     return true;
 }
 
