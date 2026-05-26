@@ -49,6 +49,6 @@ public class AveScript {
     }
 
     protected final void log(String message) {
-        Log.i("AveScript", message);
+        LogUtil.log(message);
     }
 }

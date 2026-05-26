@@ -8,6 +8,7 @@
 #include "ave/render/MaterialSystem.h"
 
 #include <android/log.h>
+#include "LogUtil.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -19,18 +20,9 @@ namespace ave::android {
 namespace {
 
 constexpr uint32_t kFramesInFlight = 2;
+constexpr const char* kLogTag = "AveRuntime";
 
-constexpr char kLogTag[] = "AveRuntime";
 
-void logInfo(char const* message)
-{
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "%s", message);
-}
-
-void logError(char const* message)
-{
-    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s", message);
-}
 
 } // namespace
 
@@ -42,12 +34,12 @@ bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_pa
     return true;
 }
 void MinimalVulkanTriangle::setKeyState(int32_t key_code, bool pressed){
-        __android_log_print(ANDROID_LOG_INFO, "keyLogTag", "Key event: code=%d, pressed=%s", key_code, pressed ? "true" : "false");
+        LOGI("Key event: code=%d, pressed=%s", key_code, pressed ? "true" : "false");
         scene_world_.g_key_states[key_code] = pressed;
     }
 
 void MinimalVulkanTriangle::setMotionState(float dx, float dy) {
-    __android_log_print(ANDROID_LOG_INFO, "motionLogTag", "Motion event: dx=%.2f, dy=%.2f", dx, dy);
+    LOGI("Motion event: dx=%.2f, dy=%.2f", dx, dy);
     scene_world_.g_mouse_dx += dx;
     scene_world_.g_mouse_dy += dy;
     scene_world_.g_mouse_dirty = true;
@@ -65,10 +57,7 @@ void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
         return;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag,
-                        "UI click hit, trigger script target=%s method=%s",
-                        action_info->target.c_str(),
-                        action_info->method.c_str());
+    LOGI("UI click hit, trigger script target=%s method=%s", action_info->target.c_str(), action_info->method.c_str());
     Jni_TriggerScriptMethod(action_info->target, action_info->method);
 }
 
@@ -105,11 +94,12 @@ void MinimalVulkanTriangle::destroy()
     }
     Jni_ClearScripts();
     clearSurface();
-    logInfo("Ave runtime destroyed.");
+    LOGI("Ave runtime destroyed.");
 }
 
 void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
 {
+    LOGI("Ave runtime setSurface.");
     clearSurface();
     window_ = window;
     if (window_ != nullptr) {
@@ -158,7 +148,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
     sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
 
     if (!loadSceneMesh()) {
-        logError("Failed to load scene mesh.");
+        LOGE("Failed to load scene mesh.");
         return;
     }
     use_frame_data_path_ = true;
@@ -169,7 +159,7 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
     }
     if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
-            logError("Failed to initialize FrameGraph backend.");
+            LOGE("Failed to initialize FrameGraph backend.");
             return;
     }
     m_running = true;
@@ -237,9 +227,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     for (auto const& object : scene.objects) {
         if (object.components.script.has_value()) {
             auto const& script = *object.components.script;
-            __android_log_print(ANDROID_LOG_INFO, kLogTag,
-                                "Instantiating Java script %s for GameObject %s",
-                                script.java_class.c_str(), object.id.c_str());
+            LOGI("Instantiating Java script %s for GameObject %s", script.java_class.c_str(), object.id.c_str());
             Jni_InstantiateScript(object.id, script.java_class);
         }
         if (!object.components.mesh_renderer.has_value()) {
@@ -250,7 +238,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         if (!mesh.mesh.empty()) {
             model_mesh_id_ = mesh_manager.LoadMesh(mesh.mesh);
             if (model_mesh_id_ == 0) {
-                __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to load mesh resource %s", mesh.mesh.c_str());
+                LOGE("Failed to load mesh resource %s", mesh.mesh.c_str());
                 return false;
             }
             
@@ -258,15 +246,9 @@ bool MinimalVulkanTriangle::loadSceneMesh()
                 uint32_t mat_id = renderer_.GetMaterialSystem().LoadMaterial(mesh.material);
                 if (mat_id != 0) {
                     auto const* mat = renderer_.GetMaterialSystem().GetMaterial(mat_id);
-                    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Parsed and registered logical material %s %swith color (%.2f, %.2f, %.2f, %.2f)",
-                                        mesh.material.c_str(),
-                                        mat->shader_name.c_str(),
-                                        mat->params.base_color[0],
-                                        mat->params.base_color[1],
-                                        mat->params.base_color[2],
-                                        mat->params.base_color[3]);
+                    LOGI("Parsed and registered logical material %s %swith color (%.2f, %.2f, %.2f, %.2f)", mesh.material.c_str(), mat->shader_name.c_str(), mat->params.base_color[0], mat->params.base_color[1], mat->params.base_color[2], mat->params.base_color[3]);
                 } else {
-                    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to load material for %s", mesh.material.c_str());
+                    LOGE("Failed to load material for %s", mesh.material.c_str());
                 }
             }
             continue;
@@ -281,7 +263,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     }
 
     if (vertices_.size() < 3 && model_mesh_id_ == 0) {
-        logError("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
+        LOGE("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
         return false;
     }
 
@@ -291,8 +273,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     float const aspect = (extent.width > 0)
         ? static_cast<float>(extent.height) / static_cast<float>(extent.width)
         : 9.0f / 16.0f;
-    __android_log_print(ANDROID_LOG_INFO, kLogTag,
-        "Swapchain extent: %ux%u, aspect=%.4f", extent.width, extent.height, aspect);
+    LOGI("Swapchain extent: %ux%u, aspect=%.4f", extent.width, extent.height, aspect);
     scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem(), aspect);
     ui_runtime_.SetViewportSize(extent.width, extent.height);
     ui_runtime_.RebuildFromScene(scene);
@@ -301,12 +282,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
 
 
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kLogTag,
-                        "Loaded scene mesh data from %s (%zu inline preview vertices, model mesh id %u)",
-                        project.entry_scene.c_str(),
-                        vertices_.size(),
-                        model_mesh_id_);
+    LOGI("Loaded scene mesh data from %s (%zu inline preview vertices, model mesh id %u)", project.entry_scene.c_str(), vertices_.size(), model_mesh_id_);
     return true;
 }
 
@@ -376,10 +352,10 @@ void MinimalVulkanTriangle::logProjectAsset() const
 
     AAsset* project = AAssetManager_open(assets_, project_path_.c_str(), AASSET_MODE_BUFFER);
     if (project != nullptr) {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "Loaded project asset: %s (%ld bytes)", project_path_.c_str(), static_cast<long>(AAsset_getLength(project)));
+        LOGI("Loaded project asset: %s (%ld bytes)", project_path_.c_str(), static_cast<long>(AAsset_getLength(project)));
         AAsset_close(project);
     } else {
-        __android_log_print(ANDROID_LOG_WARN, kLogTag, "Project asset not found: %s", project_path_.c_str());
+        LOGW("Project asset not found: %s", project_path_.c_str());
     }
 }
 
@@ -391,7 +367,7 @@ std::vector<uint32_t> MinimalVulkanTriangle::readShaderAsset(char const* path) c
 
     AAsset* asset = AAssetManager_open(assets_, path, AASSET_MODE_BUFFER);
     if (asset == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Shader asset not found: %s", path);
+        LOGE("Shader asset not found: %s", path);
         return {};
     }
 
@@ -401,7 +377,7 @@ std::vector<uint32_t> MinimalVulkanTriangle::readShaderAsset(char const* path) c
     AAsset_close(asset);
 
     if (read < 0 || static_cast<size_t>(read) != size || size % sizeof(uint32_t) != 0) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Invalid SPIR-V asset: %s", path);
+        LOGE("Invalid SPIR-V asset: %s", path);
         return {};
     }
 
@@ -416,7 +392,7 @@ std::string MinimalVulkanTriangle::readTextAsset(char const* path) const
 
     AAsset* asset = AAssetManager_open(assets_, path, AASSET_MODE_BUFFER);
     if (asset == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Text asset not found: %s", path);
+        LOGE("Text asset not found: %s", path);
         return {};
     }
 
@@ -439,7 +415,7 @@ std::vector<std::uint8_t> MinimalVulkanTriangle::readBinaryAsset(char const* pat
 
     AAsset* asset = AAssetManager_open(assets_, path, AASSET_MODE_BUFFER);
     if (asset == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Binary asset not found: %s", path);
+        LOGE("Binary asset not found: %s", path);
         return {};
     }
 
@@ -449,7 +425,7 @@ std::vector<std::uint8_t> MinimalVulkanTriangle::readBinaryAsset(char const* pat
     AAsset_close(asset);
 
     if (read < 0 || static_cast<size_t>(read) != size) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to read binary asset: %s", path);
+        LOGE("Failed to read binary asset: %s", path);
         return {};
     }
 
