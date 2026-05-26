@@ -18,35 +18,60 @@ glm::mat4 SetIdentity() {
     return glm::mat4(1.0f);
 }
 
-glm::mat4 SetTranslationScale(glm::vec3 const& position, glm::vec3 const& scale)
+glm::mat4 GetLocalMatrix(project::TransformData const& local)
 {
     glm::mat4 matrix = glm::mat4(1.0f);
-    matrix[0][0] = scale.x;
-    matrix[1][1] = scale.y;
-    matrix[2][2] = scale.z;
-    matrix[3][0] = position.x;
-    matrix[3][1] = position.y;
-    matrix[3][2] = position.z;
+    // 1. 平移 (Translation)
+    matrix = glm::translate(matrix, local.position);
+    
+    // 2. 旋转 (Rotation - 采用标准的 X -> Y -> Z 欧拉角顺序)
+    matrix = glm::rotate(matrix, glm::radians(local.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+    matrix = glm::rotate(matrix, glm::radians(local.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+    matrix = glm::rotate(matrix, glm::radians(local.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+    
+    // 3. 缩放 (Scale)
+    matrix = glm::scale(matrix, local.scale);
+    
     return matrix;
 }
 
-glm::vec3 AddFloat3(glm::vec3 const& a, glm::vec3 const& b)
+glm::mat4 ResolveWorldMatrix(project::SceneData const& scene,
+                             std::unordered_map<std::string, size_t> const& object_indices,
+                             std::unordered_map<std::string, glm::mat4>& cache,
+                             std::string const& object_id)
 {
-    return a + b;
-}
+    // 1. 检查缓存，避免重复计算
+    auto it = cache.find(object_id);
+    if (it != cache.end()) {
+        return it->second;
+    }
 
-glm::vec3 MultiplyFloat3(glm::vec3 const& a, glm::vec3 const& b)
-{
-    return a * b;
-}
+    // 2. 寻找当前节点在场景列表中的索引
+    auto found = object_indices.find(object_id);
+    if (found == object_indices.end()) {
+        return glm::mat4(1.0f);
+    }
 
-glm::mat4 SetInverseTranslation(glm::vec3 const& position)
-{
-    glm::mat4 matrix = glm::mat4(1.0f);
-    matrix[3][0] = -position.x;
-    matrix[3][1] = -position.y;
-    matrix[3][2] = -position.z;
-    return matrix;
+    auto const& object = scene.objects[found->second];
+    project::TransformData local{};
+    if (object.components.transform.has_value()) {
+        local = *object.components.transform;
+    }
+
+    // 3. 计算本地局部变换矩阵
+    glm::mat4 local_matrix = GetLocalMatrix(local);
+    glm::mat4 world_matrix = local_matrix;
+
+    // 4. 层级树的核心：如果存在父节点，递归计算父节点的世界矩阵并相乘
+    if (!object.hierarchy.parent.empty()) {
+        glm::mat4 parent_matrix = ResolveWorldMatrix(scene, object_indices, cache, object.hierarchy.parent);
+        // 齐次矩阵相乘：M_world = M_parent * M_local
+        world_matrix = parent_matrix * local_matrix;
+    }
+
+    // 5. 存入缓存并返回
+    cache.emplace(object_id, world_matrix);
+    return world_matrix;
 }
 
 glm::mat4 SetPerspective(float fov_degrees, float aspect_ratio, float near_plane, float far_plane)
@@ -90,45 +115,6 @@ void Deduplicate(std::vector<std::string>& values)
     values.erase(std::unique(values.begin(), values.end()), values.end());
 }
 
-struct WorldTransform {
-    glm::vec3 position{0.0f, 0.0f, 0.0f};
-    glm::vec3 scale{1.0f, 1.0f, 1.0f};
-};
-
-WorldTransform ResolveWorldTransform(project::SceneData const& scene,
-                                     std::unordered_map<std::string, size_t> const& object_indices,
-                                     std::unordered_map<std::string, WorldTransform>& cache,
-                                     std::string const& object_id)
-{
-    auto cached = cache.find(object_id);
-    if (cached != cache.end()) {
-        return cached->second;
-    }
-
-    auto found = object_indices.find(object_id);
-    if (found == object_indices.end()) {
-        return {};
-    }
-
-    auto const& object = scene.objects[found->second];
-    project::TransformData local{};
-    if (object.components.transform.has_value()) {
-        local = *object.components.transform;
-    }
-
-    WorldTransform world{};
-    world.position = local.position;
-    world.scale = local.scale;
-
-    if (!object.hierarchy.parent.empty()) {
-        auto parent = ResolveWorldTransform(scene, object_indices, cache, object.hierarchy.parent);
-        world.position = AddFloat3(parent.position, local.position);
-        world.scale = MultiplyFloat3(parent.scale, local.scale);
-    }
-
-    cache.emplace(object_id, world);
-    return world;
-}
 
 bool ComputeVisibility(glm::vec3 const& camera_position,
                        float far_plane,
@@ -293,7 +279,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
     for (size_t i = 0; i < scene.objects.size(); ++i) {
         object_indices.emplace(scene.objects[i].id, i);
     }
-    std::unordered_map<std::string, WorldTransform> world_cache;
+    std::unordered_map<std::string, glm::mat4> world_cache;
 
     for (auto const& object : scene.objects) {
         auto const& components = object.components;
@@ -302,15 +288,17 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
         if (components.transform.has_value()) {
             transform = *components.transform;
         }
-        auto world_transform = ResolveWorldTransform(scene, object_indices, world_cache, object.id);
+        glm::mat4 world_matrix = ResolveWorldMatrix(scene, object_indices, world_cache, object.id);
 
         if (components.camera.has_value() && !has_camera) {
             auto const& camera = *components.camera;
             view_.camera_object_id = object.id;
             view_.near_plane = camera.near_plane;
             view_.far_plane = camera.far_plane;
-            view_.world_position = world_transform.position;
-            view_.view = SetInverseTranslation(world_transform.position);
+            // 提取 4x4 矩阵最后一列作为相机在世界空间的三维坐标
+            view_.world_position = glm::vec3(world_matrix[3]);
+            // 相机的 View 矩阵就是相机世界变换矩阵的逆矩阵！
+            view_.view = glm::inverse(world_matrix);
             view_.projection = SetPerspective(camera.fov, aspect_ratio, camera.near_plane, camera.far_plane);
             view_.view_projection = view_.projection * view_.view;
             has_camera = true;
@@ -338,14 +326,15 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             }
             renderable.index_count = static_cast<uint32_t>(mesh.indices.size());
             renderable.vertex_count = static_cast<uint32_t>(mesh.vertices.size());
-            renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, world_transform.position);
+            // 用矩阵提取的位置进行视距裁切 (Distance culling)
+            renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, glm::vec3(world_matrix[3]));
             renderable.casts_shadow = mesh.casts_shadow;
             renderable.receives_shadow = mesh.receives_shadow;
             renderable.sort_key =
                 (static_cast<uint64_t>(renderable.material_handle) << 32)
                 ^ static_cast<uint64_t>(renderable.mesh_handle);
 
-            renderable.world = SetTranslationScale(world_transform.position, world_transform.scale);
+            renderable.world = world_matrix;
             renderables_.push_back(std::move(renderable));
         }
 
@@ -356,14 +345,15 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             frame_light.object_id = object.id;
             frame_light.debug_name = object.name;
             frame_light.type = LightTypeToString(light.type);
-            frame_light.position = world_transform.position;
+            frame_light.position = glm::vec3(world_matrix[3]);
             frame_light.color = light.color;
             frame_light.intensity = light.intensity;
             frame_light.range = light.range;
             frame_light.inner_angle = light.inner_angle;
             frame_light.outer_angle = light.outer_angle;
             frame_light.cast_shadows = light.cast_shadows;
-            frame_light.direction = {0.0f, -1.0f, 0.0f};
+            // 将光源在本地空间的默认朝向 (0, 0, -1) 乘以世界矩阵，推导出真实的世界照射方向
+            frame_light.direction = glm::normalize(glm::vec3(world_matrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 
             lights_.push_back(std::move(frame_light));
         }
@@ -375,7 +365,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
         view_.near_plane = 0.1f;
         view_.far_plane = 1000.0f;
         view_.world_position = glm::vec3(0.0f, 0.0f, 8.0f);
-        view_.view = SetInverseTranslation(view_.world_position);
+        view_.view = glm::translate(glm::mat4(1.0f), -view_.world_position);
         view_.projection = SetPerspective(60.0f, aspect_ratio, 0.1f, 1000.0f);
         view_.view_projection = view_.projection * view_.view;
     }
