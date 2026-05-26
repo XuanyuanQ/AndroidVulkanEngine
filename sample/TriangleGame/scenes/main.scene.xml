@@ -8,7 +8,7 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
-        <Script class="com.example.trianglegame.PlayerController" method="onUpdate" />
+        <!-- <Script class="com.example.trianglegame.PlayerController" method="onUpdate" /> -->
     </GameObject>
 
     <GameObject id="Ground" name="Ground">
@@ -27,6 +27,7 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
+        <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
 
     <GameObject id="ui_room_preview" name="Room Preview">

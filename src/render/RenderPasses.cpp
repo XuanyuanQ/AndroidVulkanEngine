@@ -226,6 +226,7 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
                              uint32_t shadow_map_size,
                              vk::ClearDepthStencilValue const& clear_depth)
 {
+    // 1. 基础安全检查
     if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} || !shadow_map.IsInitialized()) {
         return false;
     }
@@ -233,6 +234,9 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
     bool const core_dynamic_rendering =
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
+    // ==========================================
+    // 通道 A：支持动态渲染
+    // ==========================================
     if (context.vk->SupportsDynamicRendering()) {
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo depth_attachment{};
@@ -268,7 +272,40 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
         return true;
     }
 
-    return false;
+    // ==========================================
+    // 通道 B：不支持动态渲染（传统兼容路线）
+    // ==========================================
+    
+    // 【修改 1】阴影贴图不需要判断 clear_color。直接使用你 context 里的传统 shadowpass 即可。
+    // 如果你的 context 里对阴影有单独的命名的 pass，可以换成对应的字段（例如 compatibility_shadow_render_pass）。
+    // 这里暂时沿用你的兼容变量名：
+    vk::RenderPass compatibility_render_pass = context.compatibility_render_pass;
+    vk::Framebuffer compatibility_framebuffer = context.compatibility_framebuffer;
+
+    // 检查传统对象是否有效
+    if (compatibility_render_pass == vk::RenderPass{} ||
+        compatibility_framebuffer == vk::Framebuffer{}) {
+        return false;
+    }
+
+    // 【修改 2】定义传统通道需要的 clear_value，并将传入的 clear_depth 赋值给它
+    vk::ClearValue clear_value{};
+    clear_value.depthStencil = clear_depth;
+
+    // 【修改 3】统一尺寸。将未定义的 extent 替换为具体的 shadow_map_size
+    vk::Extent2D render_extent{shadow_map_size, shadow_map_size};
+
+    vk::RenderPassBeginInfo render_pass_begin{};
+    render_pass_begin.renderPass = compatibility_render_pass;
+    render_pass_begin.framebuffer = compatibility_framebuffer;
+    render_pass_begin.renderArea = vk::Rect2D{{0, 0}, render_extent};
+    render_pass_begin.clearValueCount = 1;
+    render_pass_begin.pClearValues = &clear_value;
+    
+    context.command_buffer.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
+
+    // 【修改 4】成功开启 RenderPass 后，应该返回 true
+    return true; 
 }
 
 void EndShadowMapRendering(RenderPassContext const& context)
@@ -857,7 +894,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
 
         MaterialUbo material_ubo{};
-        material_ubo.base_color = material->base_color;
+        material_ubo.base_color = renderable->has_color_override ? renderable->color_override : material->base_color;
         material_ubo.params = glm::vec4(material->metallic, material->roughness, 0.0f, 0.0f);
         material_binding.ubo.UpdateData(*context.vk, &material_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
 

@@ -139,6 +139,36 @@ Java_com_ave_engine_AveActivity_nativeTouchEvent(JNIEnv*, jclass, jfloat x, jflo
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectPosition(JNIEnv* env, jclass, jstring object_id, jfloat x, jfloat y, jfloat z)
+{
+    if (!g_runtime || !object_id) return;
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) return;
+    g_runtime->setObjectPosition(chars, x, y, z);
+    env->ReleaseStringUTFChars(object_id, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectVisible(JNIEnv* env, jclass, jstring object_id, jboolean visible)
+{
+    if (!g_runtime || !object_id) return;
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) return;
+    g_runtime->setObjectVisible(chars, visible == JNI_TRUE);
+    env->ReleaseStringUTFChars(object_id, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectColor(JNIEnv* env, jclass, jstring object_id, jfloat r, jfloat g, jfloat b, jfloat a)
+{
+    if (!g_runtime || !object_id) return;
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) return;
+    g_runtime->setObjectColor(chars, r, g, b, a);
+    env->ReleaseStringUTFChars(object_id, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeSetSurface(JNIEnv* env, jclass, jobject surface)
 {
     if (!g_runtime) {

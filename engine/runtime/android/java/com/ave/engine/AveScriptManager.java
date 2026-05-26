@@ -13,6 +13,7 @@ public final class AveScriptManager {
         try {
             Class<?> clazz = Class.forName(className);
             AveScript script = (AveScript) clazz.getDeclaredConstructor().newInstance();
+            script.__bindObject(objectId);
             activeScripts.put(objectId, script);
             
             // Invoke start hook

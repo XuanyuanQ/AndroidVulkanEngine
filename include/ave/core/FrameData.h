@@ -44,6 +44,8 @@ struct FrameRenderableData {
     bool visible = true;
     bool casts_shadow = false;
     bool receives_shadow = true;
+    bool has_color_override = false;
+    glm::vec4 color_override{1.0f, 1.0f, 1.0f, 1.0f};
 
     uint64_t sort_key = 0;
 };

@@ -72,6 +72,21 @@ void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
     Jni_TriggerScriptMethod(action_info->target, action_info->method);
 }
 
+void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, float x, float y, float z)
+{
+    scene_world_.SetObjectPosition(object_id, glm::vec3{x, y, z});
+}
+
+void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool visible)
+{
+    scene_world_.SetObjectVisible(object_id, visible);
+}
+
+void MinimalVulkanTriangle::setObjectColor(std::string const& object_id, float r, float g, float b, float a)
+{
+    scene_world_.SetObjectColor(object_id, glm::vec4{r, g, b, a});
+}
+
 void MinimalVulkanTriangle::destroy()
 {
     m_running = false;

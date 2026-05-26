@@ -260,6 +260,51 @@ uint32_t SceneWorld::AddPointLight(float x, float y, float z, float intensity)
     return static_cast<uint32_t>(lights_.size() - 1);
 }
 
+int32_t SceneWorld::FindRenderableIndex(std::string const& object_id) const
+{
+    for (size_t i = 0; i < renderables_.size(); ++i) {
+        if (renderables_[i].object_id == object_id) {
+            return static_cast<int32_t>(i);
+        }
+    }
+    return -1;
+}
+
+bool SceneWorld::SetObjectPosition(std::string const& object_id, glm::vec3 const& position)
+{
+    int32_t const idx = FindRenderableIndex(object_id);
+    if (idx < 0) {
+        return false;
+    }
+    auto& world = renderables_[static_cast<size_t>(idx)].world;
+    world[3][0] = position.x;
+    world[3][1] = position.y;
+    world[3][2] = position.z;
+    return true;
+}
+
+bool SceneWorld::SetObjectVisible(std::string const& object_id, bool visible)
+{
+    int32_t const idx = FindRenderableIndex(object_id);
+    if (idx < 0) {
+        return false;
+    }
+    renderables_[static_cast<size_t>(idx)].visible = visible;
+    return true;
+}
+
+bool SceneWorld::SetObjectColor(std::string const& object_id, glm::vec4 const& color)
+{
+    int32_t const idx = FindRenderableIndex(object_id);
+    if (idx < 0) {
+        return false;
+    }
+    auto& renderable = renderables_[static_cast<size_t>(idx)];
+    renderable.has_color_override = true;
+    renderable.color_override = color;
+    return true;
+}
+
 void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                                   resource::ResourceSystem const& resources,
                                   render::MaterialSystem const& materials,

@@ -36,6 +36,9 @@ public:
     void setKeyState(int32_t key_code, bool pressed);
     void setMotionState(float dx, float dy);
     void onTouchEvent(float x, float y, int32_t action);
+    void setObjectPosition(std::string const& object_id, float x, float y, float z);
+    void setObjectVisible(std::string const& object_id, bool visible);
+    void setObjectColor(std::string const& object_id, float r, float g, float b, float a);
 
 private:
     bool loadSceneMesh();

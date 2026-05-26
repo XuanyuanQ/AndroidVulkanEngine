@@ -142,6 +142,18 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         scriptManager.clear();
     }
 
+    static void jniSetObjectPosition(String objectId, float x, float y, float z) {
+        nativeSetObjectPosition(objectId, x, y, z);
+    }
+
+    static void jniSetObjectVisible(String objectId, boolean visible) {
+        nativeSetObjectVisible(objectId, visible);
+    }
+
+    static void jniSetObjectColor(String objectId, float r, float g, float b, float a) {
+        nativeSetObjectColor(objectId, r, g, b, a);
+    }
+
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
@@ -149,5 +161,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeKeyEvent(int keyCode, int action);
     private static native void nativeMotionEvent(float dx, float dy, int action);
     private static native void nativeTouchEvent(float x, float y, int action);
+    private static native void nativeSetObjectPosition(String objectId, float x, float y, float z);
+    private static native void nativeSetObjectVisible(String objectId, boolean visible);
+    private static native void nativeSetObjectColor(String objectId, float r, float g, float b, float a);
     private static native void nativeResize(int width, int height);
 }

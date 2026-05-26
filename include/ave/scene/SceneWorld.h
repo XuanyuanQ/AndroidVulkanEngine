@@ -5,7 +5,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace ave::resource {
 class ResourceSystem;
@@ -34,6 +36,9 @@ public:
                           resource::ResourceSystem const& resources,
                           render::MaterialSystem const& materials,
                           float aspect_ratio = 16.0f / 9.0f);
+    bool SetObjectPosition(std::string const& object_id, glm::vec3 const& position);
+    bool SetObjectVisible(std::string const& object_id, bool visible);
+    bool SetObjectColor(std::string const& object_id, glm::vec4 const& color);
 
 #ifdef ENABLE_CAMERA_DEBUG
     // Simple debug camera for keyboard testing
@@ -71,6 +76,8 @@ void ConsumeMouseMovement(float& out_dx, float& out_dy);
 #endif
 
 private:
+    int32_t FindRenderableIndex(std::string const& object_id) const;
+
     core::FrameViewData view_{};
     std::vector<core::FrameRenderableData> renderables_;
     std::vector<core::FrameLightData> lights_;
