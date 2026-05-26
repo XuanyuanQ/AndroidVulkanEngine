@@ -53,12 +53,32 @@ void MinimalVulkanTriangle::setMotionState(float dx, float dy) {
     scene_world_.g_mouse_dirty = true;
 }
 
+void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
+{
+    // Android MotionEvent.ACTION_UP = 1
+    if (action != 1) {
+        return;
+    }
+
+    auto action_info = ui_runtime_.HandlePointerUp(x, y);
+    if (!action_info.has_value()) {
+        return;
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                        "UI click hit, trigger script target=%s method=%s",
+                        action_info->target.c_str(),
+                        action_info->method.c_str());
+    Jni_TriggerScriptMethod(action_info->target, action_info->method);
+}
+
 void MinimalVulkanTriangle::destroy()
 {
     m_running = false;
     if (m_render_thread.joinable()) {
         m_render_thread.join();
     }
+    Jni_ClearScripts();
     clearSurface();
     logInfo("Ave runtime destroyed.");
 }
@@ -188,8 +208,15 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     auto& shader_manager = renderer_.GetResourceSystem().GetShaderManager();
     auto& material_manager = renderer_.GetResourceSystem().GetMaterialManager();
     uint32_t shader_id = 0;
-
+    Jni_ClearScripts();
     for (auto const& object : scene.objects) {
+        if (object.components.script.has_value()) {
+            auto const& script = *object.components.script;
+            __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                "Instantiating Java script %s for GameObject %s",
+                                script.java_class.c_str(), object.id.c_str());
+            Jni_InstantiateScript(object.id, script.java_class);
+        }
         if (!object.components.mesh_renderer.has_value()) {
             continue;
         }
@@ -260,6 +287,18 @@ bool MinimalVulkanTriangle::loadSceneMesh()
 
 void MinimalVulkanTriangle::drawFrame()
 {
+    // Attach current thread to Java VM
+    JNIEnv* env = nullptr;
+    JavaVM* jvm = GetJavaVM();
+    bool attached = false;
+    if (jvm) {
+        jint res = jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (res == JNI_EDETACHED) {
+            if (jvm->AttachCurrentThread(&env, nullptr) == 0) {
+                attached = true;
+            }
+        }
+    }
 
     auto last_time = std::chrono::high_resolution_clock::now();
     bool has_swapchain = false;
@@ -269,24 +308,8 @@ void MinimalVulkanTriangle::drawFrame()
         {
             std::lock_guard<std::mutex> lock(m_surface_mutex);
             if (m_surface_changed) {
-                // if (m_window != nullptr) {
-                //     // 初始化或重建 Vulkan Swapchain (交换链)
-                //     // initVulkanSwapchain(m_window);
-                //     has_swapchain = true;
-                // } else {
-                //     // 销毁 Swapchain
-                //     // cleanupSwapchain();
-                //     has_swapchain = false;
-                // }
-                // m_surface_changed = false;
             }
         }
-
-        // 2. 如果当前没有可用的 Surface（比如应用切到后台了），就挂起线程避免空转消耗 CPU
-        // if (!has_swapchain) {
-        //     std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        //     continue;
-        // }
 
         // 3. 计算 delta_time
         auto current_time = std::chrono::high_resolution_clock::now();
@@ -297,6 +320,7 @@ void MinimalVulkanTriangle::drawFrame()
         if (use_frame_data_path_) {
             scene_world_.UpdateDebugLight(delta_time);
             scene_world_.UpdateDebugCamera(delta_time);
+            Jni_UpdateScripts(delta_time); // Update scripts
             scene_world_.BuildFrameData(frame_index_, frame_data_);
             ui_runtime_.Update(delta_time);
             ui_runtime_.BuildFrameUi(frame_data_.ui_items);
@@ -306,8 +330,11 @@ void MinimalVulkanTriangle::drawFrame()
         } else {
             // Existing non-frame-data path logic (if any) can be placed here
         }
+    }
 
-}
+    if (jvm && attached) {
+        jvm->DetachCurrentThread();
+    }
 }
 
 void MinimalVulkanTriangle::cleanupSurfaceResources()

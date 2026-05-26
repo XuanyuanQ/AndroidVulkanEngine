@@ -184,6 +184,44 @@ void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
     });
 }
 
+std::optional<UIRuntime::ButtonAction> UIRuntime::HandlePointerUp(float x_px, float y_px) const
+{
+    if (viewport_width_ == 0 || viewport_height_ == 0) {
+        return std::nullopt;
+    }
+
+    float const ndc_x = (x_px / static_cast<float>(viewport_width_)) * 2.0f - 1.0f;
+    float const ndc_y = 1.0f - (y_px / static_cast<float>(viewport_height_)) * 2.0f;
+    float const aspect_ratio = static_cast<float>(viewport_height_) / static_cast<float>(viewport_width_);
+
+    for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
+        if (!std::holds_alternative<UiButtonNode>(*it)) {
+            continue;
+        }
+
+        auto const& button = std::get<UiButtonNode>(*it);
+        if (!button.visible || !button.interactable) {
+            continue;
+        }
+
+        float const half_w = (button.size.x / aspect_ratio) * 0.5f;
+        float const half_h = button.size.y * 0.5f;
+
+        bool const hit =
+            ndc_x >= (button.position.x - half_w) && ndc_x <= (button.position.x + half_w) &&
+            ndc_y >= (button.position.y - half_h) && ndc_y <= (button.position.y + half_h);
+
+        if (hit) {
+            return ButtonAction{
+                .target = button.target,
+                .method = button.method,
+            };
+        }
+    }
+
+    return std::nullopt;
+}
+
 UIRuntime::UiTransform UIRuntime::ResolveUiTransform(project::GameObjectData const& object) const
 {
     UiTransform transform{};

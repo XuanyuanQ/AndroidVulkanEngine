@@ -14,8 +14,17 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <jni.h>
 
 namespace ave::android {
+
+// JNI Scripting Bridge Helpers
+JavaVM* GetJavaVM();
+JNIEnv* GetJniEnv();
+void Jni_InstantiateScript(std::string const& object_id, std::string const& java_class);
+void Jni_UpdateScripts(float dt);
+void Jni_TriggerScriptMethod(std::string const& target, std::string const& method);
+void Jni_ClearScripts();
 
 class MinimalVulkanTriangle {
 public:
@@ -26,6 +35,7 @@ public:
     void resize(int width, int height);
     void setKeyState(int32_t key_code, bool pressed);
     void setMotionState(float dx, float dy);
+    void onTouchEvent(float x, float y, int32_t action);
 
 private:
     bool loadSceneMesh();

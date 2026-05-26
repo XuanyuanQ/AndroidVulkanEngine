@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -56,11 +57,17 @@ using UiRuntimeNode = std::variant<UiImageNode, UiButtonNode, UiProgressBarNode>
 
 class UIRuntime {
 public:
+    struct ButtonAction {
+        std::string target;
+        std::string method;
+    };
+
     void Clear();
     void SetViewportSize(uint32_t width, uint32_t height);
     void RebuildFromScene(project::SceneData const& scene);
     void Update(float delta_time);
     void BuildFrameUi(std::vector<core::FrameUiData>& out_items) const;
+    std::optional<ButtonAction> HandlePointerUp(float x_px, float y_px) const;
 
 private:
     struct UiTransform {

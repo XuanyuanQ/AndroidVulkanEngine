@@ -109,6 +109,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
                 break;
                 
             case MotionEvent.ACTION_UP:
+                nativeTouchEvent(event.getX(), event.getY(), action);
             case MotionEvent.ACTION_CANCEL:
                 mHasLastTouch = false;
                 break;
@@ -119,11 +120,34 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     }
 
 
+    private static final AveScriptManager scriptManager = new AveScriptManager();
+
+    // Invoked by C++ via JNI to instantiate scripts
+    public static void jniInstantiateScript(String objectId, String className) {
+        scriptManager.instantiateScript(objectId, className);
+    }
+
+    // Invoked by C++ via JNI on every frame update
+    public static void jniUpdateScripts(float dt) {
+        scriptManager.update(dt);
+    }
+
+    // Invoked by C++ via JNI for UI Button click events
+    public static void jniTriggerScriptMethod(String target, String method) {
+        scriptManager.triggerScriptMethod(target, method);
+    }
+
+    // Invoked by C++ via JNI when scene is destroyed
+    public static void jniClearScripts() {
+        scriptManager.clear();
+    }
+
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeClearSurface();
     private static native void nativeKeyEvent(int keyCode, int action);
     private static native void nativeMotionEvent(float dx, float dy, int action);
+    private static native void nativeTouchEvent(float x, float y, int action);
     private static native void nativeResize(int width, int height);
 }
