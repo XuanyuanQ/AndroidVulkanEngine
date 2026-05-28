@@ -38,13 +38,6 @@ void MinimalVulkanTriangle::setKeyState(int32_t key_code, bool pressed){
         scene_world_.g_key_states[key_code] = pressed;
     }
 
-void MinimalVulkanTriangle::setMotionState(float dx, float dy) {
-    LOGI("Motion event: dx=%.2f, dy=%.2f", dx, dy);
-    scene_world_.g_mouse_dx += dx;
-    scene_world_.g_mouse_dy += dy;
-    scene_world_.g_mouse_dirty = true;
-}
-
 void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
 {
     // Android MotionEvent.ACTION_UP = 1
@@ -228,7 +221,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         if (object.components.script.has_value()) {
             auto const& script = *object.components.script;
             LOGI("Instantiating Java script %s for GameObject %s", script.java_class.c_str(), object.id.c_str());
-            Jni_InstantiateScript(object.id, script.java_class);
+            Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
         }
         if (!object.components.mesh_renderer.has_value()) {
             continue;

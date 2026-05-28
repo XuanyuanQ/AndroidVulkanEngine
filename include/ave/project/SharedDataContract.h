@@ -5,6 +5,7 @@
 #include <optional>
 #include <cstring>
 #include <string_view>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -105,6 +106,7 @@ struct ScriptBindingData {
     std::string java_class;
     std::string method;
     std::string target_object;
+    std::unordered_map<std::string, std::string> parameters;
 };
 
 struct AssetReferenceData {

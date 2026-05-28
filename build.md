@@ -8,3 +8,5 @@ adb shell am force-stop com.example.trianglegame
 
 taskkill /F /IM emulator.exe /T 
 adb logcat *:E
+
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip

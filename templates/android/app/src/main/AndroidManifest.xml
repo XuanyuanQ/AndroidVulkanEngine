@@ -6,7 +6,7 @@
         android:theme="@style/AppTheme"
         android:hasCode="true">
         <activity
-            android:name="com.ave.engine.AveActivity"
+            android:name="__AVE_ACTIVITY_CLASS__"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:screenOrientation="landscape"
             android:exported="true">

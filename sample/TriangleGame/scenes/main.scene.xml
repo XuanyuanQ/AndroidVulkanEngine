@@ -1,4 +1,10 @@
 <Scene name="TriangleScene">
+    <GameObject id="MainCamera" name="Main Camera">
+        <Transform position="0,2,8" rotation="0,-12,0" scale="1,1,1" />
+        <Camera fov="60" near="0.1" far="1000" />
+        <Script class="com.example.trianglegame.PlayerController" pitch="-12" yaw="0" />
+    </GameObject>
+
     <GameObject id="room" name="Viking Room">
         <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
         
@@ -27,7 +33,6 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
-        <Script class="com.example.trianglegame.PlayerController" />
     </GameObject>
 
     <GameObject id="ui_room_preview" name="Room Preview">

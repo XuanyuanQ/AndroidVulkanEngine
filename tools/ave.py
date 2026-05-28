@@ -26,6 +26,7 @@ def read_project(project_dir: Path) -> dict:
         "package": root.attrib.get("package", "com.ave.game"),
         "entry_scene": root.attrib.get("entryScene", "scenes/main.scene.xml"),
         "orientation": root.attrib.get("orientation", "landscape"),
+        "android_activity": root.attrib.get("androidActivity", "com.ave.engine.AveActivity"),
     }
 
 
@@ -163,6 +164,7 @@ def build_android(args: argparse.Namespace) -> None:
     replace_text(output_dir / "app" / "src" / "main" / "AndroidManifest.xml", {
         'android:screenOrientation="landscape"': f'android:screenOrientation="{config["orientation"]}"',
         'android:label="Ave Game"': f'android:label="{config["name"]}"',
+        "__AVE_ACTIVITY_CLASS__": config["android_activity"],
     })
 
     package_project_data(project_dir, output_dir)

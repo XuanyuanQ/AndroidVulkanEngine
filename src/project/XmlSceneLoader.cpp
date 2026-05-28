@@ -5,6 +5,7 @@
 #include <sstream>
 #include <regex>
 #include <stdexcept>
+#include <unordered_map>
 #include <glm/glm.hpp>
 
 namespace ave::project {
@@ -22,6 +23,16 @@ std::string Attribute(std::string const& tag, std::string const& name, std::stri
     std::regex const pattern(name + "=\"([^\"]*)\"");
     std::smatch match;
     return std::regex_search(tag, match, pattern) ? match[1].str() : std::move(fallback);
+}
+
+std::unordered_map<std::string, std::string> Attributes(std::string const& tag)
+{
+    std::unordered_map<std::string, std::string> attributes;
+    std::regex const pattern("(\\w+)=\"([^\"]*)\"");
+    for (std::sregex_iterator it(tag.begin(), tag.end(), pattern), end; it != end; ++it) {
+        attributes[(*it)[1].str()] = (*it)[2].str();
+    }
+    return attributes;
 }
 
 glm::vec3 Float3(std::string const& text, glm::vec3 fallback)
@@ -289,7 +300,11 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             ScriptBindingData script{};
             script.java_class = Attribute(script_tags.front(), "class");
             script.method = Attribute(script_tags.front(), "method");
-            script.target_object = object.id;
+            script.target_object = Attribute(script_tags.front(), "target", object.id);
+            script.parameters = Attributes(script_tags.front());
+            script.parameters["target"] = script.target_object;
+            script.parameters.erase("class");
+            script.parameters.erase("method");
             object.components.script = std::move(script);
         }
 

@@ -12,6 +12,7 @@
 #include <android/native_window.h>
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <thread>
 #include <jni.h>
@@ -21,7 +22,10 @@ namespace ave::android {
 // JNI Scripting Bridge Helpers
 JavaVM* GetJavaVM();
 JNIEnv* GetJniEnv();
-void Jni_InstantiateScript(std::string const& object_id, std::string const& java_class);
+void Jni_InstantiateScript(std::string const& object_id,
+                           std::string const& java_class,
+                           std::string const& target_object_id,
+                           std::unordered_map<std::string, std::string> const& parameters);
 void Jni_UpdateScripts(float dt);
 void Jni_TriggerScriptMethod(std::string const& target, std::string const& method);
 void Jni_ClearScripts();
@@ -34,7 +38,6 @@ public:
     void clearSurface();
     void resize(int width, int height);
     void setKeyState(int32_t key_code, bool pressed);
-    void setMotionState(float dx, float dy);
     void onTouchEvent(float x, float y, int32_t action);
     void setObjectPosition(std::string const& object_id, float x, float y, float z);
     void setObjectRotation(std::string const& object_id, float x, float y, float z);

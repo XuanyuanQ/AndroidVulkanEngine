@@ -2,4 +2,5 @@
     name="TriangleGame"
     package="com.example.trianglegame"
     entryScene="scenes/main.scene.xml"
-    orientation="landscape" />
+    orientation="landscape"
+    androidActivity="com.example.trianglegame.GameActivity" />
