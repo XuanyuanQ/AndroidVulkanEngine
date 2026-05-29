@@ -12,6 +12,7 @@ public final class PlayerController extends AveScript {
 
     @Override
     public void start() {
+        visible = getVisible();
         log("Triangle script started");
     }
 

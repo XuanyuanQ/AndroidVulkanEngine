@@ -1,7 +1,5 @@
 package com.ave.engine;
 
-import android.util.Log;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -80,21 +78,42 @@ public class AveScript {
         }
     }
 
-    protected final boolean getVisible() {
+    protected final void setTexture(String texture) {
         String target = getTargetObjectId();
-        
-        // 1. 检查目标 ID 是否合法
-        if (target != null && !target.isEmpty()) {
-            // 调用修改后的 native 方法，它现在直接返回 boolean
-            return AveObjectController.getVisible(target);
+        if (!target.isEmpty()) {
+            AveObjectController.setTexture(target, texture);
         }
-        
-        // 2. 补全兜底返回，如果 target 为空，默认返回 false
-        LogUtil.log("target ID does not exist " + target);
-        return false;
     }
 
-    
+    protected final float[] getPosition() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? new float[] {0.0f, 0.0f, 0.0f} : AveObjectController.getPosition(target);
+    }
+
+    protected final float[] getRotation() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? new float[] {0.0f, 0.0f, 0.0f} : AveObjectController.getRotation(target);
+    }
+
+    protected final float[] getScale() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? new float[] {1.0f, 1.0f, 1.0f} : AveObjectController.getScale(target);
+    }
+
+    protected final boolean getVisible() {
+        String target = getTargetObjectId();
+        return !target.isEmpty() && AveObjectController.getVisible(target);
+    }
+
+    protected final float[] getColor() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? new float[] {1.0f, 1.0f, 1.0f, 1.0f} : AveObjectController.getColor(target);
+    }
+
+    protected final String getTexture() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? "" : AveObjectController.getTexture(target);
+    }
 
     protected final void log(String message) {
         LogUtil.log(message);

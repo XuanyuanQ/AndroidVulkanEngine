@@ -23,9 +23,32 @@ public final class AveObjectController {
     public static void setColor(String objectId, float r, float g, float b, float a) {
         AveActivity.jniSetObjectColor(objectId, r, g, b, a);
     }
+
+    public static void setTexture(String objectId, String texture) {
+        AveActivity.jniSetObjectTexture(objectId, texture);
+    }
+
+    public static float[] getPosition(String objectId) {
+        return AveActivity.jniGetObjectPosition(objectId);
+    }
+
+    public static float[] getRotation(String objectId) {
+        return AveActivity.jniGetObjectRotation(objectId);
+    }
+
+    public static float[] getScale(String objectId) {
+        return AveActivity.jniGetObjectScale(objectId);
+    }
+
     public static boolean getVisible(String objectId) {
         return AveActivity.jniGetObjectVisible(objectId);
     }
 
-    
+    public static float[] getColor(String objectId) {
+        return AveActivity.jniGetObjectColor(objectId);
+    }
+
+    public static String getTexture(String objectId) {
+        return AveActivity.jniGetObjectTexture(objectId);
+    }
 }

@@ -65,32 +65,86 @@ void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
 
 void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, float x, float y, float z)
 {
-    scene_world_.SetObjectPosition(object_id, glm::vec3{x, y, z});
+    glm::vec3 const position{x, y, z};
+    if (!scene_world_.SetObjectPosition(object_id, position)) {
+        ui_runtime_.SetObjectPosition(object_id, position);
+    }
 }
 
 void MinimalVulkanTriangle::setObjectRotation(std::string const& object_id, float x, float y, float z)
 {
-    scene_world_.SetObjectRotation(object_id, glm::vec3{x, y, z});
+    glm::vec3 const rotation{x, y, z};
+    if (!scene_world_.SetObjectRotation(object_id, rotation)) {
+        ui_runtime_.SetObjectRotation(object_id, rotation);
+    }
 }
 
 void MinimalVulkanTriangle::setObjectScale(std::string const& object_id, float x, float y, float z)
 {
-    scene_world_.SetObjectScale(object_id, glm::vec3{x, y, z});
+    glm::vec3 const scale{x, y, z};
+    if (!scene_world_.SetObjectScale(object_id, scale)) {
+        ui_runtime_.SetObjectScale(object_id, scale);
+    }
 }
 
 void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool visible)
 {
     LOGI("setObjectVisible object_id=%s visible=%d", object_id.c_str(),visible);
-    scene_world_.SetObjectVisible(object_id, visible);
+    bool const scene_updated = scene_world_.SetObjectVisible(object_id, visible);
+    bool const ui_updated = ui_runtime_.SetObjectVisible(object_id, visible);
+    if (!scene_updated && !ui_updated) {
+        LOGW("setObjectVisible failed, object not found: %s", object_id.c_str());
+    }
 }
 
 void MinimalVulkanTriangle::setObjectColor(std::string const& object_id, float r, float g, float b, float a)
 {
-    scene_world_.SetObjectColor(object_id, glm::vec4{r, g, b, a});
+    glm::vec4 const color{r, g, b, a};
+    if (!scene_world_.SetObjectColor(object_id, color)) {
+        ui_runtime_.SetObjectColor(object_id, color);
+    }
 }
 
-bool MinimalVulkanTriangle::GetObjectVisible(std::string const& object_id, bool& out_visible){
-    return scene_world_.GetObjectVisible(object_id,out_visible);
+void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::string const& texture_id)
+{
+    if (!ui_runtime_.SetObjectTexture(object_id, texture_id)) {
+        LOGW("setObjectTexture failed, UI object not found or not textured: %s", object_id.c_str());
+    }
+}
+
+bool MinimalVulkanTriangle::getObjectPosition(std::string const& object_id, glm::vec3& out_position) const
+{
+    return scene_world_.GetObjectPosition(object_id, out_position) ||
+           ui_runtime_.GetObjectPosition(object_id, out_position);
+}
+
+bool MinimalVulkanTriangle::getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const
+{
+    return scene_world_.GetObjectRotation(object_id, out_rotation) ||
+           ui_runtime_.GetObjectRotation(object_id, out_rotation);
+}
+
+bool MinimalVulkanTriangle::getObjectScale(std::string const& object_id, glm::vec3& out_scale) const
+{
+    return scene_world_.GetObjectScale(object_id, out_scale) ||
+           ui_runtime_.GetObjectScale(object_id, out_scale);
+}
+
+bool MinimalVulkanTriangle::getObjectVisible(std::string const& object_id, bool& out_visible) const
+{
+    return scene_world_.GetObjectVisible(object_id, out_visible) ||
+           ui_runtime_.GetObjectVisible(object_id, out_visible);
+}
+
+bool MinimalVulkanTriangle::getObjectColor(std::string const& object_id, glm::vec4& out_color) const
+{
+    return scene_world_.GetObjectColor(object_id, out_color) ||
+           ui_runtime_.GetObjectColor(object_id, out_color);
+}
+
+bool MinimalVulkanTriangle::getObjectTexture(std::string const& object_id, std::string& out_texture_id) const
+{
+    return ui_runtime_.GetObjectTexture(object_id, out_texture_id);
 }
 
 void MinimalVulkanTriangle::destroy()
@@ -232,11 +286,6 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     uint32_t shader_id = 0;
     Jni_ClearScripts();
     for (auto const& object : scene.objects) {
-        if (object.components.script.has_value()) {
-            auto const& script = *object.components.script;
-            LOGI("Instantiating Java script %s for GameObject %s", script.java_class.c_str(), object.id.c_str());
-            Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
-        }
         if (!object.components.mesh_renderer.has_value()) {
             continue;
         }
@@ -284,6 +333,17 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     scene_world_.RebuildFromScene(scene, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem(), aspect);
     ui_runtime_.SetViewportSize(extent.width, extent.height);
     ui_runtime_.RebuildFromScene(scene);
+
+    for (auto const& object : scene.objects) {
+        if (!object.components.script.has_value()) {
+            continue;
+        }
+
+        auto const& script = *object.components.script;
+        LOGI("Instantiating Java script %s for GameObject %s", script.java_class.c_str(), object.id.c_str());
+        Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
+    }
+
     scene_world_.BuildFrameData(frame_index_, frame_data_);
     ui_runtime_.BuildFrameUi(frame_data_.ui_items);
 
@@ -327,7 +387,6 @@ void MinimalVulkanTriangle::drawFrame()
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
         if (use_frame_data_path_) {
             scene_world_.UpdateDebugLight(delta_time);
-            scene_world_.UpdateDebugCamera(delta_time);
             Jni_UpdateScripts(delta_time); // Update scripts
             scene_world_.BuildFrameData(frame_index_, frame_data_);
             ui_runtime_.Update(delta_time);

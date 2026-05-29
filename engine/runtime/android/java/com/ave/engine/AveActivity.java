@@ -127,8 +127,32 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         nativeSetObjectColor(objectId, r, g, b, a);
     }
 
+    static void jniSetObjectTexture(String objectId, String texture) {
+        nativeSetObjectTexture(objectId, texture);
+    }
+
+    static float[] jniGetObjectPosition(String objectId) {
+        return nativeGetObjectPosition(objectId);
+    }
+
+    static float[] jniGetObjectRotation(String objectId) {
+        return nativeGetObjectRotation(objectId);
+    }
+
+    static float[] jniGetObjectScale(String objectId) {
+        return nativeGetObjectScale(objectId);
+    }
+
     static boolean jniGetObjectVisible(String objectId) {
         return nativeGetObjectVisible(objectId);
+    }
+
+    static float[] jniGetObjectColor(String objectId) {
+        return nativeGetObjectColor(objectId);
+    }
+
+    static String jniGetObjectTexture(String objectId) {
+        return nativeGetObjectTexture(objectId);
     }
 
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);
@@ -142,7 +166,12 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeSetObjectScale(String objectId, float x, float y, float z);
     private static native void nativeSetObjectVisible(String objectId, boolean visible);
     private static native void nativeSetObjectColor(String objectId, float r, float g, float b, float a);
+    private static native void nativeSetObjectTexture(String objectId, String texture);
     private static native void nativeResize(int width, int height);
-
-    public static native boolean nativeGetObjectVisible(String objectId);
+    private static native float[] nativeGetObjectPosition(String objectId);
+    private static native float[] nativeGetObjectRotation(String objectId);
+    private static native float[] nativeGetObjectScale(String objectId);
+    private static native boolean nativeGetObjectVisible(String objectId);
+    private static native float[] nativeGetObjectColor(String objectId);
+    private static native String nativeGetObjectTexture(String objectId);
 }

@@ -2,7 +2,10 @@
     <GameObject id="MainCamera" name="Main Camera">
         <Transform position="0,2,8" rotation="0,-12,0" scale="1,1,1" />
         <Camera fov="60" near="0.1" far="1000" />
-        <Script class="com.example.trianglegame.CameraController" pitch="-12" yaw="0" />
+        <Script class="com.example.trianglegame.CameraController"
+                modeButton="switch_mode_button"
+                translateTexture="textures/tanslate.png"
+                rotationTexture="textures/rotation.png" />
     </GameObject>
 
     <GameObject id="room" name="Viking Room">
@@ -17,7 +20,7 @@
     </GameObject>
 
     <GameObject id="Ground" name="Ground">
-        <Transform position="0,-1,0" rotation="0,0,0" scale="12,1,12" />
+        <Transform position="0,-5,0" rotation="0,0,0" scale="12,1,12" />
         <MeshRenderer 
             mesh="Plane" 
             visible="true"
@@ -45,11 +48,11 @@
         <Image texture="textures/viking_room.png" color="1,1,1,0.95" />
     </GameObject>
 
-    <GameObject id="ui_interact_button" name="Interact Button">
+    <GameObject id="switch_mode_button" name="switch_mode Button">
         <Transform position="-0.72,-0.76,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
-        <Image texture="textures/viking_room.png" color="0.85,0.92,1,0.78" />
-        <Button target="PlayerController" method="interact" />
-        <Text value="INTERACT" color="1,1,1,1" size="0.09" />
+        <Image texture="textures/tanslate.png" />
+        <Button target="CameraController" method="switchMode" />
+        <Text value="INTERACT" color="1,0,0,1" size="0.03" />
     </GameObject>
 
     <GameObject id="ui_health_bar" name="Health Bar">
