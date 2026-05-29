@@ -72,8 +72,10 @@ struct FrameUiData {
     enum class Kind : uint8_t {
         Image,
         ButtonBackground,
+        ButtonLabel,
         ProgressBarBackground,
         ProgressBarFill,
+        TextGlyph,
     };
 
     std::string object_id;

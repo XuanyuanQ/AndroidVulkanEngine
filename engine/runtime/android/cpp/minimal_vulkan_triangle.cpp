@@ -40,11 +40,20 @@ void MinimalVulkanTriangle::setKeyState(int32_t key_code, bool pressed){
 
 void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
 {
+    if (action == 0) {
+        ui_runtime_.HandlePointerDown(x, y);
+        return;
+    }
+
+    if (action == 3) {
+        ui_runtime_.HandlePointerCancel();
+        return;
+    }
+
     // Android MotionEvent.ACTION_UP = 1 最后一个手指离开屏幕的事件，才触发点击逻辑
     if (action != 1) {
         return;
     }
-
     auto action_info = ui_runtime_.HandlePointerUp(x, y);
     if (!action_info.has_value()) {
         return;

@@ -316,6 +316,18 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.button = std::move(button);
         }
 
+        auto text_tags = MatchTags(body, "Text");
+        if (!text_tags.empty()) {
+            TextComponentData text{};
+            text.value = Attribute(text_tags.front(), "value");
+            if (text.value.empty()) {
+                text.value = Attribute(text_tags.front(), "text");
+            }
+            text.color = Float4(Attribute(text_tags.front(), "color"), text.color);
+            text.size = std::stof(Attribute(text_tags.front(), "size", std::to_string(text.size)));
+            object.components.text = std::move(text);
+        }
+
         auto image_tags = MatchTags(body, "Image");
         if (!image_tags.empty()) {
             ImageComponentData image{};

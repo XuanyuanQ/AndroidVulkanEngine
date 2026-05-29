@@ -155,6 +155,12 @@ struct ButtonComponentData {
     std::string method;
 };
 
+struct TextComponentData {
+    std::string value;
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    float size = 0.08f;
+};
+
 struct ProgressBarComponentData {
     float value = 0.0f;
     float min_value = 0.0f;
@@ -190,6 +196,7 @@ struct ComponentData {
     std::optional<ScriptBindingData> script;
     std::optional<ImageComponentData> image;
     std::optional<ButtonComponentData> button;
+    std::optional<TextComponentData> text;
     std::optional<ProgressBarComponentData> progress_bar;
 };
 

@@ -36,11 +36,29 @@ struct UiButtonNode {
     glm::vec3 rotation{0.0f, 0.0f, 0.0f};
     glm::vec3 scale{1.0f, 1.0f, 1.0f};
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 pressed_color{0.70f, 0.78f, 0.92f, 0.90f};
+    std::string label;
+    glm::vec4 label_color{1.0f, 1.0f, 1.0f, 1.0f};
+    float label_size = 0.06f;
     float depth = 0.0f;
     bool visible = true;
     bool interactable = true;
+    bool pressed = false;
     std::string target;
     std::string method;
+};
+
+struct UiTextNode {
+    std::string object_id;
+    std::string debug_name;
+    std::string text;
+    glm::vec2 position{0.0f, 0.0f};
+    glm::vec3 rotation{0.0f, 0.0f, 0.0f};
+    glm::vec3 scale{1.0f, 1.0f, 1.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    float size = 0.08f;
+    float depth = 0.0f;
+    bool visible = true;
 };
 
 struct UiProgressBarNode {
@@ -59,7 +77,7 @@ struct UiProgressBarNode {
     float max_value = 1.0f;
 };
 
-using UiRuntimeNode = std::variant<UiImageNode, UiButtonNode, UiProgressBarNode>;
+using UiRuntimeNode = std::variant<UiImageNode, UiButtonNode, UiTextNode, UiProgressBarNode>;
 
 class UIRuntime {
 public:
@@ -73,7 +91,7 @@ public:
     void RebuildFromScene(project::SceneData const& scene);
     void Update(float delta_time);
     void BuildFrameUi(std::vector<core::FrameUiData>& out_items) const;
-    std::optional<ButtonAction> HandlePointerUp(float x_px, float y_px) const;
+
     bool SetObjectPosition(std::string const& object_id, glm::vec3 const& position);
     bool SetObjectRotation(std::string const& object_id, glm::vec3 const& rotation);
     bool SetObjectScale(std::string const& object_id, glm::vec3 const& scale);
@@ -86,6 +104,9 @@ public:
     bool GetObjectVisible(std::string const& object_id, bool& out_visible) const;
     bool GetObjectTexture(std::string const& object_id, std::string& out_texture_id) const;
     bool GetObjectColor(std::string const& object_id, glm::vec4& out_color) const;
+    bool HandlePointerDown(float x_px, float y_px);
+    void HandlePointerCancel();
+    std::optional<ButtonAction> HandlePointerUp(float x_px, float y_px);
 
 private:
     struct UiTransform {
@@ -97,11 +118,23 @@ private:
     UiTransform ResolveUiTransform(project::GameObjectData const& object) const;
     size_t FindNodeIndex(std::string const& object_id) const;
     void RefreshNodeSize(UiRuntimeNode& node);
+    UiButtonNode* FindButtonNode(std::string const& object_id);
+    UiButtonNode const* HitTestButton(float x_px, float y_px) const;
+    void AppendTextItems(std::vector<core::FrameUiData>& out_items,
+                         std::string const& object_id,
+                         std::string const& debug_name,
+                         std::string const& text,
+                         glm::vec2 position,
+                         glm::vec4 color,
+                         float size,
+                         float depth,
+                         core::FrameUiData::Kind kind) const;
 
     std::vector<UiRuntimeNode> nodes_{};
     std::unordered_map<std::string, size_t> object_to_node_{};
     uint32_t viewport_width_ = 0;
     uint32_t viewport_height_ = 0;
+    std::string pressed_button_id_;
 };
 
 } // namespace ave::ui

@@ -75,15 +75,18 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        handleEngineTouchEvent(event);
         if (scriptManager.dispatchTouchEvent(this, event)) {
             return true;
         }
-        handleEngineTouchEvent(event);
         return super.dispatchTouchEvent(event);
     }
 
     protected final void handleEngineTouchEvent(MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN ||
+                action == MotionEvent.ACTION_UP ||
+                action == MotionEvent.ACTION_CANCEL) {
             nativeTouchEvent(event.getX(), event.getY(), event.getActionMasked());
         }
     }
