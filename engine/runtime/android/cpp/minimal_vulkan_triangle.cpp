@@ -71,12 +71,17 @@ void MinimalVulkanTriangle::setObjectScale(std::string const& object_id, float x
 
 void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool visible)
 {
+    LOGI("setObjectVisible object_id=%s visible=%d", object_id.c_str(),visible);
     scene_world_.SetObjectVisible(object_id, visible);
 }
 
 void MinimalVulkanTriangle::setObjectColor(std::string const& object_id, float r, float g, float b, float a)
 {
     scene_world_.SetObjectColor(object_id, glm::vec4{r, g, b, a});
+}
+
+bool MinimalVulkanTriangle::GetObjectVisible(std::string const& object_id, bool& out_visible){
+    return scene_world_.GetObjectVisible(object_id,out_visible);
 }
 
 void MinimalVulkanTriangle::destroy()

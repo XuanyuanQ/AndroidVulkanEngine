@@ -593,34 +593,67 @@ bool SceneWorld::SetObjectColor(std::string const& object_id, glm::vec4 const& c
     return true;
 }
 
-void SceneWorld::DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const
+bool SceneWorld::GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const
 {
-    if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
-        return;
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index >= 0) {
+        out_position = transform_nodes_[static_cast<size_t>(node_index)].local.position;
+        return true;
     }
 
-    auto const& node = transform_nodes_[static_cast<size_t>(node_index)];
-    out.append(static_cast<size_t>(depth * 2), ' ');
-    out += "- ";
-    out += node.object_id;
-    out += " local.pos=" + Vec3ToString(node.local.position);
-    out += " local.rot=" + Vec3ToString(node.local.rotation);
-    out += " local.scale=" + Vec3ToString(node.local.scale);
-    out += " world.pos=" + Vec3ToString(glm::vec3(node.world_matrix[3]));
-    out += "\n";
-
-    for (int32_t child_index : node.children) {
-        DumpTransformNodeRecursive(child_index, depth + 1, out);
+    int32_t const renderable_index = FindRenderableIndex(object_id);
+    if (renderable_index < 0) {
+        return false;
     }
+
+    auto const& world = renderables_[static_cast<size_t>(renderable_index)].world;
+    out_position = glm::vec3{world[3][0], world[3][1], world[3][2]};
+    return true;
 }
 
-std::string SceneWorld::DumpTransformHierarchy() const
+bool SceneWorld::GetObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const
 {
-    std::string dump = "Transform hierarchy:\n";
-    for (int32_t root_index : root_nodes_) {
-        DumpTransformNodeRecursive(root_index, 0, dump);
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index < 0) {
+        return false;
     }
-    return dump;
+
+    out_rotation = transform_nodes_[static_cast<size_t>(node_index)].local.rotation;
+    return true;
+}
+
+bool SceneWorld::GetObjectScale(std::string const& object_id, glm::vec3& out_scale) const
+{
+    int32_t const node_index = FindTransformNodeIndex(object_id);
+    if (node_index < 0) {
+        return false;
+    }
+
+    out_scale = transform_nodes_[static_cast<size_t>(node_index)].local.scale;
+    return true;
+}
+
+bool SceneWorld::GetObjectVisible(std::string const& object_id, bool& out_visible) const
+{
+    int32_t const idx = FindRenderableIndex(object_id);
+    if (idx < 0) {
+        return false;
+    }
+
+    out_visible = renderables_[static_cast<size_t>(idx)].visible;
+    return true;
+}
+
+bool SceneWorld::GetObjectColor(std::string const& object_id, glm::vec4& out_color) const
+{
+    int32_t const idx = FindRenderableIndex(object_id);
+    if (idx < 0) {
+        return false;
+    }
+
+    auto const& renderable = renderables_[static_cast<size_t>(idx)];
+    out_color = renderable.has_color_override ? renderable.color_override : glm::vec4{1.0f};
+    return true;
 }
 
 void SceneWorld::RebuildFromScene(project::SceneData const& scene,
@@ -720,6 +753,36 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
 
     RefreshAllDerivedState();
     LOGI("%s", DumpTransformHierarchy().c_str());
+}
+
+void SceneWorld::DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const
+{
+    if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
+        return;
+    }
+
+    auto const& node = transform_nodes_[static_cast<size_t>(node_index)];
+    out.append(static_cast<size_t>(depth * 2), ' ');
+    out += "- ";
+    out += node.object_id;
+    out += " local.pos=" + Vec3ToString(node.local.position);
+    out += " local.rot=" + Vec3ToString(node.local.rotation);
+    out += " local.scale=" + Vec3ToString(node.local.scale);
+    out += " world.pos=" + Vec3ToString(glm::vec3(node.world_matrix[3]));
+    out += "\n";
+
+    for (int32_t child_index : node.children) {
+        DumpTransformNodeRecursive(child_index, depth + 1, out);
+    }
+}
+
+std::string SceneWorld::DumpTransformHierarchy() const
+{
+    std::string dump = "Transform hierarchy:\n";
+    for (int32_t root_index : root_nodes_) {
+        DumpTransformNodeRecursive(root_index, 0, dump);
+    }
+    return dump;
 }
 
 void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const

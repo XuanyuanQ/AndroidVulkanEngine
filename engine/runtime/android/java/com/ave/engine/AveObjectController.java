@@ -23,4 +23,9 @@ public final class AveObjectController {
     public static void setColor(String objectId, float r, float g, float b, float a) {
         AveActivity.jniSetObjectColor(objectId, r, g, b, a);
     }
+    public static boolean getVisible(String objectId) {
+        return AveActivity.jniGetObjectVisible(objectId);
+    }
+
+    
 }

@@ -43,6 +43,11 @@ public:
     bool SetObjectScale(std::string const& object_id, glm::vec3 const& scale);
     bool SetObjectVisible(std::string const& object_id, bool visible);
     bool SetObjectColor(std::string const& object_id, glm::vec4 const& color);
+    bool GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
+    bool GetObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;
+    bool GetObjectScale(std::string const& object_id, glm::vec3& out_scale) const;
+    bool GetObjectVisible(std::string const& object_id, bool& out_visible) const;
+    bool GetObjectColor(std::string const& object_id, glm::vec4& out_color) const;
     std::string DumpTransformHierarchy() const;
 
 #ifdef ENABLE_CAMERA_DEBUG

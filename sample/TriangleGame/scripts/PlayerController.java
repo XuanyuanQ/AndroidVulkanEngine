@@ -6,66 +6,31 @@ import com.ave.engine.AveActivity;
 import com.ave.engine.AveActivityEventHandler;
 import com.ave.engine.AveScript;
 
-public final class PlayerController extends AveScript implements AveActivityEventHandler {
-    private float yaw = 0.0f;
-    private float pitch = 0.0f;
-    private float lastX = 0.0f;
-    private float lastY = 0.0f;
-    private boolean dragging = false;
+public final class PlayerController extends AveScript {
+    private boolean visible=false;
+    private float mVisibleTimer = 0.0f;
 
     @Override
     public void start() {
-        yaw = Float.parseFloat(getParam("yaw", "0"));
-        pitch = Float.parseFloat(getParam("pitch", "0"));
-        setRotation(yaw, pitch, 0.0f);
         log("Triangle script started");
     }
 
     @Override
     public void update(float dt) {
-    }
+        // 2. 没帧都把过去的时间（dt）累加到计时器中
+            mVisibleTimer += dt;
 
-    @Override
-    public boolean dispatchTouchEvent(AveActivity activity, MotionEvent event) {
-        float x = event.getX();
-        float y = event.getY();
+            // 3. 当累加时间达到或超过 2 秒时
+            if (mVisibleTimer >= 2.0f) {
+                // 切换可见性状态
+                visible = !visible;
+                log("updata visible status:"+visible);
+                setVisible(visible);
+                log("visible status:"+getVisible()); 
 
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
-                lastX = x;
-                lastY = y;
-                dragging = true;
-                return true;
-
-            case MotionEvent.ACTION_MOVE:
-                if (!dragging) {
-                    return false;
-                }
-
-                float dx = x - lastX;
-                float dy = y - lastY;
-                lastX = x;
-                lastY = y;
-
-                yaw += dx * 0.15f;
-                pitch -= dy * 0.15f;
-                if (pitch > 89.0f) {
-                    pitch = 89.0f;
-                }
-                if (pitch < -89.0f) {
-                    pitch = -89.0f;
-                }
-
-                setRotation(yaw, pitch, 0.0f);
-                return true;
-
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
-                dragging = false;
-                return true;
-
-            default:
-                return false;
-        }
+                // 4. 重置计时器。这里用 -= 2.0f 比直接赋值 0 更好，
+                // 可以保留微小的帧时间溢出，让定时更加精准。
+                mVisibleTimer -= 2.0f; 
+            }
     }
 }

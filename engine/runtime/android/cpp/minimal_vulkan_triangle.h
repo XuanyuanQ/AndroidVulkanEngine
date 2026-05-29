@@ -45,6 +45,8 @@ public:
     void setObjectVisible(std::string const& object_id, bool visible);
     void setObjectColor(std::string const& object_id, float r, float g, float b, float a);
 
+    bool GetObjectVisible(std::string const& object_id, bool& out_visible);
+
 private:
     bool loadSceneMesh();
     void drawFrame();

@@ -229,6 +229,32 @@ Java_com_ave_engine_AveActivity_nativeSetObjectVisible(
     env->ReleaseStringUTFChars(object_id, chars);
 }
 
+extern "C" JNIEXPORT jboolean JNICALL // 修改返回类型为 jboolean
+Java_com_ave_engine_AveActivity_nativeGetObjectVisible(
+    JNIEnv* env, jclass, jstring object_id) {
+    
+    // 如果运行时不存在或 id 为空，默认返回 false
+    if (!g_runtime || !object_id) {
+        return JNI_FALSE; 
+    }
+    
+    char const* chars = env->GetStringUTFChars(object_id, nullptr);
+    if (!chars) {
+        return JNI_FALSE;
+    }
+    
+    // 定义一个临时的 C++ bool 变量来接收结果
+    bool visible_result = false;
+    g_runtime->GetObjectVisible(chars, visible_result);
+    
+    // 释放字符串内存
+    env->ReleaseStringUTFChars(object_id, chars);
+    
+    // 将 C++ bool 转换为 jboolean 返回给 Java
+    return visible_result ? JNI_TRUE : JNI_FALSE;
+}
+
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeSetObjectColor(
     JNIEnv* env, jclass, jstring object_id, jfloat r, jfloat g, jfloat b, jfloat a) {

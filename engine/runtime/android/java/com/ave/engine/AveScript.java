@@ -80,6 +80,22 @@ public class AveScript {
         }
     }
 
+    protected final boolean getVisible() {
+        String target = getTargetObjectId();
+        
+        // 1. 检查目标 ID 是否合法
+        if (target != null && !target.isEmpty()) {
+            // 调用修改后的 native 方法，它现在直接返回 boolean
+            return AveObjectController.getVisible(target);
+        }
+        
+        // 2. 补全兜底返回，如果 target 为空，默认返回 false
+        LogUtil.log("target ID does not exist " + target);
+        return false;
+    }
+
+    
+
     protected final void log(String message) {
         LogUtil.log(message);
     }

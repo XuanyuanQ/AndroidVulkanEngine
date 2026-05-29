@@ -28,6 +28,7 @@ glm::vec2 ClampUiSize(glm::vec2 const& size)
 void UIRuntime::Clear()
 {
     nodes_.clear();
+    object_to_node_.clear();
 }
 
 void UIRuntime::SetViewportSize(uint32_t width, uint32_t height)
@@ -39,6 +40,7 @@ void UIRuntime::SetViewportSize(uint32_t width, uint32_t height)
 void UIRuntime::RebuildFromScene(project::SceneData const& scene)
 {
     nodes_.clear();
+    object_to_node_.clear();
 
     for (auto const& object : scene.objects) {
         auto const& components = object.components;
@@ -59,10 +61,13 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.texture_id = image.texture;
             node.position = position;
             node.size = ClampUiSize(image_size);
+            node.rotation = ui_transform.rotation;
+            node.scale = ui_transform.scale;
             node.color = image.color;
             node.depth = ui_transform.position.z;
             node.target = button.target;
             node.method = button.method;
+            object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
             continue;
         }
@@ -76,8 +81,11 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.texture_id = image.texture;
             node.position = position;
             node.size = ClampUiSize(image_size);
+            node.rotation = ui_transform.rotation;
+            node.scale = ui_transform.scale;
             node.color = image.color;
             node.depth = ui_transform.position.z;
+            object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
         }
 
@@ -92,6 +100,8 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
                 std::max(ui_transform.scale.x * 0.60f, 0.10f),
                 std::max(ui_transform.scale.y * 0.08f, 0.02f),
             });
+            node.rotation = ui_transform.rotation;
+            node.scale = ui_transform.scale;
             node.depth = ui_transform.position.z;
             float const denominator = std::max(progress_bar.max_value - progress_bar.min_value, 0.0001f);
             float const normalized = std::clamp((progress_bar.value - progress_bar.min_value) / denominator, 0.0f, 1.0f);
@@ -104,6 +114,7 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
                 0.30f,
                 1.0f,
             };
+            object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
         }
     }
@@ -222,15 +233,218 @@ std::optional<UIRuntime::ButtonAction> UIRuntime::HandlePointerUp(float x_px, fl
     return std::nullopt;
 }
 
+bool UIRuntime::SetObjectPosition(std::string const& object_id, glm::vec3 const& position)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&position](auto& node) {
+        node.position = ClampUiPosition({position.x, position.y});
+        node.depth = position.z;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::SetObjectRotation(std::string const& object_id, glm::vec3 const& rotation)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&rotation](auto& node) {
+        node.rotation = rotation;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::SetObjectScale(std::string const& object_id, glm::vec3 const& scale)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&scale](auto& node) {
+        node.scale = scale;
+    }, nodes_[index]);
+    RefreshNodeSize(nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::SetObjectVisible(std::string const& object_id, bool visible)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([visible](auto& node) {
+        node.visible = visible;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::SetObjectTexture(std::string const& object_id, std::string const& texture_id)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    return std::visit([&texture_id](auto& node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            return false;
+        } else {
+            node.texture_id = texture_id;
+            return true;
+        }
+    }, nodes_[index]);
+}
+
+bool UIRuntime::SetObjectColor(std::string const& object_id, glm::vec4 const& color)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&color](auto& node) {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            node.fill_color = color;
+        } else {
+            node.color = color;
+        }
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&out_position](auto const& node) {
+        out_position = {node.position.x, node.position.y, node.depth};
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&out_rotation](auto const& node) {
+        out_rotation = node.rotation;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectScale(std::string const& object_id, glm::vec3& out_scale) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&out_scale](auto const& node) {
+        out_scale = node.scale;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectVisible(std::string const& object_id, bool& out_visible) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&out_visible](auto const& node) {
+        out_visible = node.visible;
+    }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectTexture(std::string const& object_id, std::string& out_texture_id) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    return std::visit([&out_texture_id](auto const& node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            return false;
+        } else {
+            out_texture_id = node.texture_id;
+            return true;
+        }
+    }, nodes_[index]);
+}
+
+bool UIRuntime::GetObjectColor(std::string const& object_id, glm::vec4& out_color) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    std::visit([&out_color](auto const& node) {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            out_color = node.fill_color;
+        } else {
+            out_color = node.color;
+        }
+    }, nodes_[index]);
+    return true;
+}
+
 UIRuntime::UiTransform UIRuntime::ResolveUiTransform(project::GameObjectData const& object) const
 {
     UiTransform transform{};
     if (object.components.transform.has_value()) {
         auto const& source = *object.components.transform;
         transform.position = source.position;
+        transform.rotation = source.rotation;
         transform.scale = source.scale;
     }
     return transform;
+}
+
+size_t UIRuntime::FindNodeIndex(std::string const& object_id) const
+{
+    auto const found = object_to_node_.find(object_id);
+    return found != object_to_node_.end() ? found->second : nodes_.size();
+}
+
+void UIRuntime::RefreshNodeSize(UiRuntimeNode& node)
+{
+    std::visit([](auto& typed_node) {
+        using T = std::decay_t<decltype(typed_node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            typed_node.size = ClampUiSize({
+                std::max(typed_node.scale.x * 0.60f, 0.10f),
+                std::max(typed_node.scale.y * 0.08f, 0.02f),
+            });
+        } else {
+            typed_node.size = ClampUiSize({
+                std::max(typed_node.scale.x * 0.25f, 0.05f),
+                std::max(typed_node.scale.y * 0.25f, 0.05f),
+            });
+        }
+    }, node);
 }
 
 } // namespace ave::ui
