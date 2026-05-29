@@ -1448,17 +1448,8 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     context.command_buffer.bindVertexBuffers(0, ui_vertex_buffers_[buf_idx].Handle(), offset);
     context.command_buffer.bindIndexBuffer(ui_index_buffers_[buf_idx].Handle(), 0, vk::IndexType::eUint32);
 
-    // 3. Declare Descriptor Set with 16 slots!
-    DescriptorSetLayoutKey texture_set_layout_key;
-    texture_set_layout_key.bindings = {
-        DescriptorBinding{
-            .binding = 0,
-            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 16, // Bindless texture array of size 16!
-            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
-        },
-    };
-    uint32_t const texture_layout_id = desc_cache.GetOrCreateLayout(texture_set_layout_key);
+    // 3. Use the same texture set layout as the UI pipeline layout.
+    uint32_t const texture_layout_id = desc_cache.GetOrCreateLayout(MakeTextureSetLayoutKey());
     vk::Sampler const sampler = GetCommonSampler(*context.vk);
     EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
 

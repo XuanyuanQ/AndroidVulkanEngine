@@ -86,7 +86,7 @@ DescriptorSetLayoutKey MakeTextureSetLayoutKey()
         DescriptorBinding{
             .binding = 0,
             .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
-            .descriptor_count = 1,
+            .descriptor_count = 16,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
     };

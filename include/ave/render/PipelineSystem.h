@@ -167,6 +167,7 @@ struct PipelineLayoutKey {
 DescriptorSetLayoutKey MakeFrameSetLayoutKey();
 DescriptorSetLayoutKey MakeMaterialSetLayoutKey();
 DescriptorSetLayoutKey MakeObjectSetLayoutKey();
+DescriptorSetLayoutKey MakeTextureSetLayoutKey();
 
 // Hash for PipelineLayoutKey
 struct PipelineLayoutKeyHash {
