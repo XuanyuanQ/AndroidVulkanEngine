@@ -54,7 +54,7 @@
 
     <GameObject id="ui_health_bar" name="Health Bar">
         <Transform position="-0.48,0.82,0.00" rotation="0,0,0" scale="1.50,1.00,1" />
-        <ProgressBar value="0.72" min="0" max="1" />
+        <ProgressBar value="0" min="0" max="100" />
     </GameObject>
 
     <GameObject id="ui_title_text" name="Title Text">

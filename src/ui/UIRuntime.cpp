@@ -209,7 +209,27 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
 
 void UIRuntime::Update(float delta_time)
 {
-    (void)delta_time;
+    float const safe_delta = std::clamp(delta_time, 0.0f, 0.1f);
+    for (auto& node : nodes_) {
+        if (!std::holds_alternative<UiProgressBarNode>(node)) {
+            continue;
+        }
+
+        auto& progress = std::get<UiProgressBarNode>(node);
+        float const range = std::max(progress.max_value - progress.min_value, 0.0001f);
+        progress.value += safe_delta * range * 0.35f;
+        while (progress.value > progress.max_value) {
+            progress.value -= range;
+        }
+
+        float const normalized = std::clamp((progress.value - progress.min_value) / range, 0.0f, 1.0f);
+        progress.fill_color = {
+            0.20f + 0.60f * normalized,
+            0.75f,
+            0.30f,
+            1.0f,
+        };
+    }
 }
 
 void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
@@ -285,8 +305,9 @@ void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
                 fill.object_id = typed_node.object_id;
                 fill.debug_name = typed_node.debug_name + " Fill";
                 fill.position = typed_node.position;
-                fill.size = {typed_node.size.x * normalized, typed_node.size.y};
+                fill.size = typed_node.size;
                 fill.color = typed_node.fill_color;
+                fill.fill_amount = normalized;
                 fill.depth = typed_node.depth + 0.001f;
                 fill.visible = typed_node.visible && normalized > 0.0f;
                 fill.kind = core::FrameUiData::Kind::ProgressBarFill;
@@ -435,7 +456,7 @@ void UIRuntime::AppendTextItems(std::vector<core::FrameUiData>& out_items,
                 };
                 glyph.size = {cell * 0.82f, cell * 0.82f};
                 glyph.color = color;
-                glyph.depth = depth - 0.0001f * static_cast<float>(char_index * 35 + static_cast<size_t>(row * 5 + column));
+                glyph.depth = depth;
                 glyph.visible = true;
                 glyph.kind = kind;
                 out_items.push_back(std::move(glyph));

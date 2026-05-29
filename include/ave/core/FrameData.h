@@ -87,6 +87,7 @@ struct FrameUiData {
     glm::vec2 position{0.0f, 0.0f};
     glm::vec2 size{0.0f, 0.0f};
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    float fill_amount = 1.0f;
 
     float depth = 0.0f;
     bool visible = true;

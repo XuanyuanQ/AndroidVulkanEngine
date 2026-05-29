@@ -502,6 +502,11 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
 {
     glm::vec2 const half_size = item.size * 0.5f;
     glm::vec3 const center = ClampUiPosition(item.position, item.depth);
+    float const left = -half_size.x;
+    float const right =
+        item.kind == core::FrameUiData::Kind::ProgressBarFill
+            ? left + item.size.x * std::clamp(item.fill_amount, 0.0f, 1.0f)
+            : half_size.x;
 
     uint32_t const base_vertex = static_cast<uint32_t>(vertices.size());
 
@@ -518,10 +523,10 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
         return vertex;
     };
 
-    vertices.push_back(make_vertex(-half_size.x, -half_size.y, 0.0f, 1.0f));
-    vertices.push_back(make_vertex( half_size.x, -half_size.y, 1.0f, 1.0f));
-    vertices.push_back(make_vertex( half_size.x,  half_size.y, 1.0f, 0.0f));
-    vertices.push_back(make_vertex(-half_size.x,  half_size.y, 0.0f, 0.0f));
+    vertices.push_back(make_vertex(left, -half_size.y, 0.0f, 1.0f));
+    vertices.push_back(make_vertex(right, -half_size.y, 1.0f, 1.0f));
+    vertices.push_back(make_vertex(right,  half_size.y, 1.0f, 0.0f));
+    vertices.push_back(make_vertex(left,  half_size.y, 0.0f, 0.0f));
 
     indices.push_back(base_vertex + 0);
     indices.push_back(base_vertex + 1);
