@@ -43,6 +43,7 @@ public:
     bool SetObjectScale(std::string const& object_id, glm::vec3 const& scale);
     bool SetObjectVisible(std::string const& object_id, bool visible);
     bool SetObjectColor(std::string const& object_id, glm::vec4 const& color);
+    std::string DumpTransformHierarchy() const;
 
 #ifdef ENABLE_CAMERA_DEBUG
     // Simple debug camera for keyboard testing
@@ -107,6 +108,7 @@ private:
     bool IsTransformDirty(int32_t node_index) const;
     bool IsCameraNodeDirty() const;
     void ClearDirtyTracking();
+    void DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const;
 
     core::FrameViewData view_{};
     std::vector<core::FrameRenderableData> renderables_;

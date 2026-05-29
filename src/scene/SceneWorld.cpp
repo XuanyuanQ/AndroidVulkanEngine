@@ -7,6 +7,9 @@
 
 #include <cmath>
 #include <algorithm>
+#include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 #include <glm/glm.hpp>
 #include "LogUtil.h"
 
@@ -83,6 +86,37 @@ bool ComputeVisibility(glm::vec3 const& camera_position,
 {
     float const distance = glm::length(world_position - camera_position);
     return distance <= far_plane;
+}
+
+bool WouldCreateHierarchyCycle(std::string const& object_id,
+                               std::string const& parent_id,
+                               std::unordered_map<std::string, std::string> const& parent_by_object)
+{
+    std::unordered_set<std::string> visited;
+    std::string current = parent_id;
+    while (!current.empty()) {
+        if (current == object_id) {
+            return true;
+        }
+        if (!visited.insert(current).second) {
+            return true;
+        }
+
+        auto const found = parent_by_object.find(current);
+        if (found == parent_by_object.end()) {
+            return false;
+        }
+        current = found->second;
+    }
+
+    return false;
+}
+
+std::string Vec3ToString(glm::vec3 const& value)
+{
+    std::ostringstream stream;
+    stream << "(" << value.x << ", " << value.y << ", " << value.z << ")";
+    return stream.str();
 }
 
 } // namespace
@@ -270,6 +304,12 @@ void SceneWorld::RebuildTransformNodes(project::SceneData const& scene)
     transform_nodes_.reserve(scene.objects.size());
     object_to_node_.reserve(scene.objects.size());
 
+    std::unordered_map<std::string, std::string> parent_by_object;
+    parent_by_object.reserve(scene.objects.size());
+    for (auto const& object : scene.objects) {
+        parent_by_object.emplace(object.id, object.hierarchy.parent);
+    }
+
     for (auto const& object : scene.objects) {
         TransformNode node{};
         node.object_id = object.id;
@@ -292,6 +332,14 @@ void SceneWorld::RebuildTransformNodes(project::SceneData const& scene)
         if (!object.hierarchy.parent.empty()) {
             int32_t const parent_index = FindTransformNodeIndex(object.hierarchy.parent);
             if (parent_index >= 0) {
+                if (WouldCreateHierarchyCycle(object.id, object.hierarchy.parent, parent_by_object)) {
+                    LOGW("Hierarchy cycle detected for GameObject '%s' with parent '%s'. Treating it as a root node.",
+                         object.id.c_str(),
+                         object.hierarchy.parent.c_str());
+                    root_nodes_.push_back(node_index);
+                    continue;
+                }
+
                 node.parent_index = parent_index;
                 transform_nodes_[static_cast<size_t>(parent_index)].children.push_back(node_index);
                 continue;
@@ -545,6 +593,36 @@ bool SceneWorld::SetObjectColor(std::string const& object_id, glm::vec4 const& c
     return true;
 }
 
+void SceneWorld::DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const
+{
+    if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {
+        return;
+    }
+
+    auto const& node = transform_nodes_[static_cast<size_t>(node_index)];
+    out.append(static_cast<size_t>(depth * 2), ' ');
+    out += "- ";
+    out += node.object_id;
+    out += " local.pos=" + Vec3ToString(node.local.position);
+    out += " local.rot=" + Vec3ToString(node.local.rotation);
+    out += " local.scale=" + Vec3ToString(node.local.scale);
+    out += " world.pos=" + Vec3ToString(glm::vec3(node.world_matrix[3]));
+    out += "\n";
+
+    for (int32_t child_index : node.children) {
+        DumpTransformNodeRecursive(child_index, depth + 1, out);
+    }
+}
+
+std::string SceneWorld::DumpTransformHierarchy() const
+{
+    std::string dump = "Transform hierarchy:\n";
+    for (int32_t root_index : root_nodes_) {
+        DumpTransformNodeRecursive(root_index, 0, dump);
+    }
+    return dump;
+}
+
 void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                                   resource::ResourceSystem const& resources,
                                   render::MaterialSystem const& materials,
@@ -641,6 +719,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
     }
 
     RefreshAllDerivedState();
+    LOGI("%s", DumpTransformHierarchy().c_str());
 }
 
 void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const
