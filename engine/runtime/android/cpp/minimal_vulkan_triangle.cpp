@@ -112,6 +112,17 @@ void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::
     }
 }
 
+void MinimalVulkanTriangle::registerFontAtlas(int width, int height, void const* pixel_data)
+{
+    renderer_.GetResourceSystem().GetTextureManager().LoadTextureFromData(
+        "__ave_font_atlas",
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        pixel_data,
+        1
+    );
+}
+
 bool MinimalVulkanTriangle::getObjectPosition(std::string const& object_id, glm::vec3& out_position) const
 {
     return scene_world_.GetObjectPosition(object_id, out_position) ||
@@ -223,6 +234,9 @@ void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
             LOGE("Failed to initialize FrameGraph backend.");
             return;
     }
+
+    Jni_GenerateFontAtlas(); // Generate and load ASCII glyph atlas synchronously before rendering starts!
+
     m_running = true;
     m_surface_changed = true; // 标记 Surface 发生了变化
     m_render_thread = std::thread(&MinimalVulkanTriangle::drawFrame, this);

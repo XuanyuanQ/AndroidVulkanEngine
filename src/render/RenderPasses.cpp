@@ -523,10 +523,10 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
         return vertex;
     };
 
-    vertices.push_back(make_vertex(left, -half_size.y, 0.0f, 1.0f));
-    vertices.push_back(make_vertex(right, -half_size.y, 1.0f, 1.0f));
-    vertices.push_back(make_vertex(right,  half_size.y, 1.0f, 0.0f));
-    vertices.push_back(make_vertex(left,  half_size.y, 0.0f, 0.0f));
+    vertices.push_back(make_vertex(left, -half_size.y, item.uv_min.x, item.uv_max.y));
+    vertices.push_back(make_vertex(right, -half_size.y, item.uv_max.x, item.uv_max.y));
+    vertices.push_back(make_vertex(right,  half_size.y, item.uv_max.x, item.uv_min.y));
+    vertices.push_back(make_vertex(left,  half_size.y, item.uv_min.x, item.uv_min.y));
 
     indices.push_back(base_vertex + 0);
     indices.push_back(base_vertex + 1);

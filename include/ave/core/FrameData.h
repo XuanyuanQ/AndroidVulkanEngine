@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ave/core/RenderTags.h"
 
@@ -88,6 +88,8 @@ struct FrameUiData {
     glm::vec2 size{0.0f, 0.0f};
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     float fill_amount = 1.0f;
+    glm::vec2 uv_min{0.0f, 0.0f};
+    glm::vec2 uv_max{1.0f, 1.0f};
 
     float depth = 0.0f;
     bool visible = true;

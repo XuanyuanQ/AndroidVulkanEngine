@@ -24,67 +24,6 @@ glm::vec2 ClampUiSize(glm::vec2 const& size)
         std::clamp(size.y, 0.01f, 2.0f),
     };
 }
-
-uint8_t GlyphColumn(char c, int column)
-{
-    static constexpr std::array<uint8_t, 5> kSpace{0x00, 0x00, 0x00, 0x00, 0x00};
-    static constexpr std::array<uint8_t, 5> kUnknown{0x7f, 0x41, 0x5d, 0x41, 0x7f};
-
-    static constexpr std::array<std::array<uint8_t, 5>, 10> kDigits{{
-        {0x3e, 0x51, 0x49, 0x45, 0x3e}, // 0
-        {0x00, 0x42, 0x7f, 0x40, 0x00}, // 1
-        {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
-        {0x21, 0x41, 0x45, 0x4b, 0x31}, // 3
-        {0x18, 0x14, 0x12, 0x7f, 0x10}, // 4
-        {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
-        {0x3c, 0x4a, 0x49, 0x49, 0x30}, // 6
-        {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
-        {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
-        {0x06, 0x49, 0x49, 0x29, 0x1e}, // 9
-    }};
-
-    static constexpr std::array<std::array<uint8_t, 5>, 26> kLetters{{
-        {0x7e, 0x11, 0x11, 0x11, 0x7e}, // A
-        {0x7f, 0x49, 0x49, 0x49, 0x36}, // B
-        {0x3e, 0x41, 0x41, 0x41, 0x22}, // C
-        {0x7f, 0x41, 0x41, 0x22, 0x1c}, // D
-        {0x7f, 0x49, 0x49, 0x49, 0x41}, // E
-        {0x7f, 0x09, 0x09, 0x09, 0x01}, // F
-        {0x3e, 0x41, 0x49, 0x49, 0x7a}, // G
-        {0x7f, 0x08, 0x08, 0x08, 0x7f}, // H
-        {0x00, 0x41, 0x7f, 0x41, 0x00}, // I
-        {0x20, 0x40, 0x41, 0x3f, 0x01}, // J
-        {0x7f, 0x08, 0x14, 0x22, 0x41}, // K
-        {0x7f, 0x40, 0x40, 0x40, 0x40}, // L
-        {0x7f, 0x02, 0x0c, 0x02, 0x7f}, // M
-        {0x7f, 0x04, 0x08, 0x10, 0x7f}, // N
-        {0x3e, 0x41, 0x41, 0x41, 0x3e}, // O
-        {0x7f, 0x09, 0x09, 0x09, 0x06}, // P
-        {0x3e, 0x41, 0x51, 0x21, 0x5e}, // Q
-        {0x7f, 0x09, 0x19, 0x29, 0x46}, // R
-        {0x46, 0x49, 0x49, 0x49, 0x31}, // S
-        {0x01, 0x01, 0x7f, 0x01, 0x01}, // T
-        {0x3f, 0x40, 0x40, 0x40, 0x3f}, // U
-        {0x1f, 0x20, 0x40, 0x20, 0x1f}, // V
-        {0x7f, 0x20, 0x18, 0x20, 0x7f}, // W
-        {0x63, 0x14, 0x08, 0x14, 0x63}, // X
-        {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
-        {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
-    }};
-
-    char const upper = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    if (upper == ' ') {
-        return kSpace[static_cast<size_t>(column)];
-    }
-    if (upper >= '0' && upper <= '9') {
-        return kDigits[static_cast<size_t>(upper - '0')][static_cast<size_t>(column)];
-    }
-    if (upper >= 'A' && upper <= 'Z') {
-        return kLetters[static_cast<size_t>(upper - 'A')][static_cast<size_t>(column)];
-    }
-    return kUnknown[static_cast<size_t>(column)];
-}
-
 } // namespace
 
 void UIRuntime::Clear()
@@ -430,38 +369,36 @@ void UIRuntime::AppendTextItems(std::vector<core::FrameUiData>& out_items,
         return;
     }
 
-    float const cell = std::max(size, 0.01f) / 7.0f;
-    float const char_width = cell * 6.0f;
+    float const font_size = std::max(size, 0.01f);
+    float const char_width = font_size * 0.8f;
     float const total_width = char_width * static_cast<float>(text.size());
-    glm::vec2 const start{
-        position.x - total_width * 0.5f + cell * 0.5f,
-        position.y + cell * 3.0f,
-    };
+    float const start_x = position.x - total_width * 0.5f + char_width * 0.5f;
 
-    for (size_t char_index = 0; char_index < text.size(); ++char_index) {
-        char const c = text[char_index];
-        for (int column = 0; column < 5; ++column) {
-            uint8_t const bits = GlyphColumn(c, column);
-            for (int row = 0; row < 7; ++row) {
-                if ((bits & (1u << row)) == 0) {
-                    continue;
-                }
+    for (size_t i = 0; i < text.size(); ++i) {
+        uint8_t const c = static_cast<uint8_t>(text[i]);
+        
+        // Calculate UV coordinates in the 16x8 glyph atlas (128 ASCII cells)
+        uint32_t const col = c % 16;
+        uint32_t const row = c / 16;
+        float const u_min = static_cast<float>(col) / 16.0f;
+        float const u_max = static_cast<float>(col + 1) / 16.0f;
+        float const v_min = static_cast<float>(row) / 8.0f;
+        float const v_max = static_cast<float>(row + 1) / 8.0f;
 
-                core::FrameUiData glyph{};
-                glyph.object_id = object_id;
-                glyph.debug_name = debug_name;
-                glyph.position = {
-                    start.x + static_cast<float>(char_index) * char_width + static_cast<float>(column) * cell,
-                    start.y - static_cast<float>(row) * cell,
-                };
-                glyph.size = {cell * 0.82f, cell * 0.82f};
-                glyph.color = color;
-                glyph.depth = depth;
-                glyph.visible = true;
-                glyph.kind = kind;
-                out_items.push_back(std::move(glyph));
-            }
-        }
+        core::FrameUiData glyph{};
+        glyph.object_id = object_id;
+        glyph.debug_name = debug_name + " Char " + std::to_string(i);
+        glyph.texture_id = "__ave_font_atlas";
+        glyph.position = { start_x + static_cast<float>(i) * char_width, position.y };
+        glyph.size = { char_width, font_size };
+        glyph.uv_min = { u_min, v_max };
+        glyph.uv_max = { u_max, v_min };
+        glyph.color = color;
+        glyph.depth = depth - 0.0001f * static_cast<float>(i);
+        glyph.visible = true;
+        glyph.kind = kind;
+
+        out_items.push_back(std::move(glyph));
     }
 }
 

@@ -29,6 +29,7 @@ void Jni_InstantiateScript(std::string const& object_id,
 void Jni_UpdateScripts(float dt);
 void Jni_TriggerScriptMethod(std::string const& target, std::string const& method);
 void Jni_ClearScripts();
+void Jni_GenerateFontAtlas();
 
 class MinimalVulkanTriangle {
 public:
@@ -45,6 +46,7 @@ public:
     void setObjectVisible(std::string const& object_id, bool visible);
     void setObjectColor(std::string const& object_id, float r, float g, float b, float a);
     void setObjectTexture(std::string const& object_id, std::string const& texture_id);
+    void registerFontAtlas(int width, int height, void const* pixel_data);
 
     bool getObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
     bool getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;

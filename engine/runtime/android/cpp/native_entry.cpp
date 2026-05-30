@@ -15,6 +15,7 @@ static jmethodID g_instantiate_script_mid = nullptr;
 static jmethodID g_update_scripts_mid = nullptr;
 static jmethodID g_trigger_script_mid = nullptr;
 static jmethodID g_clear_scripts_mid = nullptr;
+static jmethodID g_generate_font_atlas_mid = nullptr;
 
 namespace {
 
@@ -73,6 +74,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
         g_trigger_script_mid = env->GetStaticMethodID(
             g_ave_activity_class, "jniTriggerScriptMethod", "(Ljava/lang/String;Ljava/lang/String;)V");
         g_clear_scripts_mid = env->GetStaticMethodID(g_ave_activity_class, "jniClearScripts", "()V");
+        g_generate_font_atlas_mid = env->GetStaticMethodID(g_ave_activity_class, "jniGenerateFontAtlas", "()V");
     }
     return JNI_VERSION_1_6;
 }
@@ -173,6 +175,15 @@ void Jni_ClearScripts()
         return;
     }
     env->CallStaticVoidMethod(g_ave_activity_class, g_clear_scripts_mid);
+}
+
+void Jni_GenerateFontAtlas()
+{
+    JNIEnv* env = GetJniEnv();
+    if (!env || !g_ave_activity_class || !g_generate_font_atlas_mid) {
+        return;
+    }
+    env->CallStaticVoidMethod(g_ave_activity_class, g_generate_font_atlas_mid);
 }
 
 std::unique_ptr<MinimalVulkanTriangle> g_runtime;
@@ -354,5 +365,15 @@ Java_com_ave_engine_AveActivity_nativeResize(JNIEnv*, jclass, jint width, jint h
 {
     if (g_runtime) {
         g_runtime->resize(width, height);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeRegisterFontAtlas(JNIEnv* env, jclass, jint width, jint height, jintArray jpixels)
+{
+    jint* pixels = env->GetIntArrayElements(jpixels, nullptr);
+    if (pixels && g_runtime) {
+        g_runtime->registerFontAtlas(width, height, pixels);
+        env->ReleaseIntArrayElements(jpixels, pixels, JNI_ABORT);
     }
 }

@@ -155,6 +155,45 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         return nativeGetObjectTexture(objectId);
     }
 
+    public static void jniGenerateFontAtlas() {
+        int cellWidth = 64;
+        int cellHeight = 64;
+        int cols = 16;
+        int rows = 8;
+        int w = cols * cellWidth;
+        int h = rows * cellHeight;
+
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint();
+        paint.setTextSize(44); // 44px text size fits beautifully in 40x64 cell
+        paint.setAntiAlias(true);
+        paint.setColor(android.graphics.Color.WHITE);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        paint.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.NORMAL));
+
+        android.graphics.Paint.FontMetrics fm = paint.getFontMetrics();
+        float baselineOffset = (cellHeight - (fm.bottom - fm.top)) / 2f - fm.top;
+
+        for (int c = 0; c < 128; c++) {
+            int col = c % 16;
+            int row = c / 16;
+            float x = col * cellWidth + cellWidth / 2f;
+            float y = row * cellHeight + baselineOffset;
+
+            if (c >= 32 && c <= 126) {
+                canvas.drawText(String.valueOf((char) c), x, y, paint);
+            }
+        }
+
+        int[] pixels = new int[w * h];
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h);
+
+        nativeRegisterFontAtlas(w, h, pixels);
+
+        bitmap.recycle();
+    }
+
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
@@ -174,4 +213,5 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native boolean nativeGetObjectVisible(String objectId);
     private static native float[] nativeGetObjectColor(String objectId);
     private static native String nativeGetObjectTexture(String objectId);
+    private static native void nativeRegisterFontAtlas(int width, int height, int[] pixels);
 }
