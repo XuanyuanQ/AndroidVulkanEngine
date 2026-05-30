@@ -325,7 +325,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         GameObjectData object;
         object.id = Attribute(object_tag, "id");
         object.name = Attribute(object_tag, "name", object.id);
-        object.hierarchy.parent = Attribute(object_tag, "parent", parent_id);
+        object.hierarchy.parent = parent_id;
         std::string const object_id = object.id;
 
         auto transform_tags = MatchTags(component_body, "Transform");
