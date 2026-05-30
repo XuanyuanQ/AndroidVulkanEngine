@@ -1,4 +1,5 @@
 #include "ave/ui/UIRuntime.h"
+#include "LogUtil.h"
 
 #include <algorithm>
 #include <array>
@@ -44,6 +45,8 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
     nodes_.clear();
     object_to_node_.clear();
 
+    LOGI("UIRuntime::RebuildFromScene: processing %zu objects", scene.objects.size());
+
     for (auto const& object : scene.objects) {
         auto const& components = object.components;
         auto const ui_transform = ResolveUiTransform(object);
@@ -78,6 +81,8 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.method = button.method;
             object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
+            LOGI("UIRuntime::RebuildFromScene: created button '%s' (id=%s) with target=%s, method=%s",
+                 node.debug_name.c_str(), node.object_id.c_str(), node.target.c_str(), node.method.c_str());
             continue;
         }
 
@@ -155,6 +160,9 @@ void UIRuntime::Update(float delta_time)
         }
 
         auto& progress = std::get<UiProgressBarNode>(node);
+        if (!progress.auto_animate) {
+            continue;
+        }
         float const range = std::max(progress.max_value - progress.min_value, 0.0001f);
         progress.value += safe_delta * range * 0.35f;
         while (progress.value > progress.max_value) {
@@ -268,6 +276,7 @@ bool UIRuntime::HandlePointerDown(float x_px, float y_px)
     pressed_button_id_.clear();
     UiButtonNode const* button = HitTestButton(x_px, y_px);
     if (button == nullptr) {
+        LOGD("HandlePointerDown: no button hit at (%.2f, %.2f)", x_px, y_px);
         return false;
     }
 
@@ -275,6 +284,8 @@ bool UIRuntime::HandlePointerDown(float x_px, float y_px)
     if (auto* mutable_button = FindButtonNode(pressed_button_id_)) {
         mutable_button->pressed = true;
     }
+    LOGI("HandlePointerDown: button '%s' hit at (%.2f, %.2f), target=%s, method=%s",
+         button->debug_name.c_str(), x_px, y_px, button->target.c_str(), button->method.c_str());
     return true;
 }
 
@@ -290,10 +301,12 @@ std::optional<UIRuntime::ButtonAction> UIRuntime::HandlePointerUp(float x_px, fl
 {
     UiButtonNode const* button = HitTestButton(x_px, y_px);
     if (button == nullptr) {
+        LOGD("HandlePointerUp: no button hit at (%.2f, %.2f)", x_px, y_px);
         HandlePointerCancel();
         return std::nullopt;
     }
     if (!pressed_button_id_.empty() && pressed_button_id_ != button->object_id) {
+        LOGD("HandlePointerUp: pressed_button_id_=%s but hit button=%s", pressed_button_id_.c_str(), button->object_id.c_str());
         HandlePointerCancel();
         return std::nullopt;
     }
@@ -302,6 +315,8 @@ std::optional<UIRuntime::ButtonAction> UIRuntime::HandlePointerUp(float x_px, fl
         .target = button->target,
         .method = button->method,
     };
+    LOGI("HandlePointerUp: button '%s' clicked, target=%s, method=%s",
+         button->debug_name.c_str(), button->target.c_str(), button->method.c_str());
     HandlePointerCancel();
     return action;
 }
@@ -323,12 +338,16 @@ UiButtonNode* UIRuntime::FindButtonNode(std::string const& object_id)
 UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
 {
     if (viewport_width_ == 0 || viewport_height_ == 0) {
+        LOGD("HitTestButton: viewport is zero");
         return nullptr;
     }
 
     float const ndc_x = (x_px / static_cast<float>(viewport_width_)) * 2.0f - 1.0f;
     float const ndc_y = 1.0f - (y_px / static_cast<float>(viewport_height_)) * 2.0f;
     float const aspect_ratio = static_cast<float>(viewport_height_) / static_cast<float>(viewport_width_);
+
+    LOGD("HitTestButton: px=(%.2f, %.2f) -> ndc=(%.4f, %.4f), viewport=%ux%u, aspect=%.4f",
+         x_px, y_px, ndc_x, ndc_y, viewport_width_, viewport_height_, aspect_ratio);
 
     for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
         if (!std::holds_alternative<UiButtonNode>(*it)) {
@@ -337,21 +356,34 @@ UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
 
         auto const& button = std::get<UiButtonNode>(*it);
         if (!button.visible || !button.interactable) {
+            LOGD("HitTestButton: button '%s' skipped (visible=%d, interactable=%d)",
+                 button.debug_name.c_str(), button.visible, button.interactable);
             continue;
         }
 
         float const half_w = (button.size.x / aspect_ratio) * 0.5f;
         float const half_h = button.size.y * 0.5f;
 
+        float const left = button.position.x - half_w;
+        float const right = button.position.x + half_w;
+        float const top = button.position.y + half_h;
+        float const bottom = button.position.y - half_h;
+
+        LOGD("HitTestButton: button '%s' pos=(%.4f, %.4f) size=(%.4f, %.4f) bounds=[(%.4f, %.4f) to (%.4f, %.4f)]",
+             button.debug_name.c_str(), button.position.x, button.position.y,
+             button.size.x, button.size.y, left, bottom, right, top);
+
         bool const hit =
-            ndc_x >= (button.position.x - half_w) && ndc_x <= (button.position.x + half_w) &&
-            ndc_y >= (button.position.y - half_h) && ndc_y <= (button.position.y + half_h);
+            ndc_x >= left && ndc_x <= right &&
+            ndc_y >= bottom && ndc_y <= top;
 
         if (hit) {
+            LOGI("HitTestButton: button '%s' HIT!", button.debug_name.c_str());
             return &button;
         }
     }
 
+    LOGD("HitTestButton: no button hit");
     return nullptr;
 }
 
@@ -492,6 +524,19 @@ bool UIRuntime::SetObjectColor(std::string const& object_id, glm::vec4 const& co
     return true;
 }
 
+bool UIRuntime::SetObjectProgress(std::string const& object_id, float value)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size() || !std::holds_alternative<UiProgressBarNode>(nodes_[index])) {
+        return false;
+    }
+
+    auto& progress_bar = std::get<UiProgressBarNode>(nodes_[index]);
+    progress_bar.value = std::clamp(value, progress_bar.min_value, progress_bar.max_value);
+    progress_bar.auto_animate = false;
+    return true;
+}
+
 bool UIRuntime::GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const
 {
     size_t const index = FindNodeIndex(object_id);
@@ -577,6 +622,18 @@ bool UIRuntime::GetObjectColor(std::string const& object_id, glm::vec4& out_colo
             out_color = node.color;
         }
     }, nodes_[index]);
+    return true;
+}
+
+bool UIRuntime::GetObjectProgress(std::string const& object_id, float& out_value) const
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size() || !std::holds_alternative<UiProgressBarNode>(nodes_[index])) {
+        return false;
+    }
+
+    auto const& progress_bar = std::get<UiProgressBarNode>(nodes_[index]);
+    out_value = progress_bar.value;
     return true;
 }
 

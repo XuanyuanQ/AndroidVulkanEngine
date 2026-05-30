@@ -131,6 +131,14 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         nativeSetObjectTexture(objectId, texture);
     }
 
+    static void jniSetObjectProgress(String objectId, float value) {
+        nativeSetObjectProgress(objectId, value);
+    }
+
+    static float jniGetObjectProgress(String objectId) {
+        return nativeGetObjectProgress(objectId);
+    }
+
     static float[] jniGetObjectPosition(String objectId) {
         return nativeGetObjectPosition(objectId);
     }
@@ -206,8 +214,12 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeSetObjectVisible(String objectId, boolean visible);
     private static native void nativeSetObjectColor(String objectId, float r, float g, float b, float a);
     private static native void nativeSetObjectTexture(String objectId, String texture);
+    private static native void nativeSetObjectProgress(String objectId, float value);
+   
+    
     private static native void nativeResize(int width, int height);
     private static native float[] nativeGetObjectPosition(String objectId);
+    private static native float nativeGetObjectProgress(String objectId);
     private static native float[] nativeGetObjectRotation(String objectId);
     private static native float[] nativeGetObjectScale(String objectId);
     private static native boolean nativeGetObjectVisible(String objectId);

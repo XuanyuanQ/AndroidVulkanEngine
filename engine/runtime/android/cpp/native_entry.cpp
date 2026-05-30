@@ -1,4 +1,5 @@
 #include "minimal_vulkan_triangle.h"
+#include "LogUtil.h"
 
 #include <android/asset_manager_jni.h>
 #include <android/keycodes.h>
@@ -156,8 +157,10 @@ void Jni_UpdateScripts(float dt)
 
 void Jni_TriggerScriptMethod(std::string const& target, std::string const& method)
 {
+    LOGI("Jni_TriggerScriptMethod: target=%s, method=%s", target.c_str(), method.c_str());
     JNIEnv* env = GetJniEnv();
     if (!env || !g_trigger_script_mid) {
+        LOGE("Jni_TriggerScriptMethod: env or g_trigger_script_mid is null");
         return;
     }
 
@@ -278,6 +281,14 @@ Java_com_ave_engine_AveActivity_nativeSetObjectTexture(JNIEnv* env, jclass, jstr
     }
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectProgress(JNIEnv* env, jclass, jstring object_id, jfloat value)
+{
+    if (g_runtime) {
+        g_runtime->setObjectProgress(ReadJString(env, object_id), value);
+    }
+}
+
 extern "C" JNIEXPORT jfloatArray JNICALL
 Java_com_ave_engine_AveActivity_nativeGetObjectPosition(JNIEnv* env, jclass, jstring object_id)
 {
@@ -336,6 +347,16 @@ Java_com_ave_engine_AveActivity_nativeGetObjectTexture(JNIEnv* env, jclass, jstr
         g_runtime->getObjectTexture(ReadJString(env, object_id), value);
     }
     return env->NewStringUTF(value.c_str());
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_ave_engine_AveActivity_nativeGetObjectProgress(JNIEnv* env, jclass, jstring object_id)
+{
+    float value = 0.0f;
+    if (g_runtime) {
+        g_runtime->getObjectProgress(ReadJString(env, object_id), value);
+    }
+    return value;
 }
 
 extern "C" JNIEXPORT void JNICALL

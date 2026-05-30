@@ -54,19 +54,24 @@ public final class AveScriptManager {
 
     // Called via JNI when a button targeting a script is clicked
     public void triggerScriptMethod(String targetClassName, String methodName) {
+        Log.i(TAG, "triggerScriptMethod called: target=" + targetClassName + ", method=" + methodName + ", activeScripts=" + activeScripts.size());
         boolean invoked = false;
         for (Map.Entry<String, AveScript> entry : activeScripts.entrySet()) {
             String objectId = entry.getKey();
             AveScript script = entry.getValue();
             String simpleName = script.getClass().getSimpleName();
             String fullName = script.getClass().getName();
+            Log.d(TAG, "Checking script: objectId=" + objectId + ", simpleName=" + simpleName + ", fullName=" + fullName);
             if (simpleName.equals(targetClassName) || fullName.equals(targetClassName) || objectId.equals(targetClassName)) {
+                Log.i(TAG, "Found matching script: " + objectId + " (" + simpleName + ")");
                 try {
                     // Try direct method reflection
                     script.getClass().getMethod(methodName).invoke(script);
                     invoked = true;
+                    Log.i(TAG, "Successfully invoked method: " + methodName);
                 } catch (NoSuchMethodException e) {
                     // Fallback to general onClick callback
+                    Log.i(TAG, "Method not found, falling back to onClick: " + methodName);
                     script.onClick(methodName);
                     invoked = true;
                 } catch (Exception e) {

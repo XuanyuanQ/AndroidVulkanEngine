@@ -112,6 +112,13 @@ void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::
     }
 }
 
+void MinimalVulkanTriangle::setObjectProgress(std::string const& object_id, float value)
+{
+    if (!ui_runtime_.SetObjectProgress(object_id, value)) {
+        LOGW("setObjectProgress failed, UI progress bar not found: %s", object_id.c_str());
+    }
+}
+
 void MinimalVulkanTriangle::registerFontAtlas(int width, int height, void const* pixel_data)
 {
     renderer_.GetResourceSystem().GetTextureManager().LoadTextureFromData(
@@ -156,6 +163,11 @@ bool MinimalVulkanTriangle::getObjectColor(std::string const& object_id, glm::ve
 bool MinimalVulkanTriangle::getObjectTexture(std::string const& object_id, std::string& out_texture_id) const
 {
     return ui_runtime_.GetObjectTexture(object_id, out_texture_id);
+}
+
+bool MinimalVulkanTriangle::getObjectProgress(std::string const& object_id, float& out_value) const
+{
+    return ui_runtime_.GetObjectProgress(object_id, out_value);
 }
 
 void MinimalVulkanTriangle::destroy()
@@ -354,7 +366,8 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         }
 
         auto const& script = *object.components.script;
-        LOGI("Instantiating Java script %s for GameObject %s", script.java_class.c_str(), object.id.c_str());
+        LOGI("Instantiating Java script %s for GameObject %s (target_object=%s)",
+             script.java_class.c_str(), object.id.c_str(), script.target_object.c_str());
         Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
     }
 
@@ -400,7 +413,6 @@ void MinimalVulkanTriangle::drawFrame()
         if (delta_time > 0.1f) delta_time = 0.1f; // 限制单帧最大时长
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
         if (use_frame_data_path_) {
-            scene_world_.UpdateDebugLight(delta_time);
             Jni_UpdateScripts(delta_time); // Update scripts
             scene_world_.BuildFrameData(frame_index_, frame_data_);
             ui_runtime_.Update(delta_time);

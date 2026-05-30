@@ -85,6 +85,13 @@ public class AveScript {
         }
     }
 
+    protected final void setProgress(float value) {
+        String target = getTargetObjectId();
+        if (!target.isEmpty()) {
+            AveObjectController.setProgress(target, value);
+        }
+    }
+
     protected final float[] getPosition() {
         String target = getTargetObjectId();
         return target.isEmpty() ? new float[] {0.0f, 0.0f, 0.0f} : AveObjectController.getPosition(target);
@@ -113,6 +120,11 @@ public class AveScript {
     protected final String getTexture() {
         String target = getTargetObjectId();
         return target.isEmpty() ? "" : AveObjectController.getTexture(target);
+    }
+
+    protected final float getProgress() {
+        String target = getTargetObjectId();
+        return target.isEmpty() ? 0.0f : AveObjectController.getProgress(target);
     }
 
     protected final void log(String message) {

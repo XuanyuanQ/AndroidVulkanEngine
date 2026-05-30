@@ -25,9 +25,9 @@ public final class PlayerController extends AveScript {
             if (mVisibleTimer >= 2.0f) {
                 // 切换可见性状态
                 visible = !visible;
-                log("updata visible status:"+visible);
+                // log("updata visible status:"+visible);
                 setVisible(visible);
-                log("visible status:"+getVisible()); 
+                // log("visible status:"+getVisible()); 
 
                 // 4. 重置计时器。这里用 -= 2.0f 比直接赋值 0 更好，
                 // 可以保留微小的帧时间溢出，让定时更加精准。

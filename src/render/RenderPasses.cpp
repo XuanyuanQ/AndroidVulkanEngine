@@ -548,7 +548,7 @@ PassDataFilter DepthPrepass::GetDataFilter() const
 
 void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: DepthPrepass");
+    // LOGI( "RenderVulkan", "Pass: DepthPrepass");
     (void)context;
     (void)view;
 }
@@ -564,7 +564,7 @@ PassDataFilter ShadowPass::GetDataFilter() const
 
 void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: ShadowPass");
+    // LOGI( "RenderVulkan", "Pass: ShadowPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -752,7 +752,7 @@ PassDataFilter PBRPass::GetDataFilter() const
 
 void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: PBRPass");
+    // LOGI( "RenderVulkan", "Pass: PBRPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -1028,7 +1028,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             context.command_buffer.draw(vertex_count, 1, renderable->first_vertex, 0);
         }
 
-        LOGI( "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
+        // LOGI( "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
     }
 
     if (began_rendering) {
@@ -1045,7 +1045,7 @@ PassDataFilter ComputePass::GetDataFilter() const
 
 void ComputePass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: ComputePass");
+    // LOGI( "RenderVulkan", "Pass: ComputePass");
     (void)view;
     uint32_t const object_count = static_cast<uint32_t>(view.renderables.size());
     
@@ -1278,8 +1278,8 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
     for (uint32_t i = 0; i < object_count; ++i) {
         if (g_culling_visibility[i] != 0) visible_count++;
     }
-    LOGI( "CullingSystem", "GPU Culling: %u / %u visible (Ratio: %.2f%%)",
-                        visible_count, object_count, (float)visible_count / (float)object_count * 100.0f);
+    // LOGI( "CullingSystem", "GPU Culling: %u / %u visible (Ratio: %.2f%%)",
+    //                     visible_count, object_count, (float)visible_count / (float)object_count * 100.0f);
 }
 
 PassDataFilter UIPass::GetDataFilter() const
@@ -1292,7 +1292,7 @@ PassDataFilter UIPass::GetDataFilter() const
 
 void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: UIPass");
+    // LOGI( "RenderVulkan", "Pass: UIPass");
     if (view.ui_items.empty()) {
         return;
     }
@@ -1353,7 +1353,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         if (!item || !item->visible) {
             continue;
         }
-        LOGI( "RenderVulkan", "  ui: %s", item->debug_name.c_str());
+        // LOGI( "RenderVulkan", "  ui: %s", item->debug_name.c_str());
         
         uint32_t texture_index = 0; // Default to fallback white slot
         if (!item->texture_id.empty()) {
@@ -1514,7 +1514,7 @@ PassDataFilter ToneMappingPass::GetDataFilter() const
 
 void ToneMappingPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    LOGI( "RenderVulkan", "Pass: ToneMappingPass");
+    // LOGI( "RenderVulkan", "Pass: ToneMappingPass");
     (void)context;
     (void)view;
 }

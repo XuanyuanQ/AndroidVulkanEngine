@@ -75,6 +75,7 @@ struct UiProgressBarNode {
     float value = 0.0f;
     float min_value = 0.0f;
     float max_value = 1.0f;
+    bool auto_animate = true;
 };
 
 using UiRuntimeNode = std::variant<UiImageNode, UiButtonNode, UiTextNode, UiProgressBarNode>;
@@ -98,12 +99,14 @@ public:
     bool SetObjectVisible(std::string const& object_id, bool visible);
     bool SetObjectTexture(std::string const& object_id, std::string const& texture_id);
     bool SetObjectColor(std::string const& object_id, glm::vec4 const& color);
+    bool SetObjectProgress(std::string const& object_id, float value);
     bool GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
     bool GetObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;
     bool GetObjectScale(std::string const& object_id, glm::vec3& out_scale) const;
     bool GetObjectVisible(std::string const& object_id, bool& out_visible) const;
     bool GetObjectTexture(std::string const& object_id, std::string& out_texture_id) const;
     bool GetObjectColor(std::string const& object_id, glm::vec4& out_color) const;
+    bool GetObjectProgress(std::string const& object_id, float& out_value) const;
     bool HandlePointerDown(float x_px, float y_px);
     void HandlePointerCancel();
     std::optional<ButtonAction> HandlePointerUp(float x_px, float y_px);

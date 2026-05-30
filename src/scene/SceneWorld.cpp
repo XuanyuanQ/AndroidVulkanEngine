@@ -183,7 +183,7 @@ void SceneWorld::UpdateDebugCamera(float delta_time)
     float dx = 0.0f, dy = 0.0f;
     ConsumeMouseMovement(dx, dy); // 拿出当前帧积攒的鼠标位移
     float temp = dx; dx = dy; dy = temp; // 暴力对调
-    __android_log_print(ANDROID_LOG_DEBUG, "CAMERA_AXIS", "C++ 收到鼠标绝对值 -> dx: %f, dy: %f", dx, dy);
+    LOGD("C++ 收到鼠标绝对值 -> dx: %f, dy: %f", dx, dy);
 
     if (glm::abs(dx) > 0.0f || glm::abs(dy) > 0.0f) {
         // 运用灵敏度更新欧拉角

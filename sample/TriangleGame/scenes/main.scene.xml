@@ -26,7 +26,7 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
-        <Script class="com.example.trianglegame.PlayerController"/>
+        <!-- <Script class="com.example.trianglegame.PlayerController"/> -->
     </GameObject>
 
     <GameObject id="HierarchyPivot" name="Hierarchy Pivot">
@@ -63,5 +63,36 @@
     <GameObject id="ui_title_text" name="Title Text">
         <Transform position="0,0.92,0.00" rotation="0,0,0" scale="1,1,1" />
         <Text value="VIKING ROOM" color="1,0.95,0.72,1" size="0.08" />
+    </GameObject>
+
+    <GameObject id="KeyLight" name="Key Light">
+        <Transform position="0,6,6" rotation="0,0,0" scale="1,1,1" />
+        <PointLight color="1,1,1" intensity="15.0" range="20.0" castShadows="true" />
+        <Script class="com.example.trianglegame.LightControlScript" />
+    </GameObject>
+
+    <!-- <GameObject id="light_auto_button" name="Light Auto Button">
+        <Transform position="-0.8,-0.76,0.01" rotation="0,0,0" scale="1,1,1" />
+        <Image texture="textures/viking_room.png" />
+        <Button target="KeyLight" method="toggleAuto" />
+        <Text value="AUTO ROTATE" color="0,0,1,1" size="0.03" />
+    </GameObject> -->
+
+    <GameObject id="light_x_slider" name="Light X Slider">
+        <Transform position="-0.72,0.15,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
+        <ProgressBar value="0.5" min="0" max="1" />
+        <Text value="LIGHT X" color="1,1,1,1" size="0.02" />
+    </GameObject>
+
+    <GameObject id="light_y_slider" name="Light Y Slider">
+        <Transform position="-0.72,-0.15,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
+        <ProgressBar value="0.5" min="0" max="1" />
+        <Text value="LIGHT Y" color="1,1,1,1" size="0.02" />
+    </GameObject>
+
+    <GameObject id="light_z_slider" name="Light Z Slider">
+        <Transform position="-0.72,-0.45,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
+        <ProgressBar value="0.5" min="0" max="1" />
+        <Text value="LIGHT Z" color="1,1,1,1" size="0.02" />
     </GameObject>
 </Scene>

@@ -214,7 +214,7 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     SetVkContext(&ctx);
 
     sync.WaitForFrame(ctx, frame_index);
-    LOGE( "RenderVulkan", "frame_index: %u", frame_index);
+    // LOGE( "RenderVulkan", "frame_index: %u", frame_index);
     auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
     if (acq_result == vk::Result::eErrorOutOfDateKHR) {
         return;

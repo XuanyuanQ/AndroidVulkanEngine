@@ -640,10 +640,7 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
                                     stbi_failure_reason());
             }
         } else {
-            __android_log_print(ANDROID_LOG_WARN,
-                                "TextureManager",
-                                "Texture asset loader returned empty data: %s",
-                                path.c_str());
+            LOGW("Texture asset loader returned empty data: %s", path.c_str());
         }
     }
 

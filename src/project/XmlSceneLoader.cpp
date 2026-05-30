@@ -436,8 +436,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
 
         auto script_tags = MatchTags(component_body, "Script");
         if (!script_tags.empty()) {
-            LOGI( "XmlSceneLoader",
-                              "Found Script component in GameObject %s with class %s and method %s",
+            LOGI("Found Script component in GameObject %s with class %s and method %s",
                               object.id.c_str(),
                               Attribute(script_tags.front(), "class").c_str(),
                               Attribute(script_tags.front(), "method").c_str());

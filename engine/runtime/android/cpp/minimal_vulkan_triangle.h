@@ -46,6 +46,7 @@ public:
     void setObjectVisible(std::string const& object_id, bool visible);
     void setObjectColor(std::string const& object_id, float r, float g, float b, float a);
     void setObjectTexture(std::string const& object_id, std::string const& texture_id);
+    void setObjectProgress(std::string const& object_id, float value);
     void registerFontAtlas(int width, int height, void const* pixel_data);
 
     bool getObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
@@ -54,6 +55,7 @@ public:
     bool getObjectVisible(std::string const& object_id, bool& out_visible) const;
     bool getObjectColor(std::string const& object_id, glm::vec4& out_color) const;
     bool getObjectTexture(std::string const& object_id, std::string& out_texture_id) const;
+    bool getObjectProgress(std::string const& object_id, float& out_value) const;
 
 private:
     bool loadSceneMesh();

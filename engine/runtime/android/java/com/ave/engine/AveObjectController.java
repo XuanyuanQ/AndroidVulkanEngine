@@ -28,6 +28,10 @@ public final class AveObjectController {
         AveActivity.jniSetObjectTexture(objectId, texture);
     }
 
+    public static void setProgress(String objectId, float value) {
+        AveActivity.jniSetObjectProgress(objectId, value);
+    }
+
     public static float[] getPosition(String objectId) {
         return AveActivity.jniGetObjectPosition(objectId);
     }
@@ -50,5 +54,9 @@ public final class AveObjectController {
 
     public static String getTexture(String objectId) {
         return AveActivity.jniGetObjectTexture(objectId);
+    }
+
+    public static float getProgress(String objectId) {
+        return AveActivity.jniGetObjectProgress(objectId);
     }
 }
