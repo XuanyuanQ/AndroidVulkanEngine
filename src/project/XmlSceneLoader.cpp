@@ -6,6 +6,9 @@
 #include <regex>
 #include <stdexcept>
 #include <unordered_map>
+#include <functional>
+#include <cctype>
+#include <optional>
 #include <glm/glm.hpp>
 
 namespace ave::project {
@@ -111,6 +114,140 @@ std::vector<std::pair<std::string, std::string>> MatchTagBodies(std::string cons
     return matches;
 }
 
+struct ElementMatch {
+    std::string tag;
+    std::string body;
+    size_t start = 0;
+    size_t end = 0;
+};
+
+size_t FindTagEnd(std::string const& text, size_t tag_start)
+{
+    bool in_quote = false;
+    for (size_t i = tag_start; i < text.size(); ++i) {
+        if (text[i] == '"') {
+            in_quote = !in_quote;
+        } else if (text[i] == '>' && !in_quote) {
+            return i;
+        }
+    }
+    return std::string::npos;
+}
+
+size_t FindTagStart(std::string const& text, std::string const& tag_name, size_t offset)
+{
+    std::string const needle = "<" + tag_name;
+    size_t pos = offset;
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
+        size_t const next = pos + needle.size();
+        if (next >= text.size() || std::isspace(static_cast<unsigned char>(text[next])) || text[next] == '>' || text[next] == '/') {
+            return pos;
+        }
+        pos = next;
+    }
+    return std::string::npos;
+}
+
+std::optional<ElementMatch> FindNextElement(std::string const& text, std::string const& tag_name, size_t offset)
+{
+    size_t const start = FindTagStart(text, tag_name, offset);
+    if (start == std::string::npos) {
+        return std::nullopt;
+    }
+
+    size_t const open_end = FindTagEnd(text, start);
+    if (open_end == std::string::npos) {
+        return std::nullopt;
+    }
+
+    std::string const open_tag = text.substr(start, open_end - start + 1);
+    if (open_tag.size() >= 2 && open_tag[open_tag.size() - 2] == '/') {
+        return ElementMatch{open_tag, "", start, open_end + 1};
+    }
+
+    std::string const close_tag = "</" + tag_name + ">";
+    size_t cursor = open_end + 1;
+    int depth = 1;
+    while (cursor < text.size()) {
+        size_t const next_open = FindTagStart(text, tag_name, cursor);
+        size_t const next_close = text.find(close_tag, cursor);
+        if (next_close == std::string::npos) {
+            return std::nullopt;
+        }
+
+        if (next_open != std::string::npos && next_open < next_close) {
+            size_t const nested_open_end = FindTagEnd(text, next_open);
+            if (nested_open_end == std::string::npos) {
+                return std::nullopt;
+            }
+            std::string const nested_open_tag = text.substr(next_open, nested_open_end - next_open + 1);
+            if (!(nested_open_tag.size() >= 2 && nested_open_tag[nested_open_tag.size() - 2] == '/')) {
+                ++depth;
+            }
+            cursor = nested_open_end + 1;
+            continue;
+        }
+
+        --depth;
+        if (depth == 0) {
+            return ElementMatch{
+                open_tag,
+                text.substr(open_end + 1, next_close - open_end - 1),
+                start,
+                next_close + close_tag.size(),
+            };
+        }
+        cursor = next_close + close_tag.size();
+    }
+
+    return std::nullopt;
+}
+
+std::vector<ElementMatch> DirectChildElements(std::string const& text, std::string const& tag_name)
+{
+    std::vector<ElementMatch> elements;
+    size_t cursor = 0;
+    while (auto element = FindNextElement(text, tag_name, cursor)) {
+        elements.push_back(*element);
+        cursor = element->end;
+    }
+    return elements;
+}
+
+std::string RemoveDirectChildElements(std::string const& text, std::string const& tag_name)
+{
+    std::string result;
+    size_t cursor = 0;
+    for (auto const& element : DirectChildElements(text, tag_name)) {
+        result.append(text.substr(cursor, element.start - cursor));
+        cursor = element.end;
+    }
+    result.append(text.substr(cursor));
+    return result;
+}
+
+void PopulateHierarchyChildren(SceneDocument& scene)
+{
+    std::unordered_map<std::string, size_t> object_indices;
+    object_indices.reserve(scene.objects.size());
+    for (size_t i = 0; i < scene.objects.size(); ++i) {
+        scene.objects[i].hierarchy.children.clear();
+        if (!scene.objects[i].id.empty()) {
+            object_indices[scene.objects[i].id] = i;
+        }
+    }
+
+    for (auto const& object : scene.objects) {
+        if (object.hierarchy.parent.empty()) {
+            continue;
+        }
+        auto const parent = object_indices.find(object.hierarchy.parent);
+        if (parent != object_indices.end()) {
+            scene.objects[parent->second].hierarchy.children.push_back(object.id);
+        }
+    }
+}
+
 } // namespace
 
 std::string XmlSceneLoader::ReadText(std::filesystem::path const& path)
@@ -174,17 +311,24 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         scene.environment.ambient_color = Float3(Attribute(environment_tags.front(), "ambientColor"), scene.environment.ambient_color);
     }
 
-    std::regex const object_pattern(R"(<GameObject\b([^>]*)>([\s\S]*?)</GameObject>)");
-    for (std::sregex_iterator it(sanitized_text.begin(), sanitized_text.end(), object_pattern), end; it != end; ++it) {
-        auto const object_tag = "<GameObject" + (*it)[1].str() + ">";
-        auto const body = (*it)[2].str();
+    auto const scene_root = FindNextElement(sanitized_text, "Scene", 0);
+    if (!scene_root.has_value()) {
+        throw std::runtime_error("Scene XML must contain a closed <Scene> root element.");
+    }
+
+    std::function<void(ElementMatch const&, std::string const&)> parse_game_object;
+    parse_game_object = [&](ElementMatch const& element, std::string const& parent_id) {
+        auto const& object_tag = element.tag;
+        auto const& body = element.body;
+        auto const component_body = RemoveDirectChildElements(body, "GameObject");
 
         GameObjectData object;
         object.id = Attribute(object_tag, "id");
         object.name = Attribute(object_tag, "name", object.id);
-        object.hierarchy.parent = Attribute(object_tag, "parent");
+        object.hierarchy.parent = Attribute(object_tag, "parent", parent_id);
+        std::string const object_id = object.id;
 
-        auto transform_tags = MatchTags(body, "Transform");
+        auto transform_tags = MatchTags(component_body, "Transform");
         if (!transform_tags.empty()) {
             TransformData transform{};
             transform.position = Float3(Attribute(transform_tags.front(), "position"), transform.position);
@@ -193,7 +337,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.transform = std::move(transform);
         }
 
-        auto triangle_tags = MatchTags(body, "TriangleRenderer");
+        auto triangle_tags = MatchTags(component_body, "TriangleRenderer");
         if (!triangle_tags.empty()) {
             TriangleRendererData triangle{};
             triangle.color = Float4(Attribute(triangle_tags.front(), "color"), triangle.color);
@@ -201,8 +345,8 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.triangle_renderer = std::move(triangle);
         }
 
-        auto mesh_tags = MatchTagBodies(body, "MeshRenderer");
-        auto mesh_inline_tags = MatchTags(body, "MeshRenderer");
+        auto mesh_tags = MatchTagBodies(component_body, "MeshRenderer");
+        auto mesh_inline_tags = MatchTags(component_body, "MeshRenderer");
         if (!mesh_tags.empty() || !mesh_inline_tags.empty()) {
             MeshRendererData mesh{};
             std::string tag_text;
@@ -246,7 +390,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.mesh_renderer = std::move(mesh);
         }
 
-        auto camera_tags = MatchTags(body, "Camera");
+        auto camera_tags = MatchTags(component_body, "Camera");
         if (!camera_tags.empty()) {
             CameraData camera{};
             camera.fov = std::stof(Attribute(camera_tags.front(), "fov", std::to_string(camera.fov)));
@@ -256,7 +400,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.camera = std::move(camera);
         }
 
-        auto directional_light_tags = MatchTags(body, "DirectionalLight");
+        auto directional_light_tags = MatchTags(component_body, "DirectionalLight");
         if (!directional_light_tags.empty()) {
             LightData light{};
             light.type = LightType::Directional;
@@ -266,7 +410,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.light = std::move(light);
         }
 
-        auto point_light_tags = MatchTags(body, "PointLight");
+        auto point_light_tags = MatchTags(component_body, "PointLight");
         if (!point_light_tags.empty()) {
             LightData light{};
             light.type = LightType::Point;
@@ -277,7 +421,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.light = std::move(light);
         }
 
-        auto spot_light_tags = MatchTags(body, "SpotLight");
+        auto spot_light_tags = MatchTags(component_body, "SpotLight");
         if (!spot_light_tags.empty()) {
             LightData light{};
             light.type = LightType::Spot;
@@ -290,7 +434,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.light = std::move(light);
         }
 
-        auto script_tags = MatchTags(body, "Script");
+        auto script_tags = MatchTags(component_body, "Script");
         if (!script_tags.empty()) {
             LOGI( "XmlSceneLoader",
                               "Found Script component in GameObject %s with class %s and method %s",
@@ -308,7 +452,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.script = std::move(script);
         }
 
-        auto button_tags = MatchTags(body, "Button");
+        auto button_tags = MatchTags(component_body, "Button");
         if (!button_tags.empty()) {
             ButtonComponentData button{};
             button.target = Attribute(button_tags.front(), "target");
@@ -316,7 +460,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.button = std::move(button);
         }
 
-        auto text_tags = MatchTags(body, "Text");
+        auto text_tags = MatchTags(component_body, "Text");
         if (!text_tags.empty()) {
             TextComponentData text{};
             text.value = Attribute(text_tags.front(), "value");
@@ -328,7 +472,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.text = std::move(text);
         }
 
-        auto image_tags = MatchTags(body, "Image");
+        auto image_tags = MatchTags(component_body, "Image");
         if (!image_tags.empty()) {
             ImageComponentData image{};
             image.texture = Attribute(image_tags.front(), "texture");
@@ -336,7 +480,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             object.components.image = std::move(image);
         }
 
-        auto progress_bar_tags = MatchTags(body, "ProgressBar");
+        auto progress_bar_tags = MatchTags(component_body, "ProgressBar");
         if (!progress_bar_tags.empty()) {
             ProgressBarComponentData progress_bar{};
             progress_bar.value = std::stof(Attribute(progress_bar_tags.front(), "value", std::to_string(progress_bar.value)));
@@ -346,7 +490,16 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         }
 
         scene.objects.push_back(std::move(object));
+        for (auto const& child : DirectChildElements(body, "GameObject")) {
+            parse_game_object(child, object_id);
+        }
+    };
+
+    for (auto const& object : DirectChildElements(scene_root->body, "GameObject")) {
+        parse_game_object(object, "");
     }
+
+    PopulateHierarchyChildren(scene);
 
     return scene;
 }

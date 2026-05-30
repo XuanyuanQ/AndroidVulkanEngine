@@ -32,15 +32,15 @@
     <GameObject id="HierarchyPivot" name="Hierarchy Pivot">
         <Transform position="0,0.5,0" rotation="0,0,0" scale="1,1,1" />
         <Script class="com.example.trianglegame.HierarchyDemoController" speed="35" />
-    </GameObject>
 
-    <GameObject id="Sphere" name="Sphere" parent="HierarchyPivot">
-        <Transform position="2,0,0" rotation="0,0,0" scale="1,1,1" />
-        <MeshRenderer 
-            mesh="Sphere" 
-            visible="true"
-            casts_shadow="true"
-            receives_shadow="true" />
+        <GameObject id="Sphere" name="Sphere">
+            <Transform position="2,0,0" rotation="0,0,0" scale="1,1,1" />
+            <MeshRenderer 
+                mesh="Sphere" 
+                visible="true"
+                casts_shadow="true"
+                receives_shadow="true" />
+        </GameObject>
     </GameObject>
 
     <GameObject id="ui_room_preview" name="Room Preview">
