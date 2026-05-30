@@ -212,19 +212,6 @@ Java_com_ave_engine_AveActivity_nativeDestroy(JNIEnv*, jclass)
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ave_engine_AveActivity_nativeKeyEvent(JNIEnv*, jclass, jint key_code, jint action)
-{
-    if (!g_runtime) {
-        return;
-    }
-    if (action == 0) {
-        g_runtime->setKeyState(key_code, true);
-    } else if (action == 1) {
-        g_runtime->setKeyState(key_code, false);
-    }
-}
-
-extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeTouchEvent(JNIEnv*, jclass, jfloat x, jfloat y, jint action)
 {
     if (g_runtime) {

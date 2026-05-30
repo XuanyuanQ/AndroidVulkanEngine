@@ -38,7 +38,6 @@ public:
     void setSurface(ANativeWindow* window);
     void clearSurface();
     void resize(int width, int height);
-    void setKeyState(int32_t key_code, bool pressed);
     void onTouchEvent(float x, float y, int32_t action);
     void setObjectPosition(std::string const& object_id, float x, float y, float z);
     void setObjectRotation(std::string const& object_id, float x, float y, float z);

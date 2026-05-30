@@ -54,26 +54,6 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_W || keyCode == KeyEvent.KEYCODE_A
-                || keyCode == KeyEvent.KEYCODE_S || keyCode == KeyEvent.KEYCODE_D) {
-            nativeKeyEvent(keyCode, 0);
-            return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-    @Override
-    public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_W || keyCode == KeyEvent.KEYCODE_A
-                || keyCode == KeyEvent.KEYCODE_S || keyCode == KeyEvent.KEYCODE_D) {
-            nativeKeyEvent(keyCode, 1);
-            return true;
-        }
-        return super.onKeyUp(keyCode, event);
-    }
-
-    @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         handleEngineTouchEvent(event);
         if (scriptManager.dispatchTouchEvent(this, event)) {
@@ -206,7 +186,6 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeClearSurface();
-    private static native void nativeKeyEvent(int keyCode, int action);
     private static native void nativeTouchEvent(float x, float y, int action);
     private static native void nativeSetObjectPosition(String objectId, float x, float y, float z);
     private static native void nativeSetObjectRotation(String objectId, float x, float y, float z);

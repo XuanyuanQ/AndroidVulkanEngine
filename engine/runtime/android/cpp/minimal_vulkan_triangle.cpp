@@ -33,10 +33,6 @@ bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_pa
     logProjectAsset();
     return true;
 }
-void MinimalVulkanTriangle::setKeyState(int32_t key_code, bool pressed){
-        LOGI("Key event: code=%d, pressed=%s", key_code, pressed ? "true" : "false");
-        scene_world_.g_key_states[key_code] = pressed;
-    }
 
 void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
 {
