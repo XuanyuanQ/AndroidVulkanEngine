@@ -74,7 +74,12 @@
                 autoButton="light_auto_button"
                 xSlider="light_x_slider"
                 ySlider="light_y_slider"
-                zSlider="light_z_slider" />
+                zSlider="light_z_slider"
+                speed="1.15"
+                radius="8.0"
+                height="3.5"
+                heightAmplitude="0.8"
+                startAngleDegrees="-55" />
     </GameObject>
 
     <GameObject id="light_auto_button" name="Light Auto Button">

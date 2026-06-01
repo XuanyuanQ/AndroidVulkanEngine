@@ -129,28 +129,17 @@ constexpr uint32_t kShadowMapSize = 1024;
 
 glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameData const* frame)
 {
-    glm::vec3 scene_center = frame ? frame->view.world_position : glm::vec3{0.0f};
-    glm::vec3 min_bounds = scene_center;
-    glm::vec3 max_bounds = scene_center;
-    bool has_bounds = false;
+    (void)frame;
+
+    glm::vec3 const scene_center{0.0f, 0.0f, 0.0f};
+    float radius = 20.0f;
 
     for (auto const* renderable : view.renderables) {
         if (!renderable) {
             continue;
         }
         glm::vec3 const position = glm::vec3(renderable->world[3]);
-        if (!has_bounds) {
-            min_bounds = position;
-            max_bounds = position;
-            has_bounds = true;
-        } else {
-            min_bounds = glm::min(min_bounds, position);
-            max_bounds = glm::max(max_bounds, position);
-        }
-    }
-
-    if (has_bounds) {
-        scene_center = (min_bounds + max_bounds) * 0.5f;
+        radius = std::max(radius, glm::length(position - scene_center) + 5.0f);
     }
 
     glm::vec3 light_direction{0.35f, -1.0f, 0.25f};
@@ -170,9 +159,10 @@ glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameDa
             if (glm::length(to_scene) > 0.0001f) {
                 light_direction = to_scene;
                 has_light_direction = true;
-                break;
             }
         }
+        radius = std::max(radius, light->range);
+        break;
     }
 
     if (!has_light_direction || glm::length(light_direction) < 0.0001f) {
@@ -184,12 +174,7 @@ glm::mat4 BuildShadowViewProjection(PassExecutionView const& view, core::FrameDa
         ? glm::vec3{0.0f, 0.0f, 1.0f}
         : glm::vec3{0.0f, 1.0f, 0.0f};
 
-    // float radius = 20.0f;
-    float radius = 500.0f;
-    if (has_bounds) {
-        glm::vec3 const extents = glm::abs(max_bounds - min_bounds);
-        radius = std::max(std::max(extents.x, extents.y), std::max(extents.z, 10.0f)) * 0.8f;
-    }
+    radius = std::clamp(radius, 10.0f, 100.0f);
 
     glm::vec3 const eye = scene_center - light_direction * (radius * 2.5f);
     glm::mat4 const light_view = glm::lookAtRH(eye, scene_center, up);
