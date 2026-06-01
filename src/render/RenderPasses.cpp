@@ -931,7 +931,11 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
         MaterialUbo material_ubo{};
         material_ubo.base_color = renderable->has_color_override ? renderable->color_override : material->base_color;
-        material_ubo.params = glm::vec4(material->metallic, material->roughness, 0.0f, 0.0f);
+        material_ubo.params = glm::vec4(
+            material->metallic,
+            material->roughness,
+            renderable->receives_shadow ? 1.0f : 0.0f,
+            0.0f);
         material_binding.ubo.UpdateData(*context.vk, &material_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
 
         if (material_binding.descriptor_set_id != 0) {
