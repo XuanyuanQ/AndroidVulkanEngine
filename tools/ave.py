@@ -89,7 +89,7 @@ def package_project_data(project_dir: Path, output_dir: Path) -> None:
         shutil.rmtree(assets_dir)
     assets_dir.mkdir(parents=True)
 
-    for name in ["project.xml", "scenes", "materials", "assets", "shaders", "meshes", "textures"]:
+    for name in ["project.xml", "scenes", "prefabs", "materials", "assets", "shaders", "meshes", "textures"]:
         src = project_dir / name
         if src.is_dir():
             shutil.copytree(src, assets_dir / name)
@@ -180,6 +180,15 @@ def run_gradle(output_dir: Path) -> None:
         command = [str(gradlew), "assembleDebug"]
     else:
         gradle = shutil.which("gradle")
+        if gradle is None:
+            gradle_candidates = sorted(Path.home().glob(".gradle/wrapper/dists/gradle-*/**/bin/gradle"))
+            stable_candidates = [
+                candidate for candidate in gradle_candidates
+                if not any(token in str(candidate).lower() for token in ["milestone", "alpha", "beta", "rc"])
+            ]
+            gradle_candidates = stable_candidates or gradle_candidates
+            if gradle_candidates:
+                gradle = str(gradle_candidates[-1])
         if gradle is None:
             print("[warn] Gradle wrapper/global gradle not found. Android project generated, APK build skipped.")
             return

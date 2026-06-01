@@ -1,0 +1,10 @@
+<Prefab name="SpherePrefab">
+    <GameObject id="SphereTemplate" name="Prefab Sphere">
+        <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+        <MeshRenderer
+            mesh="Sphere"
+            visible="true"
+            casts_shadow="true"
+            receives_shadow="true" />
+    </GameObject>
+</Prefab>

@@ -327,6 +327,9 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     frame_data_ = {};
 
     ave::project::XmlSceneLoader loader;
+    loader.SetTextAssetLoader([this](std::string const& path) {
+        return readTextAsset(path.c_str());
+    });
     auto const project_text = readTextAsset(project_path_.c_str());
     auto const project = loader.LoadProjectText(project_text);
     auto const scene_text = readTextAsset(project.entry_scene.c_str());

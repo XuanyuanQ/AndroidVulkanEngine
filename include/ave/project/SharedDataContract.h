@@ -233,6 +233,11 @@ struct SceneData {
     std::vector<GameObjectData> objects;
 };
 
+struct PrefabDocument {
+    std::string name;
+    std::vector<GameObjectData> objects;
+};
+
 struct ProjectData {
     std::string version{"1"};
     std::string name;
