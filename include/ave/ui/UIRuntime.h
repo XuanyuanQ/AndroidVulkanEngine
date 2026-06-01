@@ -14,6 +14,14 @@
 
 namespace ave::ui {
 
+// 定义屏幕旋转方向的强类型枚举
+enum class ScreenRotation : uint32_t {
+    Rotation0   = 0U, // 默认方向（不旋转）
+    Rotation90  = 1U, // 顺时针旋转 90 度
+    Rotation180 = 2U, // 顺时针旋转 180 度
+    Rotation270 = 3U  // 顺时针旋转 270 度
+};
+
 struct UiImageNode {
     std::string object_id;
     std::string debug_name;

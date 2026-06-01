@@ -7,7 +7,9 @@
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/MaterialSystem.h"
 
+
 #include <android/log.h>
+#include <android/input.h>
 #include "LogUtil.h"
 #include <algorithm>
 #include <array>
@@ -43,7 +45,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
             static_cast<uint32_t>(input_rotation));
     }
 
-    if (action == 0) {
+    if (action == AMOTION_EVENT_ACTION_DOWN) {
         auto action_info = ui_runtime_.HandlePointerDown(x, y);
         if (!action_info.has_value()) {
             return false;
@@ -54,12 +56,11 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         return true;
     }
 
-    if (action == 3) {
+    if (action == AMOTION_EVENT_ACTION_CANCEL) {
         return ui_runtime_.HandlePointerCancel().has_value();
     }
 
-    // Android MotionEvent.ACTION_UP = 1 最后一个手指离开屏幕的事件，才触发点击逻辑
-    if (action == 2) {
+    if (action == AMOTION_EVENT_ACTION_MOVE) {
         auto action_info = ui_runtime_.HandlePointerMove(x, y);
         if (!action_info.has_value()) {
             return false;
@@ -70,7 +71,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         return true;
     }
 
-    if (action != 1) {
+    if (action != AMOTION_EVENT_ACTION_UP) {
         return false;
     }
     auto action_info = ui_runtime_.HandlePointerUp(x, y);

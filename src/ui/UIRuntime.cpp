@@ -60,13 +60,17 @@ glm::vec2 ResolveDefaultUiSize(project::ComponentData const& components, glm::ve
 
 glm::vec2 MapInputNdcToUiNdc(float ndc_x, float ndc_y, uint32_t rotation)
 {
-    switch (rotation & 3U) {
-    case 1:
+    // 将输入的 uint32_t 转换为我们定义的枚举类型
+    ScreenRotation rot = static_cast<ScreenRotation>(rotation & 3U);
+    
+    switch (rot) {
+    case ScreenRotation::Rotation90:
         return {ndc_y, ndc_x};
-    case 2:
+    case ScreenRotation::Rotation180:
         return {-ndc_x, -ndc_y};
-    case 3:
+    case ScreenRotation::Rotation270:
         return {-ndc_y, -ndc_x};
+    case ScreenRotation::Rotation0:
     default:
         return {ndc_x, ndc_y};
     }
