@@ -40,9 +40,34 @@ def validate_scene(project_dir: Path, entry_scene: str) -> None:
     if root.tag != "Scene":
         raise RuntimeError("entry scene root must be <Scene>")
 
-    object_count = len(root.findall("GameObject"))
+    objects = root.findall(".//GameObject")
+    object_count = len(objects)
     if object_count == 0:
         raise RuntimeError("scene must contain at least one <GameObject>")
+
+    seen_ids: dict[str, str] = {}
+    seen_names: dict[str, str] = {}
+    for obj in objects:
+        object_id = obj.attrib.get("id", "")
+        object_name = obj.attrib.get("name", object_id)
+        if not object_id:
+            raise RuntimeError("GameObject must define a non-empty id attribute")
+
+        previous_name = seen_ids.get(object_id)
+        if previous_name is not None:
+            raise RuntimeError(
+                f"Duplicate GameObject id '{object_id}' in {entry_scene} "
+                f"(used by '{previous_name}' and '{object_name}')"
+            )
+        seen_ids[object_id] = object_name
+
+        previous_id = seen_names.get(object_name)
+        if previous_id is not None:
+            raise RuntimeError(
+                f"Duplicate GameObject name '{object_name}' in {entry_scene} "
+                f"(used by id '{previous_id}' and id '{object_id}')"
+            )
+        seen_names[object_name] = object_id
 
 
 def copy_tree(src: Path, dst: Path) -> None:

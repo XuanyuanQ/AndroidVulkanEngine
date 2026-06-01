@@ -316,6 +316,9 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         throw std::runtime_error("Scene XML must contain a closed <Scene> root element.");
     }
 
+    std::unordered_map<std::string, std::string> seen_object_ids;
+    std::unordered_map<std::string, std::string> seen_object_names;
+
     std::function<void(ElementMatch const&, std::string const&)> parse_game_object;
     parse_game_object = [&](ElementMatch const& element, std::string const& parent_id) {
         auto const& object_tag = element.tag;
@@ -327,6 +330,24 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
         object.name = Attribute(object_tag, "name", object.id);
         object.hierarchy.parent = parent_id;
         std::string const object_id = object.id;
+
+        if (object.id.empty()) {
+            throw std::runtime_error("GameObject must define a non-empty id attribute.");
+        }
+
+        if (auto const existing = seen_object_ids.find(object.id); existing != seen_object_ids.end()) {
+            throw std::runtime_error(
+                "Scene XML has duplicate GameObject id '" + object.id +
+                "' (used by '" + existing->second + "' and '" + object.name + "').");
+        }
+        seen_object_ids.emplace(object.id, object.name);
+
+        if (auto const existing = seen_object_names.find(object.name); existing != seen_object_names.end()) {
+            throw std::runtime_error(
+                "Scene XML has duplicate GameObject name '" + object.name +
+                "' (used by id '" + existing->second + "' and id '" + object.id + "').");
+        }
+        seen_object_names.emplace(object.name, object.id);
 
         auto transform_tags = MatchTags(component_body, "Transform");
         if (!transform_tags.empty()) {
