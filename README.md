@@ -192,6 +192,89 @@ flowchart TB
 | `Asset Runtime` | 加载 APK 内的 mesh、texture、material、SPIR-V |
 | `Job System` | 支持异步资源加载和多线程任务 |
 
+### 4.1 Input / UI Event 模块设计
+
+当前目标是避免每个 Java 脚本直接抢 `dispatchTouchEvent`，而是让引擎统一处理原始触摸、UI 命中、事件消费和脚本回调。这样按钮、Slider、相机拖动不会各算各的点击区域，也不会出现某个 UI 区域被其他脚本截断导致不响应的问题。
+
+```mermaid
+flowchart TB
+    Android["Android MotionEvent<br/>px 坐标 / pointer id / action"]
+    Activity["AveActivity<br/>只转发原始输入"]
+    Input["Input System<br/>归一化坐标 / pointer 状态 / 手势基础数据"]
+
+    UIEvent["UI Event System<br/>按 render order hit-test<br/>pointer capture / focus / consume"]
+    SceneInput["Scene Input Router<br/>非 UI 输入<br/>camera / object drag / gameplay"]
+
+    Layout["UI Layout / RectTransform<br/>anchor / pivot / size / hit slop"]
+    Widgets["UI Widgets<br/>Button / Slider / ProgressBar / Image / Text"]
+
+    ButtonEvent["Button Events<br/>onClick / onPressed / onReleased"]
+    SliderEvent["Slider Events<br/>onValueChanged / onDragBegin / onDragEnd"]
+    TouchEvent["World Touch Events<br/>onTouchDown / onDrag / onPinch / onTouchUp"]
+
+    ScriptRuntime["Java Script Runtime<br/>反射或注册式事件分发"]
+    Scripts["User Scripts<br/>CameraController / LightControlScript / PlayerController"]
+    API["AveObjectController<br/>setPosition / setRotation / setColor / setProgress"]
+
+    Android --> Activity --> Input
+    Input --> UIEvent
+    Input --> SceneInput
+
+    Layout --> UIEvent
+    Widgets --> UIEvent
+
+    UIEvent -->|"命中并消费"| ButtonEvent
+    UIEvent -->|"命中并消费"| SliderEvent
+    UIEvent -->|"未命中 UI"| SceneInput
+    SceneInput --> TouchEvent
+
+    ButtonEvent --> ScriptRuntime
+    SliderEvent --> ScriptRuntime
+    TouchEvent --> ScriptRuntime
+
+    ScriptRuntime --> Scripts
+    Scripts --> API
+```
+
+推荐职责边界：
+
+| 模块 | 应该负责 | 不应该负责 |
+|---|---|---|
+| `AveActivity` | 接收 Android 原始事件并转给引擎 | 自己判断按钮、Slider、相机逻辑 |
+| `Input System` | 维护 pointer 状态、坐标转换、基础手势数据 | 调用具体游戏脚本方法 |
+| `UI Event System` | 根据 `RectTransform` 和渲染顺序做 hit-test、消费事件 | 让每个脚本重复计算 UI 命中 |
+| `Button` | 产生 `onClick/onPressed/onReleased` | 直接写游戏逻辑 |
+| `Slider` | 处理拖动并产生 `onValueChanged(value)` | 被当成只能显示的 `ProgressBar` |
+| `ProgressBar` | 只显示数值进度 | 处理拖动输入 |
+| `Java Script` | 响应引擎派发的事件并修改对象状态 | 抢全局 `dispatchTouchEvent` 并自己决定事件归属 |
+
+推荐 XML 表达：
+
+```xml
+<GameObject id="switch_mode_button" name="Switch Mode">
+    <RectTransform anchor="bottom-center" pivot="0.5,0.5" position="0,-48" size="180,64" />
+    <Image texture="textures/tanslate.png" />
+    <Button target="CameraController" onClick="switchMode" />
+    <Text value="INTERACT" />
+</GameObject>
+
+<GameObject id="light_x_slider" name="Light X Slider">
+    <RectTransform anchor="left-center" pivot="0.5,0.5" position="80,0" size="260,40" />
+    <Slider min="-8" max="8" value="0" target="LightControlScript" onValueChanged="setLightX" />
+</GameObject>
+```
+
+事件流：
+
+```text
+MotionEvent
+  -> Input System
+  -> UI Event System hit-test top-most widget
+  -> if Button: onClick(target.method)
+  -> if Slider: update value + onValueChanged(target.method(value))
+  -> if no UI hit: route to camera/gameplay touch callbacks
+```
+
 ## 5. Scene / Component 架构
 
 ```mermaid
