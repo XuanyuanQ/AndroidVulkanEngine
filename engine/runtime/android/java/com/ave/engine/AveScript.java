@@ -43,6 +43,9 @@ public class AveScript {
     public void onClick(String target) {
     }
 
+    public void onValueChanged(String sourceId, float value) {
+    }
+
     protected final void setPosition(float x, float y, float z) {
         String target = getTargetObjectId();
         if (!target.isEmpty()) {

@@ -28,6 +28,7 @@ void Jni_InstantiateScript(std::string const& object_id,
                            std::unordered_map<std::string, std::string> const& parameters);
 void Jni_UpdateScripts(float dt);
 void Jni_TriggerScriptMethod(std::string const& target, std::string const& method);
+void Jni_TriggerScriptValueMethod(std::string const& target, std::string const& method, std::string const& source_id, float value);
 void Jni_ClearScripts();
 void Jni_GenerateFontAtlas();
 
@@ -38,7 +39,7 @@ public:
     void setSurface(ANativeWindow* window);
     void clearSurface();
     void resize(int width, int height);
-    void onTouchEvent(float x, float y, int32_t action);
+    bool onTouchEvent(float x, float y, int32_t action, int32_t input_width, int32_t input_height, int32_t input_rotation);
     void setObjectPosition(std::string const& object_id, float x, float y, float z);
     void setObjectRotation(std::string const& object_id, float x, float y, float z);
     void setObjectScale(std::string const& object_id, float x, float y, float z);

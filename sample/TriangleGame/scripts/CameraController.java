@@ -36,7 +36,6 @@ public final class CameraController extends AveScript implements AveActivityEven
     private float lastPinchDistance = 0.0f;
     private boolean singleDragging = false;
     private boolean pinching = false;
-    private boolean uiTouch = false;
 
     @Override
     public void start() {
@@ -87,17 +86,11 @@ public final class CameraController extends AveScript implements AveActivityEven
     public boolean dispatchTouchEvent(AveActivity activity, MotionEvent event) {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                uiTouch = isInsideModeButton(activity, event.getX(), event.getY());
-                if (uiTouch) {
-                    singleDragging = false;
-                    pinching = false;
-                    return false;
-                }
                 beginSingleDrag(event.getX(), event.getY());
                 return true;
 
             case MotionEvent.ACTION_POINTER_DOWN:
-                if (uiTouch || event.getPointerCount() < 2) {
+                if (event.getPointerCount() < 2) {
                     return false;
                 }
                 pinching = true;
@@ -106,9 +99,6 @@ public final class CameraController extends AveScript implements AveActivityEven
                 return true;
 
             case MotionEvent.ACTION_MOVE:
-                if (uiTouch) {
-                    return false;
-                }
                 if (event.getPointerCount() >= 2) {
                     updatePinchZoom(event);
                     return true;
@@ -122,15 +112,13 @@ public final class CameraController extends AveScript implements AveActivityEven
                     int remainingIndex = event.getActionIndex() == 0 ? 1 : 0;
                     beginSingleDrag(event.getX(remainingIndex), event.getY(remainingIndex));
                 }
-                return !uiTouch;
+                return true;
 
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 singleDragging = false;
                 pinching = false;
-                boolean handled = !uiTouch;
-                uiTouch = false;
-                return handled;
+                return true;
 
             default:
                 return false;
@@ -205,24 +193,6 @@ public final class CameraController extends AveScript implements AveActivityEven
         if (!modeButtonId.isEmpty()) {
             AveObjectController.setTexture(modeButtonId, mode == MODE_TRANSLATE ? translateTexture : rotationTexture);
         }
-    }
-
-    private boolean isInsideModeButton(AveActivity activity, float x, float y) {
-        int width = activity.getWindow().getDecorView().getWidth();
-        int height = activity.getWindow().getDecorView().getHeight();
-        if (width <= 0 || height <= 0) {
-            return false;
-        }
-
-        float[] position = AveObjectController.getPosition(modeButtonId);
-        float[] scale = AveObjectController.getScale(modeButtonId);
-        float ndcX = x / (float) width * 2.0f - 1.0f;
-        float ndcY = 1.0f - y / (float) height * 2.0f;
-        float aspect = height / (float) width;
-        float halfWidth = Math.max(scale[0] * 0.25f, 0.05f) / aspect * 0.5f;
-        float halfHeight = Math.max(scale[1] * 0.25f, 0.05f) * 0.5f;
-        return ndcX >= position[0] - halfWidth && ndcX <= position[0] + halfWidth
-                && ndcY >= position[1] - halfHeight && ndcY <= position[1] + halfHeight;
     }
 
     private void panCamera(float dx, float dy) {

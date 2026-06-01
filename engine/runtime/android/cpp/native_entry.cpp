@@ -15,6 +15,7 @@ static jclass g_ave_activity_class = nullptr;
 static jmethodID g_instantiate_script_mid = nullptr;
 static jmethodID g_update_scripts_mid = nullptr;
 static jmethodID g_trigger_script_mid = nullptr;
+static jmethodID g_trigger_script_value_mid = nullptr;
 static jmethodID g_clear_scripts_mid = nullptr;
 static jmethodID g_generate_font_atlas_mid = nullptr;
 
@@ -74,6 +75,10 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
         g_update_scripts_mid = env->GetStaticMethodID(g_ave_activity_class, "jniUpdateScripts", "(F)V");
         g_trigger_script_mid = env->GetStaticMethodID(
             g_ave_activity_class, "jniTriggerScriptMethod", "(Ljava/lang/String;Ljava/lang/String;)V");
+        g_trigger_script_value_mid = env->GetStaticMethodID(
+            g_ave_activity_class,
+            "jniTriggerScriptValueMethod",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;F)V");
         g_clear_scripts_mid = env->GetStaticMethodID(g_ave_activity_class, "jniClearScripts", "()V");
         g_generate_font_atlas_mid = env->GetStaticMethodID(g_ave_activity_class, "jniGenerateFontAtlas", "()V");
     }
@@ -171,6 +176,25 @@ void Jni_TriggerScriptMethod(std::string const& target, std::string const& metho
     env->DeleteLocalRef(j_method);
 }
 
+void Jni_TriggerScriptValueMethod(std::string const& target, std::string const& method, std::string const& source_id, float value)
+{
+    LOGI("Jni_TriggerScriptValueMethod: target=%s, method=%s, source=%s, value=%.4f",
+         target.c_str(), method.c_str(), source_id.c_str(), value);
+    JNIEnv* env = GetJniEnv();
+    if (!env || !g_trigger_script_value_mid) {
+        LOGE("Jni_TriggerScriptValueMethod: env or g_trigger_script_value_mid is null");
+        return;
+    }
+
+    jstring j_target = env->NewStringUTF(target.c_str());
+    jstring j_method = env->NewStringUTF(method.c_str());
+    jstring j_source = env->NewStringUTF(source_id.c_str());
+    env->CallStaticVoidMethod(g_ave_activity_class, g_trigger_script_value_mid, j_target, j_method, j_source, static_cast<jfloat>(value));
+    env->DeleteLocalRef(j_target);
+    env->DeleteLocalRef(j_method);
+    env->DeleteLocalRef(j_source);
+}
+
 void Jni_ClearScripts()
 {
     JNIEnv* env = GetJniEnv();
@@ -211,12 +235,14 @@ Java_com_ave_engine_AveActivity_nativeDestroy(JNIEnv*, jclass)
     }
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_ave_engine_AveActivity_nativeTouchEvent(JNIEnv*, jclass, jfloat x, jfloat y, jint action)
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ave_engine_AveActivity_nativeTouchEvent(
+    JNIEnv*, jclass, jfloat x, jfloat y, jint action, jint input_width, jint input_height, jint input_rotation)
 {
     if (g_runtime) {
-        g_runtime->onTouchEvent(x, y, action);
+        return g_runtime->onTouchEvent(x, y, action, input_width, input_height, input_rotation) ? JNI_TRUE : JNI_FALSE;
     }
+    return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

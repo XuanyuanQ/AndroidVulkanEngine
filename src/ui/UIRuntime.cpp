@@ -4,26 +4,72 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <optional>
 #include <type_traits>
 
 namespace ave::ui {
 
 namespace {
 
-glm::vec2 ClampUiPosition(glm::vec2 const& position)
+glm::vec2 SanitizeUiSize(glm::vec2 const& size)
 {
     return glm::vec2{
-        std::clamp(position.x, -1.0f, 1.0f),
-        std::clamp(position.y, -1.0f, 1.0f),
+        std::max(size.x, 0.001f),
+        std::max(size.y, 0.001f),
     };
 }
 
-glm::vec2 ClampUiSize(glm::vec2 const& size)
+glm::vec2 EstimateTextSize(project::TextComponentData const& text)
 {
-    return glm::vec2{
-        std::clamp(size.x, 0.01f, 2.0f),
-        std::clamp(size.y, 0.01f, 2.0f),
-    };
+    float const font_size = std::max(text.size, 0.01f);
+    float const width = std::max(static_cast<float>(text.value.size()) * font_size * 0.8f, font_size);
+    return SanitizeUiSize({width, font_size});
+}
+
+glm::vec2 ResolveDefaultUiSize(project::ComponentData const& components, glm::vec3 const& transform_scale)
+{
+    if (components.ui_layout.has_value() && components.ui_layout->size.x > 0.0f && components.ui_layout->size.y > 0.0f) {
+        return SanitizeUiSize(components.ui_layout->size);
+    }
+
+    if (components.slider.has_value()) {
+        return {0.52f, 0.08f};
+    }
+
+    if (components.progress_bar.has_value()) {
+        return {0.50f, 0.06f};
+    }
+
+    if (components.button.has_value()) {
+        return {0.32f, 0.12f};
+    }
+
+    if (components.text.has_value() && !components.image.has_value()) {
+        return EstimateTextSize(*components.text);
+    }
+
+    if (components.image.has_value()) {
+        return SanitizeUiSize({
+            std::max(transform_scale.x * 0.25f, 0.05f),
+            std::max(transform_scale.y * 0.25f, 0.05f),
+        });
+    }
+
+    return {0.25f, 0.25f};
+}
+
+glm::vec2 MapInputNdcToUiNdc(float ndc_x, float ndc_y, uint32_t rotation)
+{
+    switch (rotation & 3U) {
+    case 1:
+        return {ndc_y, ndc_x};
+    case 2:
+        return {-ndc_x, -ndc_y};
+    case 3:
+        return {-ndc_y, -ndc_x};
+    default:
+        return {ndc_x, ndc_y};
+    }
 }
 } // namespace
 
@@ -32,12 +78,27 @@ void UIRuntime::Clear()
     nodes_.clear();
     object_to_node_.clear();
     pressed_button_id_.clear();
+    active_slider_id_.clear();
 }
 
 void UIRuntime::SetViewportSize(uint32_t width, uint32_t height)
 {
     viewport_width_ = width;
     viewport_height_ = height;
+    if (input_viewport_width_ == 0 || input_viewport_height_ == 0) {
+        input_viewport_width_ = width;
+        input_viewport_height_ = height;
+    }
+}
+
+void UIRuntime::SetInputViewportSize(uint32_t width, uint32_t height, uint32_t rotation)
+{
+    if (width == 0 || height == 0) {
+        return;
+    }
+    input_viewport_width_ = width;
+    input_viewport_height_ = height;
+    input_rotation_ = rotation & 3U;
 }
 
 void UIRuntime::RebuildFromScene(project::SceneData const& scene)
@@ -50,11 +111,8 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
     for (auto const& object : scene.objects) {
         auto const& components = object.components;
         auto const ui_transform = ResolveUiTransform(object);
-        glm::vec2 const position = ClampUiPosition({ui_transform.position.x, ui_transform.position.y});
-        glm::vec2 const image_size{
-            std::max(ui_transform.scale.x * 0.25f, 0.05f),
-            std::max(ui_transform.scale.y * 0.25f, 0.05f),
-        };
+        glm::vec2 const position{ui_transform.position.x, ui_transform.position.y};
+        glm::vec2 const layout_size = ResolveDefaultUiSize(components, ui_transform.scale);
 
         if (components.image.has_value() && components.button.has_value()) {
             auto const& image = *components.image;
@@ -65,7 +123,7 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.debug_name = object.name.empty() ? object.id : object.name;
             node.texture_id = image.texture;
             node.position = position;
-            node.size = ClampUiSize(image_size);
+            node.size = layout_size;
             node.rotation = ui_transform.rotation;
             node.scale = ui_transform.scale;
             node.color = image.color;
@@ -94,7 +152,7 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.debug_name = object.name.empty() ? object.id : object.name;
             node.texture_id = image.texture;
             node.position = position;
-            node.size = ClampUiSize(image_size);
+            node.size = layout_size;
             node.rotation = ui_transform.rotation;
             node.scale = ui_transform.scale;
             node.color = image.color;
@@ -115,6 +173,7 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.scale = ui_transform.scale;
             node.color = text.color;
             node.size = text.size;
+            node.bounds_size = layout_size;
             node.depth = ui_transform.position.z;
             object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
@@ -127,10 +186,7 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
             node.object_id = object.id;
             node.debug_name = object.name.empty() ? object.id : object.name;
             node.position = position;
-            node.size = ClampUiSize({
-                std::max(ui_transform.scale.x * 0.60f, 0.10f),
-                std::max(ui_transform.scale.y * 0.08f, 0.02f),
-            });
+            node.size = layout_size;
             node.rotation = ui_transform.rotation;
             node.scale = ui_transform.scale;
             node.depth = ui_transform.position.z;
@@ -145,6 +201,26 @@ void UIRuntime::RebuildFromScene(project::SceneData const& scene)
                 0.30f,
                 1.0f,
             };
+            object_to_node_[node.object_id] = nodes_.size();
+            nodes_.emplace_back(std::move(node));
+        }
+
+        if (components.slider.has_value()) {
+            auto const& slider = *components.slider;
+
+            UiSliderNode node{};
+            node.object_id = object.id;
+            node.debug_name = object.name.empty() ? object.id : object.name;
+            node.position = position;
+            node.size = layout_size;
+            node.rotation = ui_transform.rotation;
+            node.scale = ui_transform.scale;
+            node.depth = ui_transform.position.z;
+            node.value = std::clamp(slider.value, slider.min_value, slider.max_value);
+            node.min_value = slider.min_value;
+            node.max_value = slider.max_value;
+            node.target = slider.target;
+            node.method = slider.method;
             object_to_node_[node.object_id] = nodes_.size();
             nodes_.emplace_back(std::move(node));
         }
@@ -259,6 +335,33 @@ void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
                 fill.visible = typed_node.visible && normalized > 0.0f;
                 fill.kind = core::FrameUiData::Kind::ProgressBarFill;
                 out_items.push_back(std::move(fill));
+            } else if constexpr (std::is_same_v<T, UiSliderNode>) {
+                core::FrameUiData background{};
+                background.object_id = typed_node.object_id;
+                background.debug_name = typed_node.debug_name + " Background";
+                background.position = typed_node.position;
+                background.size = typed_node.size;
+                background.color = typed_node.background_color;
+                background.depth = typed_node.depth;
+                background.visible = typed_node.visible;
+                background.interactable = typed_node.interactable;
+                background.kind = core::FrameUiData::Kind::ProgressBarBackground;
+                out_items.push_back(std::move(background));
+
+                float const denominator = std::max(typed_node.max_value - typed_node.min_value, 0.0001f);
+                float const normalized = std::clamp((typed_node.value - typed_node.min_value) / denominator, 0.0f, 1.0f);
+                core::FrameUiData fill{};
+                fill.object_id = typed_node.object_id;
+                fill.debug_name = typed_node.debug_name + " Fill";
+                fill.position = typed_node.position;
+                fill.size = typed_node.size;
+                fill.color = typed_node.fill_color;
+                fill.fill_amount = normalized;
+                fill.depth = typed_node.depth + 0.001f;
+                fill.visible = typed_node.visible && normalized > 0.0f;
+                fill.interactable = typed_node.interactable;
+                fill.kind = core::FrameUiData::Kind::ProgressBarFill;
+                out_items.push_back(std::move(fill));
             }
         }, node);
     }
@@ -271,13 +374,31 @@ void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
     });
 }
 
-bool UIRuntime::HandlePointerDown(float x_px, float y_px)
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerDown(float x_px, float y_px)
 {
     pressed_button_id_.clear();
+    active_slider_id_.clear();
+
+    if (UiSliderNode const* slider = HitTestSlider(x_px, y_px)) {
+        active_slider_id_ = slider->object_id;
+        if (auto* mutable_slider = FindSliderNode(active_slider_id_)) {
+            mutable_slider->value = SliderValueFromPointer(*mutable_slider, x_px, y_px);
+            LOGI("HandlePointerDown: slider '%s' hit value=%.4f", mutable_slider->debug_name.c_str(), mutable_slider->value);
+            return UiAction{
+                .type = ActionType::ValueChanged,
+                .target = mutable_slider->target,
+                .method = mutable_slider->method,
+                .source_id = mutable_slider->object_id,
+                .value = mutable_slider->value,
+            };
+        }
+        return UiAction{.type = ActionType::ValueChanged};
+    }
+
     UiButtonNode const* button = HitTestButton(x_px, y_px);
     if (button == nullptr) {
         LOGD("HandlePointerDown: no button hit at (%.2f, %.2f)", x_px, y_px);
-        return false;
+        return std::nullopt;
     }
 
     pressed_button_id_ = button->object_id;
@@ -286,34 +407,95 @@ bool UIRuntime::HandlePointerDown(float x_px, float y_px)
     }
     LOGI("HandlePointerDown: button '%s' hit at (%.2f, %.2f), target=%s, method=%s",
          button->debug_name.c_str(), x_px, y_px, button->target.c_str(), button->method.c_str());
-    return true;
+    return UiAction{.type = ActionType::None};
 }
 
-void UIRuntime::HandlePointerCancel()
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerMove(float x_px, float y_px)
+{
+    if (!pressed_button_id_.empty()) {
+        return UiAction{.type = ActionType::None};
+    }
+
+    if (active_slider_id_.empty()) {
+        return std::nullopt;
+    }
+
+    auto* slider = FindSliderNode(active_slider_id_);
+    if (slider == nullptr) {
+        active_slider_id_.clear();
+        return std::nullopt;
+    }
+
+    slider->value = SliderValueFromPointer(*slider, x_px, y_px);
+    return UiAction{
+        .type = ActionType::ValueChanged,
+        .target = slider->target,
+        .method = slider->method,
+        .source_id = slider->object_id,
+        .value = slider->value,
+    };
+}
+
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerCancel()
 {
     if (auto* button = FindButtonNode(pressed_button_id_)) {
         button->pressed = false;
     }
+    bool const had_capture = !pressed_button_id_.empty() || !active_slider_id_.empty();
     pressed_button_id_.clear();
+    active_slider_id_.clear();
+    return had_capture ? std::optional<UiAction>{UiAction{.type = ActionType::None}} : std::nullopt;
 }
 
-std::optional<UIRuntime::ButtonAction> UIRuntime::HandlePointerUp(float x_px, float y_px)
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerUp(float x_px, float y_px)
 {
+    if (!active_slider_id_.empty()) {
+        auto* slider = FindSliderNode(active_slider_id_);
+        active_slider_id_.clear();
+        if (slider == nullptr) {
+            return UiAction{.type = ActionType::None};
+        }
+        slider->value = SliderValueFromPointer(*slider, x_px, y_px);
+        return UiAction{
+            .type = ActionType::ValueChanged,
+            .target = slider->target,
+            .method = slider->method,
+            .source_id = slider->object_id,
+            .value = slider->value,
+        };
+    }
+
+    if (!pressed_button_id_.empty()) {
+        UiButtonNode const* pressed_button = FindButtonNode(pressed_button_id_);
+        if (pressed_button == nullptr) {
+            HandlePointerCancel();
+            return UiAction{.type = ActionType::None};
+        }
+
+        UiAction action{
+            .type = ActionType::Click,
+            .target = pressed_button->target,
+            .method = pressed_button->method,
+            .source_id = pressed_button->object_id,
+        };
+        LOGI("HandlePointerUp: captured button '%s' clicked, target=%s, method=%s",
+             pressed_button->debug_name.c_str(), pressed_button->target.c_str(), pressed_button->method.c_str());
+        HandlePointerCancel();
+        return action;
+    }
+
     UiButtonNode const* button = HitTestButton(x_px, y_px);
     if (button == nullptr) {
         LOGD("HandlePointerUp: no button hit at (%.2f, %.2f)", x_px, y_px);
         HandlePointerCancel();
         return std::nullopt;
     }
-    if (!pressed_button_id_.empty() && pressed_button_id_ != button->object_id) {
-        LOGD("HandlePointerUp: pressed_button_id_=%s but hit button=%s", pressed_button_id_.c_str(), button->object_id.c_str());
-        HandlePointerCancel();
-        return std::nullopt;
-    }
 
-    ButtonAction action{
+    UiAction action{
+        .type = ActionType::Click,
         .target = button->target,
         .method = button->method,
+        .source_id = button->object_id,
     };
     LOGI("HandlePointerUp: button '%s' clicked, target=%s, method=%s",
          button->debug_name.c_str(), button->target.c_str(), button->method.c_str());
@@ -335,19 +517,38 @@ UiButtonNode* UIRuntime::FindButtonNode(std::string const& object_id)
     return nullptr;
 }
 
+UiSliderNode* UIRuntime::FindSliderNode(std::string const& object_id)
+{
+    for (auto& node : nodes_) {
+        if (!std::holds_alternative<UiSliderNode>(node)) {
+            continue;
+        }
+        auto& slider = std::get<UiSliderNode>(node);
+        if (slider.object_id == object_id) {
+            return &slider;
+        }
+    }
+    return nullptr;
+}
+
 UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
 {
-    if (viewport_width_ == 0 || viewport_height_ == 0) {
-        LOGD("HitTestButton: viewport is zero");
+    uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
+    uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
+    if (input_width == 0 || input_height == 0) {
+        LOGD("HitTestButton: input viewport is zero");
         return nullptr;
     }
 
-    float const ndc_x = (x_px / static_cast<float>(viewport_width_)) * 2.0f - 1.0f;
-    float const ndc_y = 1.0f - (y_px / static_cast<float>(viewport_height_)) * 2.0f;
-    float const aspect_ratio = static_cast<float>(viewport_height_) / static_cast<float>(viewport_width_);
+    float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
+    float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
+    glm::vec2 const ui_ndc = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_);
+    float const ndc_x = ui_ndc.x;
+    float const ndc_y = ui_ndc.y;
+    float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
 
-    LOGD("HitTestButton: px=(%.2f, %.2f) -> ndc=(%.4f, %.4f), viewport=%ux%u, aspect=%.4f",
-         x_px, y_px, ndc_x, ndc_y, viewport_width_, viewport_height_, aspect_ratio);
+    LOGD("HitTestButton: px=(%.2f, %.2f) -> raw_ndc=(%.4f, %.4f), ui_ndc=(%.4f, %.4f), input viewport=%ux%u, rotation=%u, aspect=%.4f",
+         x_px, y_px, raw_ndc_x, raw_ndc_y, ndc_x, ndc_y, input_width, input_height, input_rotation_, aspect_ratio);
 
     for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
         if (!std::holds_alternative<UiButtonNode>(*it)) {
@@ -385,6 +586,64 @@ UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
 
     LOGD("HitTestButton: no button hit");
     return nullptr;
+}
+
+UiSliderNode const* UIRuntime::HitTestSlider(float x_px, float y_px) const
+{
+    uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
+    uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
+    if (input_width == 0 || input_height == 0) {
+        return nullptr;
+    }
+
+    float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
+    float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
+    glm::vec2 const ui_ndc = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_);
+    float const ndc_x = ui_ndc.x;
+    float const ndc_y = ui_ndc.y;
+    float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
+
+    for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
+        if (!std::holds_alternative<UiSliderNode>(*it)) {
+            continue;
+        }
+
+        auto const& slider = std::get<UiSliderNode>(*it);
+        if (!slider.visible || !slider.interactable) {
+            continue;
+        }
+
+        float const half_w = (slider.size.x / aspect_ratio) * 0.5f;
+        float const half_h = std::max(slider.size.y, 0.08f) * 0.5f;
+        bool const hit =
+            ndc_x >= slider.position.x - half_w && ndc_x <= slider.position.x + half_w &&
+            ndc_y >= slider.position.y - half_h && ndc_y <= slider.position.y + half_h;
+        if (hit) {
+            return &slider;
+        }
+    }
+
+    return nullptr;
+}
+
+float UIRuntime::SliderValueFromPointer(UiSliderNode const& slider, float x_px, float y_px) const
+{
+    uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
+    uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
+    if (input_width == 0 || input_height == 0) {
+        return slider.value;
+    }
+    float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
+    float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
+    float const ndc_x = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_).x;
+    float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
+    float const half_w = (slider.size.x / aspect_ratio) * 0.5f;
+    if (half_w <= 0.0001f) {
+        return slider.value;
+    }
+
+    float const normalized = std::clamp((ndc_x - (slider.position.x - half_w)) / (half_w * 2.0f), 0.0f, 1.0f);
+    return slider.min_value + (slider.max_value - slider.min_value) * normalized;
 }
 
 void UIRuntime::AppendTextItems(std::vector<core::FrameUiData>& out_items,
@@ -442,7 +701,7 @@ bool UIRuntime::SetObjectPosition(std::string const& object_id, glm::vec3 const&
     }
 
     std::visit([&position](auto& node) {
-        node.position = ClampUiPosition({position.x, position.y});
+        node.position = {position.x, position.y};
         node.depth = position.z;
     }, nodes_[index]);
     return true;
@@ -471,7 +730,6 @@ bool UIRuntime::SetObjectScale(std::string const& object_id, glm::vec3 const& sc
     std::visit([&scale](auto& node) {
         node.scale = scale;
     }, nodes_[index]);
-    RefreshNodeSize(nodes_[index]);
     return true;
 }
 
@@ -497,7 +755,7 @@ bool UIRuntime::SetObjectTexture(std::string const& object_id, std::string const
 
     return std::visit([&texture_id](auto& node) -> bool {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiTextNode>) {
+        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiSliderNode> || std::is_same_v<T, UiTextNode>) {
             return false;
         } else {
             node.texture_id = texture_id;
@@ -515,7 +773,7 @@ bool UIRuntime::SetObjectColor(std::string const& object_id, glm::vec4 const& co
 
     std::visit([&color](auto& node) {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiSliderNode>) {
             node.fill_color = color;
         } else {
             node.color = color;
@@ -527,14 +785,23 @@ bool UIRuntime::SetObjectColor(std::string const& object_id, glm::vec4 const& co
 bool UIRuntime::SetObjectProgress(std::string const& object_id, float value)
 {
     size_t const index = FindNodeIndex(object_id);
-    if (index >= nodes_.size() || !std::holds_alternative<UiProgressBarNode>(nodes_[index])) {
+    if (index >= nodes_.size()) {
         return false;
     }
 
-    auto& progress_bar = std::get<UiProgressBarNode>(nodes_[index]);
-    progress_bar.value = std::clamp(value, progress_bar.min_value, progress_bar.max_value);
-    progress_bar.auto_animate = false;
-    return true;
+    return std::visit([value](auto& node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+            node.value = std::clamp(value, node.min_value, node.max_value);
+            node.auto_animate = false;
+            return true;
+        } else if constexpr (std::is_same_v<T, UiSliderNode>) {
+            node.value = std::clamp(value, node.min_value, node.max_value);
+            return true;
+        } else {
+            return false;
+        }
+    }, nodes_[index]);
 }
 
 bool UIRuntime::GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const
@@ -598,7 +865,7 @@ bool UIRuntime::GetObjectTexture(std::string const& object_id, std::string& out_
 
     return std::visit([&out_texture_id](auto const& node) -> bool {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiTextNode>) {
+        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiSliderNode> || std::is_same_v<T, UiTextNode>) {
             return false;
         } else {
             out_texture_id = node.texture_id;
@@ -616,7 +883,7 @@ bool UIRuntime::GetObjectColor(std::string const& object_id, glm::vec4& out_colo
 
     std::visit([&out_color](auto const& node) {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
+        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiSliderNode>) {
             out_color = node.fill_color;
         } else {
             out_color = node.color;
@@ -628,13 +895,19 @@ bool UIRuntime::GetObjectColor(std::string const& object_id, glm::vec4& out_colo
 bool UIRuntime::GetObjectProgress(std::string const& object_id, float& out_value) const
 {
     size_t const index = FindNodeIndex(object_id);
-    if (index >= nodes_.size() || !std::holds_alternative<UiProgressBarNode>(nodes_[index])) {
+    if (index >= nodes_.size()) {
         return false;
     }
 
-    auto const& progress_bar = std::get<UiProgressBarNode>(nodes_[index]);
-    out_value = progress_bar.value;
-    return true;
+    return std::visit([&out_value](auto const& node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiProgressBarNode> || std::is_same_v<T, UiSliderNode>) {
+            out_value = node.value;
+            return true;
+        } else {
+            return false;
+        }
+    }, nodes_[index]);
 }
 
 UIRuntime::UiTransform UIRuntime::ResolveUiTransform(project::GameObjectData const& object) const
@@ -659,18 +932,11 @@ void UIRuntime::RefreshNodeSize(UiRuntimeNode& node)
 {
     std::visit([](auto& typed_node) {
         using T = std::decay_t<decltype(typed_node)>;
-        if constexpr (std::is_same_v<T, UiProgressBarNode>) {
-            typed_node.size = ClampUiSize({
-                std::max(typed_node.scale.x * 0.60f, 0.10f),
-                std::max(typed_node.scale.y * 0.08f, 0.02f),
-            });
-        } else if constexpr (std::is_same_v<T, UiTextNode>) {
-            typed_node.size = std::max(typed_node.scale.y * 0.08f, 0.01f);
+        if constexpr (std::is_same_v<T, UiTextNode>) {
+            typed_node.size = std::max(typed_node.size, 0.01f);
+            typed_node.bounds_size = SanitizeUiSize(typed_node.bounds_size);
         } else {
-            typed_node.size = ClampUiSize({
-                std::max(typed_node.scale.x * 0.25f, 0.05f),
-                std::max(typed_node.scale.y * 0.25f, 0.05f),
-            });
+            typed_node.size = SanitizeUiSize(typed_node.size);
         }
     }, node);
 }

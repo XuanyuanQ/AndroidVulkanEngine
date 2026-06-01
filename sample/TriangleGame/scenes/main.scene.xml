@@ -49,9 +49,10 @@
     </GameObject>
 
     <GameObject id="switch_mode_button" name="switch_mode Button">
-        <Transform position="-0.72,-0.76,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
+        <Transform position="0,-0.76,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
+        <UILayout size="0.36,0.12" />
         <Image texture="textures/tanslate.png" />
-        <Button target="CameraController" method="switchMode" />
+        <Button target="CameraController" onClick="switchMode" />
         <Text value="INTERACT" color="1,0,0,1" size="0.03" />
     </GameObject>
 
@@ -68,31 +69,40 @@
     <GameObject id="KeyLight" name="Key Light">
         <Transform position="0,6,6" rotation="0,0,0" scale="1,1,1" />
         <PointLight color="1,1,1" intensity="15.0" range="20.0" castShadows="true" />
-        <Script class="com.example.trianglegame.LightControlScript" />
+        <Script class="com.example.trianglegame.LightControlScript"
+                light="KeyLight"
+                autoButton="light_auto_button"
+                xSlider="light_x_slider"
+                ySlider="light_y_slider"
+                zSlider="light_z_slider" />
     </GameObject>
 
-    <!-- <GameObject id="light_auto_button" name="Light Auto Button">
-        <Transform position="-0.8,-0.76,0.01" rotation="0,0,0" scale="1,1,1" />
+    <GameObject id="light_auto_button" name="Light Auto Button">
+        <Transform position="-0.72,0.45,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
+        <UILayout size="0.36,0.12" />
         <Image texture="textures/viking_room.png" />
-        <Button target="KeyLight" method="toggleAuto" />
+        <Button target="LightControlScript" onClick="toggleAuto" />
         <Text value="AUTO ROTATE" color="0,0,1,1" size="0.03" />
-    </GameObject> -->
+    </GameObject>
 
     <GameObject id="light_x_slider" name="Light X Slider">
         <Transform position="-0.72,0.15,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
-        <ProgressBar value="0.5" min="0" max="1" />
+        <UILayout size="0.52,0.08" />
+        <Slider value="0" min="-8" max="8" target="LightControlScript" onValueChanged="setLightAxis" />
         <Text value="LIGHT X" color="1,1,1,1" size="0.02" />
     </GameObject>
 
     <GameObject id="light_y_slider" name="Light Y Slider">
         <Transform position="-0.72,-0.15,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
-        <ProgressBar value="0.5" min="0" max="1" />
+        <UILayout size="0.52,0.08" />
+        <Slider value="6" min="0.5" max="10" target="LightControlScript" onValueChanged="setLightAxis" />
         <Text value="LIGHT Y" color="1,1,1,1" size="0.02" />
     </GameObject>
 
     <GameObject id="light_z_slider" name="Light Z Slider">
         <Transform position="-0.72,-0.45,0.01" rotation="0,0,0" scale="0.90,0.30,1" />
-        <ProgressBar value="0.5" min="0" max="1" />
+        <UILayout size="0.52,0.08" />
+        <Slider value="6" min="-8" max="8" target="LightControlScript" onValueChanged="setLightAxis" />
         <Text value="LIGHT Z" color="1,1,1,1" size="0.02" />
     </GameObject>
 </Scene>

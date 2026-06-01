@@ -155,6 +155,10 @@ struct ButtonComponentData {
     std::string method;
 };
 
+struct UILayoutComponentData {
+    glm::vec2 size{0.0f, 0.0f};
+};
+
 struct TextComponentData {
     std::string value;
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
@@ -165,6 +169,14 @@ struct ProgressBarComponentData {
     float value = 0.0f;
     float min_value = 0.0f;
     float max_value = 1.0f;
+};
+
+struct SliderComponentData {
+    float value = 0.0f;
+    float min_value = 0.0f;
+    float max_value = 1.0f;
+    std::string target;
+    std::string method;
 };
 
 struct TriangleRendererData {
@@ -196,8 +208,10 @@ struct ComponentData {
     std::optional<ScriptBindingData> script;
     std::optional<ImageComponentData> image;
     std::optional<ButtonComponentData> button;
+    std::optional<UILayoutComponentData> ui_layout;
     std::optional<TextComponentData> text;
     std::optional<ProgressBarComponentData> progress_bar;
+    std::optional<SliderComponentData> slider;
 };
 
 struct GameObjectData {

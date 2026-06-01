@@ -456,7 +456,20 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             ButtonComponentData button{};
             button.target = Attribute(button_tags.front(), "target");
             button.method = Attribute(button_tags.front(), "method");
+            if (button.method.empty()) {
+                button.method = Attribute(button_tags.front(), "onClick");
+            }
             object.components.button = std::move(button);
+        }
+
+        auto ui_layout_tags = MatchTags(component_body, "UILayout");
+        if (ui_layout_tags.empty()) {
+            ui_layout_tags = MatchTags(component_body, "RectTransform");
+        }
+        if (!ui_layout_tags.empty()) {
+            UILayoutComponentData ui_layout{};
+            ui_layout.size = Float2(Attribute(ui_layout_tags.front(), "size"), ui_layout.size);
+            object.components.ui_layout = std::move(ui_layout);
         }
 
         auto text_tags = MatchTags(component_body, "Text");
@@ -486,6 +499,20 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
             progress_bar.min_value = std::stof(Attribute(progress_bar_tags.front(), "min", std::to_string(progress_bar.min_value)));
             progress_bar.max_value = std::stof(Attribute(progress_bar_tags.front(), "max", std::to_string(progress_bar.max_value)));
             object.components.progress_bar = std::move(progress_bar);
+        }
+
+        auto slider_tags = MatchTags(component_body, "Slider");
+        if (!slider_tags.empty()) {
+            SliderComponentData slider{};
+            slider.value = std::stof(Attribute(slider_tags.front(), "value", std::to_string(slider.value)));
+            slider.min_value = std::stof(Attribute(slider_tags.front(), "min", std::to_string(slider.min_value)));
+            slider.max_value = std::stof(Attribute(slider_tags.front(), "max", std::to_string(slider.max_value)));
+            slider.target = Attribute(slider_tags.front(), "target");
+            slider.method = Attribute(slider_tags.front(), "method");
+            if (slider.method.empty()) {
+                slider.method = Attribute(slider_tags.front(), "onValueChanged");
+            }
+            object.components.slider = std::move(slider);
         }
 
         scene.objects.push_back(std::move(object));

@@ -84,6 +84,38 @@ public final class AveScriptManager {
         }
     }
 
+    public void triggerScriptValueMethod(String targetClassName, String methodName, String sourceId, float value) {
+        Log.i(TAG, "triggerScriptValueMethod called: target=" + targetClassName + ", method=" + methodName + ", source=" + sourceId + ", value=" + value);
+        boolean invoked = false;
+        for (Map.Entry<String, AveScript> entry : activeScripts.entrySet()) {
+            String objectId = entry.getKey();
+            AveScript script = entry.getValue();
+            String simpleName = script.getClass().getSimpleName();
+            String fullName = script.getClass().getName();
+            if (simpleName.equals(targetClassName) || fullName.equals(targetClassName) || objectId.equals(targetClassName)) {
+                try {
+                    script.getClass().getMethod(methodName, String.class, float.class).invoke(script, sourceId, value);
+                    invoked = true;
+                } catch (NoSuchMethodException e) {
+                    try {
+                        script.getClass().getMethod(methodName, float.class).invoke(script, value);
+                        invoked = true;
+                    } catch (NoSuchMethodException missingFloatOnlyMethod) {
+                        script.onValueChanged(sourceId, value);
+                        invoked = true;
+                    } catch (Exception invokeError) {
+                        Log.e(TAG, "Failed to invoke value method '" + methodName + "' on " + targetClassName, invokeError);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to invoke value method '" + methodName + "' on " + targetClassName, e);
+                }
+            }
+        }
+        if (!invoked) {
+            Log.w(TAG, "No active script class matching value target: " + targetClassName);
+        }
+    }
+
     public boolean dispatchTouchEvent(AveActivity activity, MotionEvent event) {
         boolean handled = false;
         for (AveScript script : activeScripts.values()) {

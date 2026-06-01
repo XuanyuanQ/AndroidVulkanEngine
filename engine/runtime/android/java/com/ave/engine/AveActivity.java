@@ -55,20 +55,37 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
-        handleEngineTouchEvent(event);
+        if (handleEngineTouchEvent(event)) {
+            return true;
+        }
         if (scriptManager.dispatchTouchEvent(this, event)) {
             return true;
         }
         return super.dispatchTouchEvent(event);
     }
 
-    protected final void handleEngineTouchEvent(MotionEvent event) {
+    protected final boolean handleEngineTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN ||
+                action == MotionEvent.ACTION_MOVE ||
                 action == MotionEvent.ACTION_UP ||
                 action == MotionEvent.ACTION_CANCEL) {
-            nativeTouchEvent(event.getX(), event.getY(), event.getActionMasked());
+            return nativeTouchEvent(
+                    event.getX(),
+                    event.getY(),
+                    event.getActionMasked(),
+                    surfaceView.getWidth(),
+                    surfaceView.getHeight(),
+                    getDisplayRotation());
         }
+        return false;
+    }
+
+    private int getDisplayRotation() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            return getDisplay() != null ? getDisplay().getRotation() : Surface.ROTATION_0;
+        }
+        return getWindowManager().getDefaultDisplay().getRotation();
     }
 
     public static void jniInstantiateScript(String objectId, String className, String targetObjectId, String[] paramKeys, String[] paramValues) {
@@ -81,6 +98,10 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     public static void jniTriggerScriptMethod(String target, String method) {
         scriptManager.triggerScriptMethod(target, method);
+    }
+
+    public static void jniTriggerScriptValueMethod(String target, String method, String sourceId, float value) {
+        scriptManager.triggerScriptValueMethod(target, method, sourceId, value);
     }
 
     public static void jniClearScripts() {
@@ -186,7 +207,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeClearSurface();
-    private static native void nativeTouchEvent(float x, float y, int action);
+    private static native boolean nativeTouchEvent(float x, float y, int action, int inputWidth, int inputHeight, int inputRotation);
     private static native void nativeSetObjectPosition(String objectId, float x, float y, float z);
     private static native void nativeSetObjectRotation(String objectId, float x, float y, float z);
     private static native void nativeSetObjectScale(String objectId, float x, float y, float z);

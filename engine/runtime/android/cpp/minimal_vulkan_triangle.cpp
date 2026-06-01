@@ -34,29 +34,57 @@ bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_pa
     return true;
 }
 
-void MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action)
+bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32_t input_width, int32_t input_height, int32_t input_rotation)
 {
+    if (input_width > 0 && input_height > 0) {
+        ui_runtime_.SetInputViewportSize(
+            static_cast<uint32_t>(input_width),
+            static_cast<uint32_t>(input_height),
+            static_cast<uint32_t>(input_rotation));
+    }
+
     if (action == 0) {
-        ui_runtime_.HandlePointerDown(x, y);
-        return;
+        auto action_info = ui_runtime_.HandlePointerDown(x, y);
+        if (!action_info.has_value()) {
+            return false;
+        }
+        if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+        }
+        return true;
     }
 
     if (action == 3) {
-        ui_runtime_.HandlePointerCancel();
-        return;
+        return ui_runtime_.HandlePointerCancel().has_value();
     }
 
     // Android MotionEvent.ACTION_UP = 1 最后一个手指离开屏幕的事件，才触发点击逻辑
+    if (action == 2) {
+        auto action_info = ui_runtime_.HandlePointerMove(x, y);
+        if (!action_info.has_value()) {
+            return false;
+        }
+        if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+        }
+        return true;
+    }
+
     if (action != 1) {
-        return;
+        return false;
     }
     auto action_info = ui_runtime_.HandlePointerUp(x, y);
     if (!action_info.has_value()) {
-        return;
+        return false;
     }
 
-    LOGI("UI click hit, trigger script target=%s method=%s", action_info->target.c_str(), action_info->method.c_str());
-    Jni_TriggerScriptMethod(action_info->target, action_info->method);
+    if (action_info->type == ave::ui::UIRuntime::ActionType::Click) {
+        LOGI("UI click hit, trigger script target=%s method=%s", action_info->target.c_str(), action_info->method.c_str());
+        Jni_TriggerScriptMethod(action_info->target, action_info->method);
+    } else if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+        Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+    }
+    return true;
 }
 
 void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, float x, float y, float z)
