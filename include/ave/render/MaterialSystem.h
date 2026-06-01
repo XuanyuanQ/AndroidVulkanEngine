@@ -45,6 +45,8 @@ struct Material {
     PBRMaterialParams params;
     MaterialTextures textures;
     std::string base_color_texture_path;
+    std::string normal_texture_path;
+    std::string metallic_roughness_texture_path;
     bool is_pbr = true;
 };
 

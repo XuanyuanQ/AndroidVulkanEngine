@@ -74,6 +74,7 @@ private:
     void DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const;
 
     core::FrameViewData view_{};
+    project::SceneData scene_{};
     std::vector<core::FrameRenderableData> renderables_;
     std::vector<core::FrameLightData> lights_;
     std::vector<TransformNode> transform_nodes_;

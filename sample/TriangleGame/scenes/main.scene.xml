@@ -1,4 +1,6 @@
 <Scene name="TriangleScene">
+    <Environment clearColor="0.02,0.03,0.05,1" ambientColor="0.08,0.08,0.10" />
+
     <GameObject id="MainCamera" name="Main Camera">
         <Transform position="0,2,8" rotation="0,-12,0" scale="1,1,1" />
         <Camera fov="60" near="0.1" far="1000" />
@@ -51,7 +53,7 @@
     <GameObject id="switch_mode_button" name="switch_mode Button">
         <Transform position="0,-0.76,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
         <UILayout size="0.36,0.12" />
-        <Image texture="textures/tanslate.png" />
+        <Image texture="textures/tanslate.png" color="0.2,0.6,1.0,1.0" />
         <Button target="CameraController" onClick="switchMode" />
         <Text value="INTERACT" color="1,0,0,1" size="0.03" />
     </GameObject>

@@ -395,7 +395,7 @@ SceneDocument XmlSceneLoader::LoadSceneText(std::string const& text) const
                     VertexData vertex{};
                     vertex.position = Float3(Attribute(vertex_tag, "position"), vertex.position);
                     vertex.normal = Float3(Attribute(vertex_tag, "normal"), vertex.normal);
-                    vertex.tangent = Float3(Attribute(vertex_tag, "tangent"), vertex.tangent);
+                    vertex.tangent = Float4(Attribute(vertex_tag, "tangent"), vertex.tangent);
                     vertex.texcoord0 = Float2(Attribute(vertex_tag, "texcoord0"), vertex.texcoord0);
                     vertex.texcoord1 = Float2(Attribute(vertex_tag, "texcoord1"), vertex.texcoord1);
                     vertex.color = Float4(Attribute(vertex_tag, "color"), vertex.color);
@@ -580,6 +580,8 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
             doc.metallic = std::stof(Attribute(float_tag, "value", std::to_string(doc.metallic)));
         } else if (name == "roughness") {
             doc.roughness = std::stof(Attribute(float_tag, "value", std::to_string(doc.roughness)));
+        } else if (name == "normalScale" || name == "normal_scale") {
+            doc.normal_scale = std::stof(Attribute(float_tag, "value", std::to_string(doc.normal_scale)));
         }
     }
 
@@ -590,6 +592,16 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
             doc.base_color_texture = Attribute(texture_tag, "path");
             if (doc.base_color_texture.empty()) {
                 doc.base_color_texture = Attribute(texture_tag, "texture");
+            }
+        } else if (name == "normal") {
+            doc.normal_texture = Attribute(texture_tag, "path");
+            if (doc.normal_texture.empty()) {
+                doc.normal_texture = Attribute(texture_tag, "texture");
+            }
+        } else if (name == "metallicRoughness" || name == "metallic_roughness") {
+            doc.metallic_roughness_texture = Attribute(texture_tag, "path");
+            if (doc.metallic_roughness_texture.empty()) {
+                doc.metallic_roughness_texture = Attribute(texture_tag, "texture");
             }
         }
     }

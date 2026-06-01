@@ -101,6 +101,11 @@ struct FrameUiData {
     uint32_t render_queue = kQueueOverlay;
 };
 
+struct FrameEnvironmentData {
+    glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
+    glm::vec3 ambient_color{0.08f, 0.08f, 0.10f};
+};
+
 struct FrameResourceTable {
     std::vector<std::string> meshes;
     std::vector<std::string> textures;
@@ -111,6 +116,7 @@ struct FrameResourceTable {
 struct FrameData {
     uint64_t frame_index = 0;
     FrameViewData view{};
+    FrameEnvironmentData environment{};
     std::vector<FrameRenderableData> renderables;
     std::vector<FrameLightData> lights;
     std::vector<FrameUiData> ui_items;

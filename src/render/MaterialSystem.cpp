@@ -58,15 +58,23 @@ uint32_t MaterialSystem::LoadMaterial(std::string const& path)
     logical_mat.name = path;
     logical_mat.shader_name = mat_doc.shader;
     logical_mat.params.base_color = mat_doc.base_color;
-    if (!mat_doc.base_color_texture.empty()) {
-        std::filesystem::path texture_path = mat_doc.base_color_texture;
+    auto resolve_texture_path = [&](std::string const& texture_text) -> std::string {
+        if (texture_text.empty()) {
+            return {};
+        }
+        std::filesystem::path texture_path = texture_text;
         if (texture_path.is_relative() && !LooksLikeProjectAssetRootPath(texture_path)) {
             texture_path = std::filesystem::path(path).parent_path() / texture_path;
         }
-        logical_mat.base_color_texture_path = texture_path.lexically_normal().generic_string();
-    }
+        return texture_path.lexically_normal().generic_string();
+    };
+
+    logical_mat.base_color_texture_path = resolve_texture_path(mat_doc.base_color_texture);
+    logical_mat.normal_texture_path = resolve_texture_path(mat_doc.normal_texture);
+    logical_mat.metallic_roughness_texture_path = resolve_texture_path(mat_doc.metallic_roughness_texture);
     logical_mat.params.metallic = mat_doc.metallic;
     logical_mat.params.roughness = mat_doc.roughness;
+    logical_mat.params.normal_scale = mat_doc.normal_scale;
 
     return CreateMaterial(logical_mat);
 }
@@ -257,6 +265,7 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
     gpu_mat_mgr.SetBaseColor(gpu_mat_id, logical_mat.params.base_color);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "metallic", logical_mat.params.metallic);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "roughness", logical_mat.params.roughness);
+    gpu_mat_mgr.SetParameter(gpu_mat_id, "normal_scale", logical_mat.params.normal_scale);
 
     if (!logical_mat.base_color_texture_path.empty()) {
         auto& texture_mgr = resource_system_->GetTextureManager();
@@ -270,6 +279,40 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
         if (texture_id != 0) {
             gpu_mat_mgr.SetTexture(gpu_mat_id, "base_color", texture_id);
         }
+    } else {
+        gpu_mat_mgr.SetTexture(gpu_mat_id, "base_color", 0);
+    }
+
+    if (!logical_mat.normal_texture_path.empty()) {
+        auto& texture_mgr = resource_system_->GetTextureManager();
+        uint32_t texture_id = 0;
+        if (auto const* texture = texture_mgr.GetTextureByPath(logical_mat.normal_texture_path)) {
+            texture_id = texture->id;
+        } else {
+            texture_id = texture_mgr.LoadTexture(logical_mat.normal_texture_path);
+        }
+
+        if (texture_id != 0) {
+            gpu_mat_mgr.SetTexture(gpu_mat_id, "normal", texture_id);
+        }
+    } else {
+        gpu_mat_mgr.SetTexture(gpu_mat_id, "normal", 0);
+    }
+
+    if (!logical_mat.metallic_roughness_texture_path.empty()) {
+        auto& texture_mgr = resource_system_->GetTextureManager();
+        uint32_t texture_id = 0;
+        if (auto const* texture = texture_mgr.GetTextureByPath(logical_mat.metallic_roughness_texture_path)) {
+            texture_id = texture->id;
+        } else {
+            texture_id = texture_mgr.LoadTexture(logical_mat.metallic_roughness_texture_path);
+        }
+
+        if (texture_id != 0) {
+            gpu_mat_mgr.SetTexture(gpu_mat_id, "metallic_roughness", texture_id);
+        }
+    } else {
+        gpu_mat_mgr.SetTexture(gpu_mat_id, "metallic_roughness", 0);
     }
 }
 

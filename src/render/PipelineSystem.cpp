@@ -324,7 +324,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
                     .format = vk::Format::eR32G32B32Sfloat,
                     .offset = offsetof(ave::project::VertexData, normal),
                 },
-                // 2. tangent (glm::vec4)
+                // 2. tangent (glm::vec4, xyz = tangent, w = handedness)
                 vkfw::PipelineVertexInput{
                     .binding = 0,
                     .location = 2,

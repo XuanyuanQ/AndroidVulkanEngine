@@ -1,4 +1,7 @@
 <Material name="TriangleMaterial" shader="solid_triangle">
     <Color name="baseColor" value="1,0.25,0.1,1" />
+    <Float name="metallic" value="0.45" />
+    <Float name="roughness" value="0.28" />
+    <Float name="normalScale" value="1.0" />
     <Texture name="baseColor" path="textures/viking_room.png" />
 </Material>

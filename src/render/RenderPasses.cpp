@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <algorithm>
 
@@ -91,6 +92,24 @@ void EnsureFallbackWhiteTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture)
     texture.UpdateData(ctx, &white_pixel, sizeof(white_pixel));
 }
 
+void EnsureFallbackNormalTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture)
+{
+    if (texture.IsInitialized()) {
+        return;
+    }
+
+    std::array<std::uint8_t, 4> const normal_pixel{128u, 128u, 255u, 255u};
+    texture.Init(ctx, vkfw::TextureInfo{
+                          .width = 1,
+                          .height = 1,
+                          .mip_levels = 1,
+                          .format = vkfw::TextureFormat::R8G8B8A8_UNORM,
+                          .usage = vkfw::TextureUsage::Sampled,
+                          .mipmap = false,
+                      });
+    texture.UpdateData(ctx, normal_pixel.data(), static_cast<uint32_t>(normal_pixel.size()));
+}
+
 vkfw::VkTexture const* ResolveTextureOrFallback(vkfw::VkContext& ctx,
                                                 ave::resource::TextureManager& texture_mgr,
                                                 uint32_t texture_id,
@@ -105,6 +124,23 @@ vkfw::VkTexture const* ResolveTextureOrFallback(vkfw::VkContext& ctx,
     }
 
     EnsureFallbackWhiteTexture(ctx, fallback_texture);
+    return fallback_texture.IsInitialized() ? &fallback_texture : nullptr;
+}
+
+vkfw::VkTexture const* ResolveNormalTextureOrFallback(vkfw::VkContext& ctx,
+                                                      ave::resource::TextureManager& texture_mgr,
+                                                      uint32_t texture_id,
+                                                      vkfw::VkTexture& fallback_texture)
+{
+    if (texture_id != 0) {
+        if (auto const* runtime = texture_mgr.GetTexture(texture_id)) {
+            if (runtime->texture && runtime->texture->IsInitialized()) {
+                return runtime->texture.get();
+            }
+        }
+    }
+
+    EnsureFallbackNormalTexture(ctx, fallback_texture);
     return fallback_texture.IsInitialized() ? &fallback_texture : nullptr;
 }
 
@@ -756,6 +792,12 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     struct FrameUbo {
         glm::mat4 view_projection{1.0f};
         glm::mat4 shadow_view_projection{1.0f};
+        glm::vec4 camera_position{0.0f, 0.0f, 0.0f, 1.0f};
+        glm::vec4 light_position_range{0.0f, 6.0f, 6.0f, 20.0f};
+        glm::vec4 light_direction_type{0.0f, -1.0f, 0.0f, 1.0f};
+        glm::vec4 light_color_intensity{1.0f, 1.0f, 1.0f, 5.0f};
+        glm::vec4 ambient_color{0.04f, 0.04f, 0.045f, 1.0f};
+        glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
     };
 
     struct MaterialUbo {
@@ -769,6 +811,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
     bool began_rendering = false;
     if (has_vk) {
+        EnsureFallbackNormalTexture(*context.vk, fallback_normal_texture_);
         uint32_t const width = context.swapchain->Extent().width;
         uint32_t const height = context.swapchain->Extent().height;
 
@@ -804,10 +847,10 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                               vk::PipelineStageFlagBits::eEarlyFragmentTests);
 
         vk::ClearValue clear{};
-        clear.color.float32[0] = 1.0f;
-        clear.color.float32[1] = 1.0f;
-        clear.color.float32[2] = 1.0f;
-        clear.color.float32[3] = 1.0f;
+        clear.color.float32[0] = context.frame != nullptr ? context.frame->environment.clear_color.x : 0.03f;
+        clear.color.float32[1] = context.frame != nullptr ? context.frame->environment.clear_color.y : 0.04f;
+        clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
+        clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
         began_rendering = BeginSwapchainRendering(context, clear, true, &depth_stencil_);
         if (!began_rendering) {
             LOGE( "RenderVulkan", "PBRPass failed to begin rendering");
@@ -821,6 +864,16 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             // frame_ubo.view_projection = context.shadow_view_projection;
             frame_ubo.view_projection = context.frame->view.view_projection;
             frame_ubo.shadow_view_projection = context.shadow_view_projection;  
+            frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
+            frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
+            frame_ubo.clear_color = context.frame->environment.clear_color;
+        }
+
+        if (!view.lights.empty() && view.lights.front() != nullptr) {
+            auto const& light = *view.lights.front();
+            frame_ubo.light_position_range = glm::vec4(light.position, light.range);
+            frame_ubo.light_direction_type = glm::vec4(light.direction, light.type == "directional" ? 0.0f : 1.0f);
+            frame_ubo.light_color_intensity = glm::vec4(light.color, light.intensity);
         }
 
         if (!frame_ubo_.IsInitialized()) {
@@ -935,7 +988,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             material->metallic,
             material->roughness,
             renderable->receives_shadow ? 1.0f : 0.0f,
-            0.0f);
+            material->normal_scale);
         material_binding.ubo.UpdateData(*context.vk, &material_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
 
         if (material_binding.descriptor_set_id != 0) {
@@ -955,7 +1008,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                                               vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             if (auto const* normal_texture =
-                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->normal_texture, fallback_white_texture_)) {
+                    ResolveNormalTextureOrFallback(*context.vk, texture_mgr, material->normal_texture, fallback_normal_texture_)) {
                 desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
                                               2,
                                               sampler,

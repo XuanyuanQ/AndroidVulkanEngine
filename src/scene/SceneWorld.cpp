@@ -549,6 +549,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                                   render::MaterialSystem const& materials,
                                   float aspect_ratio)
 {
+    scene_ = scene;
     view_ = {};
     renderables_.clear();
     lights_.clear();
@@ -677,6 +678,8 @@ void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame
 {
     out_frame.frame_index = frame_index;
     out_frame.view = view_;
+    out_frame.environment.clear_color = scene_.environment.clear_color;
+    out_frame.environment.ambient_color = scene_.environment.ambient_color;
 
     out_frame.renderables = renderables_;
     out_frame.lights = lights_;

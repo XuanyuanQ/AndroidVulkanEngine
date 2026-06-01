@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <filesystem>
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <optional>
 #include <sstream>
@@ -21,11 +22,13 @@ namespace {
 struct ObjVertexRef {
     int position_index = 0;
     int texcoord_index = 0;
+    int normal_index = 0;
 
     bool operator==(ObjVertexRef const& other) const
     {
         return position_index == other.position_index
-            && texcoord_index == other.texcoord_index;
+            && texcoord_index == other.texcoord_index
+            && normal_index == other.normal_index;
     }
 };
 
@@ -34,6 +37,7 @@ struct ObjVertexRefHash {
     {
         size_t seed = std::hash<int>{}(value.position_index);
         seed ^= std::hash<int>{}(value.texcoord_index) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<int>{}(value.normal_index) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
@@ -58,6 +62,13 @@ ObjVertexRef ParseObjVertexRef(std::string const& token)
         ref.texcoord_index = std::stoi(texcoord_text);
     }
 
+    if (second_slash != std::string::npos) {
+        auto const normal_text = token.substr(second_slash + 1);
+        if (!normal_text.empty()) {
+            ref.normal_index = std::stoi(normal_text);
+        }
+    }
+
     return ref;
 }
 
@@ -79,6 +90,150 @@ glm::vec3 TransformPreviewPosition(glm::vec3 const& position)
         position.z,
         -position.y,
     };
+}
+
+glm::vec3 TransformPreviewDirection(glm::vec3 const& direction)
+{
+    return {
+        direction.x,
+        direction.z,
+        -direction.y,
+    };
+}
+
+bool HasMeaningfulNormals(project::MeshData const& mesh)
+{
+    for (auto const& vertex : mesh.vertices) {
+        if (glm::dot(vertex.normal, vertex.normal) > 0.0001f &&
+            vertex.normal != glm::vec3{0.0f, 0.0f, 1.0f}) {
+            return true;
+        }
+    }
+    return false;
+}
+
+glm::vec3 MakeFallbackTangent(glm::vec3 const& normal)
+{
+    glm::vec3 const helper = std::abs(normal.y) < 0.999f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{1.0f, 0.0f, 0.0f};
+    glm::vec3 tangent = glm::cross(helper, normal);
+    float const length_sq = glm::dot(tangent, tangent);
+    if (length_sq <= 0.000001f) {
+        tangent = glm::vec3{1.0f, 0.0f, 0.0f};
+    } else {
+        tangent = glm::normalize(tangent);
+    }
+    return tangent;
+}
+
+void BuildMeshNormalsAndTangents(project::MeshData& mesh)
+{
+    if (mesh.vertices.empty()) {
+        return;
+    }
+
+    if (mesh.indices.empty()) {
+        mesh.indices.resize(mesh.vertices.size());
+        for (uint32_t i = 0; i < mesh.indices.size(); ++i) {
+            mesh.indices[i] = i;
+        }
+    }
+
+    std::vector<glm::vec3> normal_acc(mesh.vertices.size(), glm::vec3{0.0f});
+    std::vector<glm::vec3> tangent_acc(mesh.vertices.size(), glm::vec3{0.0f});
+    std::vector<glm::vec3> bitangent_acc(mesh.vertices.size(), glm::vec3{0.0f});
+    bool const has_uvs = std::any_of(
+        mesh.vertices.begin(),
+        mesh.vertices.end(),
+        [](project::VertexData const& vertex) {
+            return vertex.texcoord0 != glm::vec2{0.0f, 0.0f};
+        });
+
+    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        uint32_t const i0 = mesh.indices[i + 0];
+        uint32_t const i1 = mesh.indices[i + 1];
+        uint32_t const i2 = mesh.indices[i + 2];
+        if (i0 >= mesh.vertices.size() || i1 >= mesh.vertices.size() || i2 >= mesh.vertices.size()) {
+            continue;
+        }
+
+        auto const& v0 = mesh.vertices[i0];
+        auto const& v1 = mesh.vertices[i1];
+        auto const& v2 = mesh.vertices[i2];
+
+        glm::vec3 const p0 = v0.position;
+        glm::vec3 const p1 = v1.position;
+        glm::vec3 const p2 = v2.position;
+        glm::vec3 const e1 = p1 - p0;
+        glm::vec3 const e2 = p2 - p0;
+        glm::vec3 const face_normal = glm::cross(e1, e2);
+        float const normal_len_sq = glm::dot(face_normal, face_normal);
+        if (normal_len_sq > 0.000001f) {
+            normal_acc[i0] += face_normal;
+            normal_acc[i1] += face_normal;
+            normal_acc[i2] += face_normal;
+        }
+
+        if (!has_uvs) {
+            continue;
+        }
+
+        glm::vec2 const uv0 = v0.texcoord0;
+        glm::vec2 const uv1 = v1.texcoord0;
+        glm::vec2 const uv2 = v2.texcoord0;
+        glm::vec2 const duv1 = uv1 - uv0;
+        glm::vec2 const duv2 = uv2 - uv0;
+        float const denom = duv1.x * duv2.y - duv1.y * duv2.x;
+        if (std::abs(denom) <= 0.000001f) {
+            continue;
+        }
+
+        float const r = 1.0f / denom;
+        glm::vec3 const tangent = (e1 * duv2.y - e2 * duv1.y) * r;
+        glm::vec3 const bitangent = (e2 * duv1.x - e1 * duv2.x) * r;
+        tangent_acc[i0] += tangent;
+        tangent_acc[i1] += tangent;
+        tangent_acc[i2] += tangent;
+        bitangent_acc[i0] += bitangent;
+        bitangent_acc[i1] += bitangent;
+        bitangent_acc[i2] += bitangent;
+    }
+
+    bool const preserve_normals = HasMeaningfulNormals(mesh);
+    for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+        auto& vertex = mesh.vertices[i];
+
+        glm::vec3 normal = vertex.normal;
+        if (!preserve_normals) {
+            normal = normal_acc[i];
+            if (glm::dot(normal, normal) <= 0.000001f) {
+                normal = glm::vec3{0.0f, 1.0f, 0.0f};
+            }
+        }
+        if (glm::dot(normal, normal) <= 0.000001f) {
+            normal = glm::vec3{0.0f, 1.0f, 0.0f};
+        } else {
+            normal = glm::normalize(normal);
+        }
+
+        glm::vec3 tangent = tangent_acc[i];
+        if (glm::dot(tangent, tangent) <= 0.000001f) {
+            tangent = MakeFallbackTangent(normal);
+        } else {
+            tangent = glm::normalize(tangent - normal * glm::dot(normal, tangent));
+            if (glm::dot(tangent, tangent) <= 0.000001f) {
+                tangent = MakeFallbackTangent(normal);
+            }
+        }
+
+        glm::vec3 const bitangent = bitangent_acc[i];
+        float handedness = 1.0f;
+        if (glm::dot(bitangent, bitangent) > 0.000001f) {
+            handedness = glm::dot(glm::cross(normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f;
+        }
+
+        vertex.normal = normal;
+        vertex.tangent = glm::vec4{tangent, handedness};
+    }
 }
 
 void PreparePreviewMeshData(project::MeshData& mesh)
@@ -128,6 +283,15 @@ void PreparePreviewMeshData(project::MeshData& mesh)
         }
 
         vertex.position = (position - center) * scale;
+        if (vertex.normal != glm::vec3{0.0f, 0.0f, 1.0f}) {
+            vertex.normal = glm::normalize(TransformPreviewDirection(vertex.normal));
+        }
+        if (vertex.tangent != glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}) {
+            glm::vec3 const preview_tangent = TransformPreviewDirection(glm::vec3{vertex.tangent});
+            if (glm::dot(preview_tangent, preview_tangent) > 0.000001f) {
+                vertex.tangent = glm::vec4{glm::normalize(preview_tangent), vertex.tangent.w};
+            }
+        }
         vertex.color = color;
     }
 
@@ -338,6 +502,7 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
 
     std::vector<glm::vec3> positions;
     std::vector<glm::vec2> texcoords;
+    std::vector<glm::vec3> normals;
     std::unordered_map<ObjVertexRef, uint32_t, ObjVertexRefHash> vertex_cache;
 
     std::stringstream stream(text);
@@ -360,6 +525,14 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
             glm::vec2 texcoord{};
             line_stream >> texcoord.x >> texcoord.y;
             texcoords.push_back(texcoord);
+            continue;
+        }
+
+        if (line.rfind("vn ", 0) == 0) {
+            std::stringstream line_stream(line.substr(3));
+            glm::vec3 normal{};
+            line_stream >> normal.x >> normal.y >> normal.z;
+            normals.push_back(normal);
             continue;
         }
 
@@ -404,6 +577,13 @@ bool MeshManager::ParseObjMeshText(std::string const& text, project::MeshData& o
                             auto uv = texcoords[static_cast<size_t>(tex_index)];
                             uv.y = 1.0f - uv.y;
                             vertex.texcoord0 = uv;
+                        }
+                    }
+
+                    if (ref.normal_index != 0) {
+                        int const normal_index = ResolveObjIndex(ref.normal_index, static_cast<int>(normals.size()));
+                        if (normal_index >= 0 && normal_index < static_cast<int>(normals.size())) {
+                            vertex.normal = normals[static_cast<size_t>(normal_index)];
                         }
                     }
 
@@ -480,28 +660,31 @@ uint32_t MeshManager::LoadMeshFromData(std::string const& name, project::MeshDat
 
     uint32_t id = next_id_++;
 
+    project::MeshData processed_mesh = mesh_data;
+    BuildMeshNormalsAndTangents(processed_mesh);
+
     MeshRuntime mesh;
     mesh.id = id;
     mesh.name = name;
-    mesh.vertex_count = static_cast<uint32_t>(mesh_data.vertices.size());
-    mesh.index_count = static_cast<uint32_t>(mesh_data.indices.size());
+    mesh.vertex_count = static_cast<uint32_t>(processed_mesh.vertices.size());
+    mesh.index_count = static_cast<uint32_t>(processed_mesh.indices.size());
     mesh.vertex_stride = static_cast<uint32_t>(sizeof(project::VertexData));
 
     mesh.vertex_buffer = std::make_unique<vkfw::VkBuffer>();
     vkfw::BufferInfo vertex_buffer_info;
-    vertex_buffer_info.size = mesh_data.vertices.size() * sizeof(project::VertexData);
+    vertex_buffer_info.size = processed_mesh.vertices.size() * sizeof(project::VertexData);
     vertex_buffer_info.usage = vkfw::BufferUsage::Vertex;
     if (mesh.vertex_buffer->Init(*ctx_, vertex_buffer_info)) {
-        mesh.vertex_buffer->UpdateData(*ctx_, mesh_data.vertices.data(), vertex_buffer_info.size);
+        mesh.vertex_buffer->UpdateData(*ctx_, processed_mesh.vertices.data(), vertex_buffer_info.size);
     }
 
-    if (!mesh_data.indices.empty()) {
+    if (!processed_mesh.indices.empty()) {
         mesh.index_buffer = std::make_unique<vkfw::VkBuffer>();
         vkfw::BufferInfo index_buffer_info;
-        index_buffer_info.size = mesh_data.indices.size() * sizeof(uint32_t);
+        index_buffer_info.size = processed_mesh.indices.size() * sizeof(uint32_t);
         index_buffer_info.usage = vkfw::BufferUsage::Index;
         if (mesh.index_buffer->Init(*ctx_, index_buffer_info)) {
-            mesh.index_buffer->UpdateData(*ctx_, mesh_data.indices.data(), index_buffer_info.size);
+            mesh.index_buffer->UpdateData(*ctx_, processed_mesh.indices.data(), index_buffer_info.size);
         }
     }
 
@@ -994,6 +1177,8 @@ bool MaterialManager::SetParameter(uint32_t material_id, std::string const& para
         it->second.metallic = value;
     } else if (param == "roughness") {
         it->second.roughness = value;
+    } else if (param == "normal_scale") {
+        it->second.normal_scale = value;
     }
     
     return true;

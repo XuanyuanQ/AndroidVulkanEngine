@@ -15,8 +15,11 @@ struct MaterialDocument {
     std::string shader;
     glm::vec4 base_color{0.5f, 0.5f, 0.5f, 1.0f};
     std::string base_color_texture;
+    std::string normal_texture;
+    std::string metallic_roughness_texture;
     float metallic = 0.0f;
     float roughness = 0.5f;
+    float normal_scale = 1.0f;
 };
 
 class XmlSceneLoader {
