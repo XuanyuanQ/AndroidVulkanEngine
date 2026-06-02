@@ -22,7 +22,14 @@ add_library(ave_engine STATIC
     src/render/Renderer.cpp
     src/render/RenderWorld.cpp
     src/render/MaterialSystem.cpp
-    src/render/RenderPasses.cpp
+    src/render/RenderPassCommon.cpp
+    src/render/DepthPrepass.cpp
+    src/render/ShadowPass.cpp
+    src/render/SkyboxPass.cpp
+    src/render/PBRPass.cpp
+    src/render/ComputePass.cpp
+    src/render/UIPass.cpp
+    src/render/ToneMappingPass.cpp
     src/render/PassDataView.cpp
     src/render/RenderSceneBuilder.cpp
     src/render/PipelineSystem.cpp

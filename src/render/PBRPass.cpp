@@ -1,0 +1,333 @@
+#include "ave/render/RenderPasses.h"
+
+#include "ave/render/RenderPassCommon.h"
+
+namespace ave::render {
+
+void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
+                                    resource::ResourceSystem* resources,
+                                    glm::vec4 const& clear_color,
+                                    glm::vec3 const& ambient_color)
+{
+    detail::EnsureSharedEnvironmentMaps(ctx, resources, clear_color, ambient_color);
+}
+
+PassDataFilter PBRPass::GetDataFilter() const
+{
+    PassDataFilter filter{};
+    filter.pass_bit = core::RenderPassBit::ForwardOpaque;
+    filter.layer_mask = 0xFFFFFFFFu;
+    return filter;
+}
+
+void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
+{
+    using namespace detail;
+
+    if (context.resources == nullptr || context.pipelines == nullptr) {
+        return;
+    }
+
+    bool const has_vk =
+        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+
+    auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& mat_mgr = context.resources->GetMaterialManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
+    auto& texture_mgr = context.resources->GetTextureManager();
+    auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
+    auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+
+    struct MaterialUbo {
+        glm::vec4 base_color{1.0f};
+        glm::vec4 params{0.0f};
+    };
+
+    struct ObjectPushConstants {
+        glm::mat4 world{1.0f};
+    };
+
+    bool began_rendering = false;
+    if (has_vk) {
+        EnsureFallbackNormalTexture(*context.vk, fallback_normal_texture_);
+        uint32_t const width = context.swapchain->Extent().width;
+        uint32_t const height = context.swapchain->Extent().height;
+
+        vkfw::VkTexture* depth_target = context.current_depth_texture;
+        if (depth_target == nullptr || !depth_target->IsInitialized()) {
+            if (depth_stencil_.IsInitialized()) {
+                auto const extent = depth_stencil_.Extent();
+                if (extent.width != width || extent.height != height) {
+                    depth_stencil_.Shutdown(*context.vk);
+                }
+            }
+
+            if (!depth_stencil_.IsInitialized()) {
+                if (!depth_stencil_.Init(*context.vk, vkfw::TextureInfo{
+                                                       .width = width,
+                                                       .height = height,
+                                                       .mip_levels = 1,
+                                                       .format = vkfw::TextureFormat::D32_SFLOAT,
+                                                       .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                       .mipmap = false,
+                                                   })) {
+                    LOGE("PBRPass failed to create depth stencil texture");
+                    return;
+                }
+            }
+
+            depth_target = &depth_stencil_;
+            context.current_depth_texture = depth_target;
+        }
+
+        vk::ClearValue clear{};
+        clear.color.float32[0] = context.frame != nullptr ? context.frame->environment.clear_color.x : 0.03f;
+        clear.color.float32[1] = context.frame != nullptr ? context.frame->environment.clear_color.y : 0.04f;
+        clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
+        clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
+        bool const clear_depth = depth_target == &depth_stencil_;
+        began_rendering = BeginSwapchainRendering(context, clear, true, depth_target, clear_depth);
+        if (!began_rendering) {
+            LOGE("PBRPass failed to begin rendering");
+            return;
+        }
+    }
+
+    if (has_vk) {
+        FrameUbo frame_ubo{};
+        if (context.frame != nullptr) {
+            frame_ubo.view_projection = context.frame->view.view_projection;
+            frame_ubo.shadow_view_projection = context.shadow_view_projection;
+            frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
+            frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
+            frame_ubo.clear_color = context.frame->environment.clear_color;
+            frame_ubo.view = context.frame->view.view;
+            frame_ubo.projection = context.frame->view.projection;
+        }
+
+        if (!view.lights.empty() && view.lights.front() != nullptr) {
+            auto const& light = *view.lights.front();
+            frame_ubo.light_position_range = glm::vec4(light.position, light.range);
+            frame_ubo.light_direction_type = glm::vec4(light.direction, light.type == "directional" ? 0.0f : 1.0f);
+            frame_ubo.light_color_intensity = glm::vec4(light.color, light.intensity);
+        }
+
+        if (!frame_ubo_.IsInitialized()) {
+            frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
+                                            .size = static_cast<uint32_t>(sizeof(FrameUbo)),
+                                            .usage = vkfw::BufferUsage::Uniform,
+                                            .mappable = true,
+                                        });
+        }
+        frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
+
+        glm::vec4 const clear_color = context.frame != nullptr
+            ? context.frame->environment.clear_color
+            : frame_ubo.clear_color;
+        glm::vec3 const ambient_color = context.frame != nullptr
+            ? context.frame->environment.ambient_color
+            : glm::vec3{frame_ubo.ambient_color.x, frame_ubo.ambient_color.y, frame_ubo.ambient_color.z};
+        EnsureEnvironmentMaps(*context.vk, context.resources, clear_color, ambient_color);
+
+        if (frame_set_id_ == 0) {
+            uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
+            frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+        }
+        if (frame_set_id_ != 0) {
+            desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
+            if (context.current_shadow_map) {
+                vk::Sampler sampler = GetShadowSampler(*context.vk);
+                desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            vk::Sampler const sampler = GetCommonSampler(*context.vk);
+            if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 2, sampler, g_shared_environment_maps.environment_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.irradiance_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 3, sampler, g_shared_environment_maps.irradiance_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.prefilter_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 4, sampler, g_shared_environment_maps.prefilter_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.brdf_lut.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 5, sampler, g_shared_environment_maps.brdf_lut.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+        }
+    }
+    uint32_t renderable_index = 0;
+    for (auto const* renderable : view.renderables) {
+        uint32_t const culling_index = renderable_index++;
+        if (!has_vk) {
+            continue;
+        }
+        if (!renderable) {
+            continue;
+        }
+
+        if (culling_index < g_culling_visibility.size() && g_culling_visibility[culling_index] == 0) {
+            LOGI(" CullingSystem: Skip draw call (culled): %s", renderable->debug_name.c_str());
+            continue;
+        }
+        auto const* material = renderable->material_handle != 0
+            ? mat_mgr.GetMaterial(renderable->material_handle)
+            : mat_mgr.GetMaterialByName(renderable->material_id);
+        if (!material) {
+            if (fallback_material_id_ == 0) {
+                uint32_t fallback_shader_id = shader_mgr.LoadShader("compiled_shaders/solid_triangle");
+                if (fallback_shader_id != 0) {
+                    fallback_material_id_ = mat_mgr.CreateMaterial("__fallback/default_material__", fallback_shader_id);
+                    mat_mgr.SetBaseColor(fallback_material_id_, glm::vec4{0.85f, 0.85f, 0.88f, 1.0f});
+                }
+            }
+            if (fallback_material_id_ != 0) {
+                material = mat_mgr.GetMaterial(fallback_material_id_);
+            }
+        }
+        if (!material) {
+            LOGI("  skip material: %s", renderable->material_id.c_str());
+            continue;
+        }
+
+        auto const* mesh = renderable->mesh_handle != 0
+            ? mesh_mgr.GetMesh(renderable->mesh_handle)
+            : mesh_mgr.GetMeshByPath(renderable->mesh_id);
+        if (!mesh) {
+            LOGI("  skip mesh: %s", renderable->mesh_id.c_str());
+            continue;
+        }
+
+        auto const* shader = material->shader_id != 0 ? shader_mgr.GetShader(material->shader_id) : nullptr;
+        if (!shader) {
+            LOGI("  skip shader for material: %s", material->name.c_str());
+            continue;
+        }
+
+        PipelineKey key = MakePipelineKey(shader->id, *mesh);
+        key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
+        if (has_vk) {
+            key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
+            key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
+            key.viewport_width = context.swapchain->Extent().width;
+            key.viewport_height = context.swapchain->Extent().height;
+        }
+
+        uint32_t const pipeline_id =
+            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+        if (pipeline_id == 0) {
+            LOGI("  pipeline create failed: %s", renderable->debug_name.c_str());
+            continue;
+        }
+
+        auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
+        if (!pipeline) {
+            continue;
+        }
+
+        auto& material_binding = material_bindings_[material->id];
+        if (!material_binding.ubo.IsInitialized()) {
+            material_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
+                                                       .size = static_cast<uint32_t>(sizeof(MaterialUbo)),
+                                                       .usage = vkfw::BufferUsage::Uniform,
+                                                       .mappable = true,
+                                                   });
+        }
+        if (material_binding.descriptor_set_id == 0) {
+            uint32_t const material_layout_id = desc_cache.GetOrCreateLayout(MakeMaterialSetLayoutKey());
+            material_binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(material_layout_id);
+        }
+
+        MaterialUbo material_ubo{};
+        material_ubo.base_color = renderable->has_color_override ? renderable->color_override : material->base_color;
+        material_ubo.params = glm::vec4(
+            material->metallic,
+            material->roughness,
+            renderable->receives_shadow ? 1.0f : 0.0f,
+            material->normal_scale);
+        material_binding.ubo.UpdateData(*context.vk, &material_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
+
+        if (material_binding.descriptor_set_id != 0) {
+            desc_alloc.UpdateUniformBuffer(material_binding.descriptor_set_id,
+                                           0,
+                                           material_binding.ubo.Handle(),
+                                           0,
+                                           sizeof(MaterialUbo));
+
+            vk::Sampler const sampler = GetCommonSampler(*context.vk);
+            if (auto const* base_color_texture =
+                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->base_color_texture, fallback_white_texture_)) {
+                desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
+                                              1,
+                                              sampler,
+                                              base_color_texture->View(),
+                                              vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (auto const* normal_texture =
+                    ResolveNormalTextureOrFallback(*context.vk, texture_mgr, material->normal_texture, fallback_normal_texture_)) {
+                desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
+                                              2,
+                                              sampler,
+                                              normal_texture->View(),
+                                              vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (auto const* mr_texture =
+                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->metallic_roughness_texture, fallback_white_texture_)) {
+                desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
+                                              3,
+                                              sampler,
+                                              mr_texture->View(),
+                                              vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+        }
+
+        context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+        ObjectPushConstants object_push{};
+        object_push.world = renderable->world;
+        context.command_buffer.pushConstants(pipeline->Layout(),
+                                             vk::ShaderStageFlagBits::eVertex,
+                                             0,
+                                             sizeof(ObjectPushConstants),
+                                             &object_push);
+
+        vk::DescriptorSet sets[2]{};
+        uint32_t set_count = 0;
+        if (frame_set_id_ != 0) {
+            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
+            if (frame_set) {
+                sets[set_count++] = frame_set;
+            }
+        }
+        if (material_binding.descriptor_set_id != 0) {
+            vk::DescriptorSet const material_set = desc_alloc.GetHandle(material_binding.descriptor_set_id);
+            if (material_set) {
+                sets[set_count++] = material_set;
+            }
+        }
+        if (set_count > 0) {
+            context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                      pipeline->Layout(),
+                                                      0,
+                                                      set_count,
+                                                      sets,
+                                                      0,
+                                                      nullptr);
+        }
+
+        vk::DeviceSize offset = 0;
+        context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
+        if (mesh->index_buffer && mesh->index_buffer->IsInitialized() && mesh->index_count > 0) {
+            context.command_buffer.bindIndexBuffer(mesh->index_buffer->Handle(), 0, vk::IndexType::eUint32);
+            uint32_t const index_count = renderable->index_count != 0 ? renderable->index_count : mesh->index_count;
+            context.command_buffer.drawIndexed(index_count, 1, renderable->first_index, static_cast<int32_t>(renderable->first_vertex), 0);
+        } else {
+            uint32_t const vertex_count = renderable->vertex_count != 0 ? renderable->vertex_count : mesh->vertex_count;
+            context.command_buffer.draw(vertex_count, 1, renderable->first_vertex, 0);
+        }
+    }
+
+    if (began_rendering) {
+        EndSwapchainRendering(context);
+    }
+}
+
+} // namespace ave::render
