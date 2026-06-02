@@ -12,6 +12,8 @@
 #include <android/native_window.h>
 
 #include <string>
+#include <mutex>
+#include <atomic>
 #include <unordered_map>
 #include <vector>
 #include <thread>
@@ -59,6 +61,10 @@ public:
 
 private:
     bool loadSceneMesh();
+    bool initializeSurfaceResources();
+    bool recreateSwapchainResources();
+    void stopRenderThread();
+    void releaseWindow();
     void drawFrame();
 
     void cleanupSurfaceResources();
@@ -94,7 +100,6 @@ private:
     
     // 保护 Surface 的互斥锁（因为 Java 线程会异步传进来 Surface）
     std::mutex m_surface_mutex;
-    ANativeWindow* m_window{nullptr};
     bool m_surface_changed{false};
 };
 

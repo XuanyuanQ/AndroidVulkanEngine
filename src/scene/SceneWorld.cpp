@@ -644,6 +644,12 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
     LOGI("%s", DumpTransformHierarchy().c_str());
 }
 
+void SceneWorld::SetAspectRatio(float aspect_ratio)
+{
+    aspect_ratio_ = aspect_ratio;
+    RefreshAllDerivedState();
+}
+
 void SceneWorld::DumpTransformNodeRecursive(int32_t node_index, int depth, std::string& out) const
 {
     if (node_index < 0 || static_cast<size_t>(node_index) >= transform_nodes_.size()) {

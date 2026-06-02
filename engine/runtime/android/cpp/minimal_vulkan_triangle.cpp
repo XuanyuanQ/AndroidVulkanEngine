@@ -13,6 +13,7 @@
 #include "LogUtil.h"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 
@@ -197,10 +198,7 @@ bool MinimalVulkanTriangle::getObjectProgress(std::string const& object_id, floa
 
 void MinimalVulkanTriangle::destroy()
 {
-    m_running = false;
-    if (m_render_thread.joinable()) {
-        m_render_thread.join();
-    }
+    stopRenderThread();
     Jni_ClearScripts();
     clearSurface();
     LOGI("Ave runtime destroyed.");
@@ -209,117 +207,59 @@ void MinimalVulkanTriangle::destroy()
 void MinimalVulkanTriangle::setSurface(ANativeWindow* window)
 {
     LOGI("Ave runtime setSurface.");
-    clearSurface();
+    stopRenderThread();
+    cleanupSurfaceResources();
+    releaseWindow();
     window_ = window;
     if (window_ != nullptr) {
         ANativeWindow_acquire(window_);
+        width_ = ANativeWindow_getWidth(window_);
+        height_ = ANativeWindow_getHeight(window_);
     }
 
     if (window_ == nullptr) {
         return;
     }
 
-    vkfw::ContextCreateInfo ci{};
-    ci.window = window_;
-    #ifdef NDEBUG
-    ci.enable_validation = false;
-    #else
-        ci.enable_validation = false;
-    #endif
-    ctx_.Init(ci);
-    renderer_.SetVkContext(&ctx_);
-    renderer_.GetResourceSystem().GetMeshManager().SetTextAssetLoader(
-        [this](std::string const& path) {
-            return readTextAsset(path.c_str());
-        });
-    renderer_.GetMaterialSystem().SetTextAssetLoader(
-        [this](std::string const& path) {
-            return readTextAsset(path.c_str());
-        });
-    renderer_.GetResourceSystem().GetTextureManager().SetBinaryAssetLoader(
-        [this](std::string const& path) {
-            return readBinaryAsset(path.c_str());
-        });
-    
-    renderer_.GetMaterialSystem().SetShaderAssetLoader(
-        [this](std::string const& path) -> std::vector<uint32_t> {
-            return readShaderAsset(path.c_str());
-        });
-    renderer_.GetResourceSystem().GetShaderManager().SetShaderAssetLoader(
-        [this](std::string const& path) -> std::vector<uint32_t> {
-            return readShaderAsset(path.c_str());
-        });
-
-    sync_.Init(ctx_, kFramesInFlight);
-
-    vkfw::SwapchainInfo si{};
-    swapchainWrap_.Init(ctx_, si);
-    sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
-
-    if (!loadSceneMesh()) {
-        LOGE("Failed to load scene mesh.");
+    if (!initializeSurfaceResources()) {
+        LOGE("Failed to initialize surface resources.");
+        cleanupSurfaceResources();
+        releaseWindow();
         return;
     }
-    use_frame_data_path_ = true;
-    if (renderer_.Graph().PassCount() == 0) {
-        renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::DepthPrepass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
-    }
-    if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
-            LOGE("Failed to initialize FrameGraph backend.");
-            return;
-    }
 
-    Jni_GenerateFontAtlas(); // Generate and load ASCII glyph atlas synchronously before rendering starts!
-
+    {
+        std::lock_guard<std::mutex> lock(m_surface_mutex);
+        m_surface_changed = false;
+    }
     m_running = true;
-    m_surface_changed = true; // 标记 Surface 发生了变化
     m_render_thread = std::thread(&MinimalVulkanTriangle::drawFrame, this);
 }
 
 void MinimalVulkanTriangle::clearSurface()
 {
-    // First clear the window reference
-    if (window_ != nullptr) {
-        ANativeWindow_release(window_);
-        window_ = nullptr;
-    }
-    
-    // Then clear Vulkan resources only if context is properly initialized
-    if (ctx_.IsInitialized())
-    {
-        try {
-            // Check if device is valid before using it
-            if (ctx_.Device() != nullptr) {
-                ctx_.Device().waitIdle();
-            }
-            renderer_.ShutdownFrameGraphBackend();
-            renderer_.ShutdownRaster();
-            renderer_.GetResourceSystem().Clear();
-            swapchainWrap_.Shutdown(ctx_);
-            sync_.Shutdown(ctx_);
-            ctx_.Shutdown();
-        } catch (...) {
-            // Ignore exceptions during cleanup
-        }
-    }
+    stopRenderThread();
+    cleanupSurfaceResources();
+    releaseWindow();
     model_mesh_id_ = 0;
     use_frame_data_path_ = false;
+    {
+        std::lock_guard<std::mutex> lock(m_surface_mutex);
+        m_surface_changed = false;
+    }
 }
 
 void MinimalVulkanTriangle::resize(int width, int height)
 {
-    //需要考虑怎么重新建 swapchain 和相关资源，以及如何通知渲染线程进行调整
-    // width_ = width;
-    // height_ = height;
-    // __android_log_print(ANDROID_LOG_INFO, kLogTag, "Surface resized: %dx%d", width_, height_);
-    // if (ctx_.IsInitialized() && window_ != nullptr) {
-    //     drawFrame();
-    // }
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    width_ = width;
+    height_ = height;
+    std::lock_guard<std::mutex> lock(m_surface_mutex);
+    m_surface_changed = true;
+    LOGI("Surface resize requested: %dx%d", width_, height_);
 }
 
 bool MinimalVulkanTriangle::loadSceneMesh()
@@ -426,13 +366,21 @@ void MinimalVulkanTriangle::drawFrame()
     }
 
     auto last_time = std::chrono::high_resolution_clock::now();
-    bool has_swapchain = false;
 
     while (m_running) {
         // 1. 处理来自 Java 线程的 Surface 变更
+        bool surface_changed = false;
         {
             std::lock_guard<std::mutex> lock(m_surface_mutex);
             if (m_surface_changed) {
+                surface_changed = true;
+                m_surface_changed = false;
+            }
+        }
+        if (surface_changed) {
+            if (!recreateSwapchainResources()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                continue;
             }
         }
 
@@ -443,15 +391,17 @@ void MinimalVulkanTriangle::drawFrame()
         if (delta_time > 0.1f) delta_time = 0.1f; // 限制单帧最大时长
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
         if (use_frame_data_path_) {
-            Jni_UpdateScripts(delta_time); // Update scripts
+            Jni_UpdateScripts(delta_time);
             scene_world_.BuildFrameData(frame_index_, frame_data_);
             ui_runtime_.Update(delta_time);
             ui_runtime_.BuildFrameUi(frame_data_.ui_items);
-            renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
+            auto const render_result =
+                renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
+            if (render_result == ave::render::FrameGraphRenderResult::SwapchainOutOfDate) {
+                std::lock_guard<std::mutex> lock(m_surface_mutex);
+                m_surface_changed = true;
+            }
             frame_index_++;
-            // No early return; continue looping to process next frame
-        } else {
-            // Existing non-frame-data path logic (if any) can be placed here
         }
     }
 
@@ -462,7 +412,143 @@ void MinimalVulkanTriangle::drawFrame()
 
 void MinimalVulkanTriangle::cleanupSurfaceResources()
 {
-    renderer_.ShutdownRaster();
+    if (!ctx_.IsInitialized()) {
+        return;
+    }
+
+    try {
+        if (ctx_.Device() != nullptr) {
+            ctx_.Device().waitIdle();
+        }
+        renderer_.ShutdownFrameGraphBackend();
+        renderer_.ShutdownRaster();
+        renderer_.GetResourceSystem().Clear();
+        swapchainWrap_.Shutdown(ctx_);
+        sync_.Shutdown(ctx_);
+        ctx_.Shutdown();
+    } catch (...) {
+    }
+}
+
+bool MinimalVulkanTriangle::initializeSurfaceResources()
+{
+    if (window_ == nullptr) {
+        return false;
+    }
+
+    vkfw::ContextCreateInfo ci{};
+    ci.window = window_;
+#ifdef NDEBUG
+    ci.enable_validation = false;
+#else
+    ci.enable_validation = false;
+#endif
+    if (!ctx_.Init(ci)) {
+        return false;
+    }
+
+    renderer_.SetVkContext(&ctx_);
+    renderer_.GetResourceSystem().GetMeshManager().SetTextAssetLoader(
+        [this](std::string const& path) {
+            return readTextAsset(path.c_str());
+        });
+    renderer_.GetMaterialSystem().SetTextAssetLoader(
+        [this](std::string const& path) {
+            return readTextAsset(path.c_str());
+        });
+    renderer_.GetResourceSystem().GetTextureManager().SetBinaryAssetLoader(
+        [this](std::string const& path) {
+            return readBinaryAsset(path.c_str());
+        });
+    renderer_.GetMaterialSystem().SetShaderAssetLoader(
+        [this](std::string const& path) -> std::vector<uint32_t> {
+            return readShaderAsset(path.c_str());
+        });
+    renderer_.GetResourceSystem().GetShaderManager().SetShaderAssetLoader(
+        [this](std::string const& path) -> std::vector<uint32_t> {
+            return readShaderAsset(path.c_str());
+        });
+
+    if (!sync_.Init(ctx_, kFramesInFlight)) {
+        return false;
+    }
+
+    vkfw::SwapchainInfo si{};
+    si.width = static_cast<uint32_t>(std::max(width_, 0));
+    si.height = static_cast<uint32_t>(std::max(height_, 0));
+    if (!swapchainWrap_.Init(ctx_, si)) {
+        return false;
+    }
+    sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
+
+    if (!loadSceneMesh()) {
+        LOGE("Failed to load scene mesh.");
+        return false;
+    }
+    use_frame_data_path_ = true;
+    if (renderer_.Graph().PassCount() == 0) {
+        renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::DepthPrepass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
+    }
+    if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
+        LOGE("Failed to initialize FrameGraph backend.");
+        return false;
+    }
+
+    sync_frame_index_ = 0;
+    frame_index_ = 0;
+    Jni_GenerateFontAtlas();
+    return true;
+}
+
+bool MinimalVulkanTriangle::recreateSwapchainResources()
+{
+    if (!ctx_.IsInitialized() || window_ == nullptr) {
+        return false;
+    }
+
+    try {
+        ctx_.Device().waitIdle();
+        renderer_.ShutdownFrameGraphBackend();
+        swapchainWrap_.Recreate(ctx_);
+        sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
+        if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
+            LOGE("Failed to reinitialize FrameGraph backend after swapchain recreate.");
+            return false;
+        }
+
+        auto const extent = swapchainWrap_.Extent();
+        float const aspect = (extent.width > 0)
+            ? static_cast<float>(extent.height) / static_cast<float>(extent.width)
+            : 9.0f / 16.0f;
+        scene_world_.SetAspectRatio(aspect);
+        ui_runtime_.SetViewportSize(extent.width, extent.height);
+        LOGI("Swapchain recreated: %ux%u aspect=%.4f", extent.width, extent.height, aspect);
+        return true;
+    } catch (...) {
+        LOGE("Swapchain recreate failed with exception.");
+        return false;
+    }
+}
+
+void MinimalVulkanTriangle::stopRenderThread()
+{
+    m_running = false;
+    if (m_render_thread.joinable()) {
+        m_render_thread.join();
+    }
+}
+
+void MinimalVulkanTriangle::releaseWindow()
+{
+    if (window_ != nullptr) {
+        ANativeWindow_release(window_);
+        window_ = nullptr;
+    }
 }
 
 

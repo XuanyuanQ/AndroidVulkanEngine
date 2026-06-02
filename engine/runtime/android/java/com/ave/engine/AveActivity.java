@@ -10,6 +10,9 @@ import android.view.SurfaceView;
 
 public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surfaceView;
+    private boolean isResumed = false;
+    private boolean surfaceAvailable = false;
+    private boolean nativeSurfaceAttached = false;
 
     static {
         System.loadLibrary("ave_runtime");
@@ -34,23 +37,42 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     protected void onDestroy() {
+        detachNativeSurfaceIfAttached();
         nativeDestroy();
         super.onDestroy();
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        isResumed = true;
+        attachNativeSurfaceIfReady();
+        pushSurfaceSizeIfReady();
+    }
+
+    @Override
+    protected void onPause() {
+        detachNativeSurfaceIfAttached();
+        isResumed = false;
+        super.onPause();
+    }
+
+    @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        nativeSetSurface(holder.getSurface());
+        surfaceAvailable = true;
+        attachNativeSurfaceIfReady();
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        attachNativeSurfaceIfReady();
         nativeResize(width, height);
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        nativeClearSurface();
+        surfaceAvailable = false;
+        detachNativeSurfaceIfAttached();
     }
 
     @Override
@@ -201,6 +223,44 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         nativeRegisterFontAtlas(w, h, pixels);
 
         bitmap.recycle();
+    }
+
+    private void attachNativeSurfaceIfReady() {
+        if (!isResumed || !surfaceAvailable || nativeSurfaceAttached || surfaceView == null) {
+            return;
+        }
+
+        SurfaceHolder holder = surfaceView.getHolder();
+        if (holder == null) {
+            return;
+        }
+
+        Surface surface = holder.getSurface();
+        if (surface == null || !surface.isValid()) {
+            return;
+        }
+
+        nativeSetSurface(surface);
+        nativeSurfaceAttached = true;
+    }
+
+    private void detachNativeSurfaceIfAttached() {
+        if (!nativeSurfaceAttached) {
+            return;
+        }
+        nativeClearSurface();
+        nativeSurfaceAttached = false;
+    }
+
+    private void pushSurfaceSizeIfReady() {
+        if (!nativeSurfaceAttached || surfaceView == null) {
+            return;
+        }
+        int width = surfaceView.getWidth();
+        int height = surfaceView.getHeight();
+        if (width > 0 && height > 0) {
+            nativeResize(width, height);
+        }
     }
 
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);

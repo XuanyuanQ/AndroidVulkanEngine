@@ -22,6 +22,12 @@ class VkFrameSync;
 
 namespace ave::render {
 
+enum class FrameGraphRenderResult {
+    Success,
+    Skipped,
+    SwapchainOutOfDate,
+};
+
 struct RendererConfig {
     bool enable_validation = true;
 };
@@ -52,11 +58,11 @@ public:
                                      vkfw::VkSwapchain& swapchain,
                                      vkfw::VkFrameSync& sync);
     void ShutdownFrameGraphBackend();
-    void RenderFrameGraphFrame(core::FrameData const& frame,
-                               vkfw::VkContext& ctx,
-                               vkfw::VkSwapchain& swapchain,
-                               vkfw::VkFrameSync& sync,
-                               uint32_t& frame_index);
+    FrameGraphRenderResult RenderFrameGraphFrame(core::FrameData const& frame,
+                                                 vkfw::VkContext& ctx,
+                                                 vkfw::VkSwapchain& swapchain,
+                                                 vkfw::VkFrameSync& sync,
+                                                 uint32_t& frame_index);
 
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }

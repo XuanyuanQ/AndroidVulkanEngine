@@ -30,6 +30,7 @@ public:
                           resource::ResourceSystem const& resources,
                           render::MaterialSystem const& materials,
                           float aspect_ratio = 16.0f / 9.0f);
+    void SetAspectRatio(float aspect_ratio);
     bool SetObjectTransform(std::string const& object_id, project::TransformData const& transform);
     bool SetObjectPosition(std::string const& object_id, glm::vec3 const& position);
     bool SetObjectRotation(std::string const& object_id, glm::vec3 const& rotation);

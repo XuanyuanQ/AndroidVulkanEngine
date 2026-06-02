@@ -198,27 +198,26 @@ void Renderer::ShutdownFrameGraphBackend()
     }
 }
 
-void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
-                                     vkfw::VkContext& ctx,
-                                     vkfw::VkSwapchain& swapchain,
-                                     vkfw::VkFrameSync& sync,
-                                     uint32_t& frame_index)
+FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
+                                                       vkfw::VkContext& ctx,
+                                                       vkfw::VkSwapchain& swapchain,
+                                                       vkfw::VkFrameSync& sync,
+                                                       uint32_t& frame_index)
 {
     if (impl_ == nullptr || !impl_->framegraph_command_buffers.IsInitialized()) {
-        return;
+        return FrameGraphRenderResult::Skipped;
     }
 
     // Ensure context is wired (PipelineSystem/ResourceSystem need this for Vk handles).
     SetVkContext(&ctx);
 
     sync.WaitForFrame(ctx, frame_index);
-    // LOGE( "frame_index: %u", frame_index);
     auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
     if (acq_result == vk::Result::eErrorOutOfDateKHR) {
-        return;
+        return FrameGraphRenderResult::SwapchainOutOfDate;
     }
     if (acq_result != vk::Result::eSuccess && acq_result != vk::Result::eSuboptimalKHR) {
-        return;
+        return FrameGraphRenderResult::Skipped;
     }
 
     sync.ResetFence(ctx, frame_index);
@@ -297,9 +296,15 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     auto handle = swapchain.Handle();
     present.pSwapchains = &handle;
     present.pImageIndices = &image_index;
-    ctx.GraphicsQueue().presentKHR(present);
+    vk::Result const present_result = ctx.GraphicsQueue().presentKHR(present);
 
     frame_index = (frame_index + 1) % sync.FramesInFlight();
+    if (acq_result == vk::Result::eSuboptimalKHR ||
+        present_result == vk::Result::eSuboptimalKHR ||
+        present_result == vk::Result::eErrorOutOfDateKHR) {
+        return FrameGraphRenderResult::SwapchainOutOfDate;
+    }
+    return FrameGraphRenderResult::Success;
 }
 
 FrameGraph& Renderer::Graph() noexcept
