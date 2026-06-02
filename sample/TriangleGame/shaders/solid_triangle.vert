@@ -17,6 +17,8 @@ layout(location = 5) out vec4 vWorldTangent;
 layout(set = 0, binding = 0) uniform FrameUbo {
     mat4 view_projection;
     mat4 shadowViewProj;
+    mat4 view;
+    mat4 projection;
 } frame;
 
 layout(push_constant) uniform ObjectPushConstants {

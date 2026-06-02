@@ -788,6 +788,45 @@ void MeshManager::Clear()
 // Texture Manager
 TextureManager::TextureManager() = default;
 
+bool TextureManager::LoadImagePixels(std::string const& path,
+                                     std::vector<std::uint8_t>& out_pixels,
+                                     uint32_t& out_width,
+                                     uint32_t& out_height) const
+{
+    out_pixels.clear();
+    out_width = 0;
+    out_height = 0;
+
+    if (!binary_asset_loader_) {
+        return false;
+    }
+
+    auto image_bytes = binary_asset_loader_(path);
+    if (image_bytes.empty()) {
+        return false;
+    }
+
+    int tex_width = 0;
+    int tex_height = 0;
+    int tex_channels = 0;
+    stbi_uc* pixels = stbi_load_from_memory(image_bytes.data(),
+                                            static_cast<int>(image_bytes.size()),
+                                            &tex_width,
+                                            &tex_height,
+                                            &tex_channels,
+                                            STBI_rgb_alpha);
+    if (!pixels) {
+        LOGE("Failed to decode image pixels: %s (%s)", path.c_str(), stbi_failure_reason());
+        return false;
+    }
+
+    out_width = static_cast<uint32_t>(tex_width);
+    out_height = static_cast<uint32_t>(tex_height);
+    out_pixels.assign(pixels, pixels + (static_cast<size_t>(tex_width) * static_cast<size_t>(tex_height) * 4u));
+    stbi_image_free(pixels);
+    return true;
+}
+
 uint32_t TextureManager::LoadTexture(std::string const& path)
 {
     if (!ctx_) {
@@ -816,9 +855,7 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
                                            &texChannels,
                                            STBI_rgb_alpha);
             if (!pixels) {
-                LOGE(
-                                    "TextureManager",
-                                    "Failed to decode texture asset: %s (%s)",
+                LOGE("Failed to decode texture asset: %s (%s)",
                                     path.c_str(),
                                     stbi_failure_reason());
             }
@@ -830,7 +867,6 @@ uint32_t TextureManager::LoadTexture(std::string const& path)
 
     if (!pixels) {
         LOGE(
-                            "TextureManager",
                             "Failed to load texture: %s (%s)",
                             path.c_str(),
                             stbi_failure_reason());
@@ -946,13 +982,13 @@ uint32_t ShaderManager::LoadShader(std::string const& path)
     }
 
     if (!shader_asset_loader_) {
-        LOGE( "ShaderManager", "ShaderAssetLoader is not registered, cannot load shader: %s", normalized_path.c_str());
+        LOGE("ShaderAssetLoader is not registered, cannot load shader: %s", normalized_path.c_str());
         return 0;
     }
 
     std::vector<uint32_t> vertex_spirv = shader_asset_loader_(normalized_path + ".vert.spv");
     if (vertex_spirv.empty()) {
-        LOGE( "ShaderManager", "Failed to load vertex shader: %s.vert.spv", normalized_path.c_str());
+        LOGE("Failed to load vertex shader: %s.vert.spv", normalized_path.c_str());
         return 0;
     }
 
@@ -1023,13 +1059,13 @@ uint32_t ShaderManager::LoadComputeShader(std::string const& path)
     }
     
     if (!shader_asset_loader_) {
-        LOGE( "ShaderManager", "ShaderAssetLoader is not registered, cannot load compute shader: %s", path.c_str());
+        LOGE("ShaderAssetLoader is not registered, cannot load compute shader: %s", path.c_str());
         return 0;
     }
 
     std::vector<uint32_t> compute_spirv = shader_asset_loader_(path);
     if (compute_spirv.empty()) {
-        LOGE( "ShaderManager", "Failed to load compute shader: %s", path.c_str());
+        LOGE("Failed to load compute shader: %s", path.c_str());
         return 0;
     }
 

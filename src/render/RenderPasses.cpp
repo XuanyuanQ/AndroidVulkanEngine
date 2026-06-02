@@ -17,6 +17,8 @@
 #include <array>
 #include <memory>
 #include <algorithm>
+#include <numbers>
+#include <cmath>
 
 namespace ave::render {
 namespace {
@@ -28,6 +30,44 @@ static uint32_t g_culling_shader_id = 0;
 static std::unique_ptr<vk::raii::RenderPass> g_compatibility_shadow_render_pass;
 static std::unique_ptr<vk::raii::Framebuffer> g_compatibility_shadow_framebuffer;
 static vk::ImageView g_last_shadow_image_view = {};
+
+struct FrameUbo {
+    glm::mat4 view_projection{1.0f};
+    glm::mat4 shadow_view_projection{1.0f};
+    glm::vec4 camera_position{0.0f, 0.0f, 0.0f, 1.0f};
+    glm::vec4 light_position_range{0.0f, 6.0f, 6.0f, 20.0f};
+    glm::vec4 light_direction_type{0.0f, -1.0f, 0.0f, 1.0f};
+    glm::vec4 light_color_intensity{1.0f, 1.0f, 1.0f, 5.0f};
+    glm::vec4 ambient_color{0.04f, 0.04f, 0.045f, 1.0f};
+    glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
+    glm::mat4 view{1.0f};
+    glm::mat4 projection{1.0f};
+};
+
+struct SharedEnvironmentMaps {
+    vkfw::VkTexture environment_cubemap{};
+    vkfw::VkTexture irradiance_cubemap{};
+    vkfw::VkTexture prefilter_cubemap{};
+    vkfw::VkTexture brdf_lut{};
+    glm::vec4 last_clear_color{-1.0f};
+    glm::vec3 last_ambient_color{-1.0f};
+    bool last_use_cubemap_source = false;
+    bool ready = false;
+};
+
+struct CpuCubemapFace {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<glm::vec4> pixels;
+};
+
+struct CpuCubemapSource {
+    std::array<CpuCubemapFace, 6> faces{};
+    bool ready = false;
+};
+
+static SharedEnvironmentMaps g_shared_environment_maps;
+static CpuCubemapSource g_maskonaive_source;
 
 vk::Sampler GetCommonSampler(vkfw::VkContext& ctx)
 {
@@ -142,6 +182,348 @@ vkfw::VkTexture const* ResolveNormalTextureOrFallback(vkfw::VkContext& ctx,
 
     EnsureFallbackNormalTexture(ctx, fallback_texture);
     return fallback_texture.IsInitialized() ? &fallback_texture : nullptr;
+}
+
+glm::vec3 NormalizeSafe(glm::vec3 value, glm::vec3 fallback = glm::vec3{0.0f, 1.0f, 0.0f})
+{
+    float const len_sq = glm::dot(value, value);
+    if (len_sq <= 0.000001f) {
+        return fallback;
+    }
+    return value / std::sqrt(len_sq);
+}
+
+glm::vec3 FaceDirection(uint32_t face, float u, float v)
+{
+    switch (face) {
+        case 0: return NormalizeSafe({ 1.0f, -v, -u });
+        case 1: return NormalizeSafe({-1.0f, -v,  u });
+        case 2: return NormalizeSafe({ u,  1.0f,  v });
+        case 3: return NormalizeSafe({ u, -1.0f, -v });
+        case 4: return NormalizeSafe({ u, -v,  1.0f });
+        case 5: return NormalizeSafe({-u, -v, -1.0f });
+        default: return {0.0f, 1.0f, 0.0f};
+    }
+}
+
+bool DirectionToFaceUV(glm::vec3 direction, uint32_t& out_face, float& out_u, float& out_v)
+{
+    direction = NormalizeSafe(direction);
+    glm::vec3 const abs_dir = glm::abs(direction);
+
+    if (abs_dir.x >= abs_dir.y && abs_dir.x >= abs_dir.z) {
+        if (direction.x >= 0.0f) {
+            out_face = 0;
+            out_u = -direction.z / abs_dir.x;
+            out_v = -direction.y / abs_dir.x;
+        } else {
+            out_face = 1;
+            out_u = direction.z / abs_dir.x;
+            out_v = -direction.y / abs_dir.x;
+        }
+        return true;
+    }
+
+    if (abs_dir.y >= abs_dir.x && abs_dir.y >= abs_dir.z) {
+        if (direction.y >= 0.0f) {
+            out_face = 2;
+            out_u = direction.x / abs_dir.y;
+            out_v = direction.z / abs_dir.y;
+        } else {
+            out_face = 3;
+            out_u = direction.x / abs_dir.y;
+            out_v = -direction.z / abs_dir.y;
+        }
+        return true;
+    }
+
+    if (direction.z >= 0.0f) {
+        out_face = 4;
+        out_u = direction.x / abs_dir.z;
+        out_v = -direction.y / abs_dir.z;
+    } else {
+        out_face = 5;
+        out_u = -direction.x / abs_dir.z;
+        out_v = -direction.y / abs_dir.z;
+    }
+    return true;
+}
+
+glm::vec4 SampleCubemapFace(CpuCubemapFace const& face, float u, float v)
+{
+    if (face.width == 0 || face.height == 0 || face.pixels.empty()) {
+        return glm::vec4{0.0f};
+    }
+
+    float const fx = std::clamp((u + 1.0f) * 0.5f * static_cast<float>(face.width - 1), 0.0f, static_cast<float>(face.width - 1));
+    float const fy = std::clamp((v + 1.0f) * 0.5f * static_cast<float>(face.height - 1), 0.0f, static_cast<float>(face.height - 1));
+    uint32_t const x0 = static_cast<uint32_t>(std::floor(fx));
+    uint32_t const y0 = static_cast<uint32_t>(std::floor(fy));
+    uint32_t const x1 = std::min(x0 + 1u, face.width - 1u);
+    uint32_t const y1 = std::min(y0 + 1u, face.height - 1u);
+    float const tx = fx - static_cast<float>(x0);
+    float const ty = fy - static_cast<float>(y0);
+
+    auto const at = [&](uint32_t x, uint32_t y) -> glm::vec4 const& {
+        return face.pixels[static_cast<size_t>(y) * face.width + x];
+    };
+
+    glm::vec4 const c00 = at(x0, y0);
+    glm::vec4 const c10 = at(x1, y0);
+    glm::vec4 const c01 = at(x0, y1);
+    glm::vec4 const c11 = at(x1, y1);
+    glm::vec4 const cx0 = glm::mix(c00, c10, tx);
+    glm::vec4 const cx1 = glm::mix(c01, c11, tx);
+    return glm::mix(cx0, cx1, ty);
+}
+
+glm::vec3 SampleCubemapSource(CpuCubemapSource const& source, glm::vec3 direction)
+{
+    uint32_t face = 0;
+    float u = 0.0f;
+    float v = 0.0f;
+    if (!DirectionToFaceUV(direction, face, u, v)) {
+        return glm::vec3{0.0f};
+    }
+    if (face >= source.faces.size()) {
+        return glm::vec3{0.0f};
+    }
+    glm::vec4 const color = SampleCubemapFace(source.faces[face], u, v);
+    return glm::vec3{color.r, color.g, color.b};
+}
+
+void BuildTangentBasis(glm::vec3 const& normal, glm::vec3& tangent, glm::vec3& bitangent)
+{
+    glm::vec3 const up = std::abs(normal.z) < 0.999f ? glm::vec3{0.0f, 0.0f, 1.0f} : glm::vec3{1.0f, 0.0f, 0.0f};
+    tangent = NormalizeSafe(glm::cross(up, normal), glm::vec3{1.0f, 0.0f, 0.0f});
+    bitangent = NormalizeSafe(glm::cross(normal, tangent), glm::vec3{0.0f, 1.0f, 0.0f});
+}
+
+glm::vec2 Hammersley(uint32_t i, uint32_t n)
+{
+    auto radical_inverse = [](uint32_t bits) {
+        bits = (bits << 16u) | (bits >> 16u);
+        bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+        bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+        bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+        bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+        return static_cast<float>(bits) * 2.3283064365386963e-10f;
+    };
+    return {static_cast<float>(i) / static_cast<float>(n), radical_inverse(i)};
+}
+
+glm::vec3 SampleHemisphereCosine(glm::vec2 xi, glm::vec3 const& normal)
+{
+    float const r = std::sqrt(xi.x);
+    float const phi = 2.0f * std::numbers::pi_v<float> * xi.y;
+    glm::vec3 const local{
+        r * std::cos(phi),
+        r * std::sin(phi),
+        std::sqrt(std::max(0.0f, 1.0f - xi.x)),
+    };
+
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+    BuildTangentBasis(normal, tangent, bitangent);
+    return NormalizeSafe(tangent * local.x + bitangent * local.y + normal * local.z, normal);
+}
+
+glm::vec3 ImportanceSampleGGX(glm::vec2 xi, glm::vec3 const& normal, float roughness)
+{
+    float const a = roughness * roughness;
+    float const phi = 2.0f * std::numbers::pi_v<float> * xi.x;
+    float const cosTheta = std::sqrt((1.0f - xi.y) / (1.0f + (a * a - 1.0f) * xi.y));
+    float const sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+    glm::vec3 const h{
+        std::cos(phi) * sinTheta,
+        std::sin(phi) * sinTheta,
+        cosTheta,
+    };
+
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+    BuildTangentBasis(normal, tangent, bitangent);
+    return NormalizeSafe(tangent * h.x + bitangent * h.y + normal * h.z, normal);
+}
+
+glm::vec3 SampleProceduralEnvironment(glm::vec3 direction, glm::vec3 clear_color, glm::vec3 ambient_color)
+{
+    auto const smoothstepf = [](float edge0, float edge1, float x) {
+        float const t = std::clamp((x - edge0) / std::max(edge1 - edge0, 0.0001f), 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    };
+
+    direction = NormalizeSafe(direction);
+    float const hemi = std::clamp(direction.y * 0.5f + 0.5f, 0.0f, 1.0f);
+    glm::vec3 const sky = glm::mix(clear_color, ambient_color, 0.15f) * glm::vec3{0.95f, 1.05f, 1.25f};
+    glm::vec3 const horizon = glm::mix(clear_color, ambient_color, 0.35f) * glm::vec3{0.88f, 0.96f, 1.05f};
+    glm::vec3 const ground = glm::mix(clear_color, ambient_color, 0.80f) * glm::vec3{0.20f, 0.24f, 0.28f};
+    glm::vec3 const sky_band = glm::mix(horizon, sky, smoothstepf(0.10f, 0.95f, hemi));
+    glm::vec3 const ground_band = glm::mix(ground, horizon, smoothstepf(0.0f, 0.5f, hemi));
+    glm::vec3 color = glm::mix(ground_band, sky_band, hemi);
+
+    glm::vec3 const sun_dir = NormalizeSafe(glm::vec3{0.35f, 0.85f, 0.25f});
+    float const sun = std::pow(std::max(glm::dot(direction, sun_dir), 0.0f), 256.0f);
+    color += sun * glm::vec3{2.0f, 2.0f, 2.1f};
+    return color;
+}
+
+bool LoadMaskonaiveCubemapSource(ave::resource::TextureManager const& texture_mgr, CpuCubemapSource& out_source)
+{
+    std::array<std::string, 6> const face_paths{
+        "textures/Maskonaive2/posx.jpg",
+        "textures/Maskonaive2/negx.jpg",
+        "textures/Maskonaive2/posy.jpg",
+        "textures/Maskonaive2/negy.jpg",
+        "textures/Maskonaive2/posz.jpg",
+        "textures/Maskonaive2/negz.jpg",
+    };
+
+    out_source = {};
+    uint32_t reference_width = 0;
+    uint32_t reference_height = 0;
+
+    for (size_t face_index = 0; face_index < face_paths.size(); ++face_index) {
+        std::vector<std::uint8_t> pixels;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        if (!texture_mgr.LoadImagePixels(face_paths[face_index], pixels, width, height)) {
+            LOGW( "Failed to load cubemap face: %s", face_paths[face_index].c_str());
+            return false;
+        }
+
+        if (reference_width == 0) {
+            reference_width = width;
+            reference_height = height;
+        } else if (reference_width != width || reference_height != height) {
+            LOGW("Cubemap face size mismatch: %s", face_paths[face_index].c_str());
+            return false;
+        }
+
+        auto& face = out_source.faces[face_index];
+        face.width = width;
+        face.height = height;
+        face.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+        for (size_t i = 0; i < face.pixels.size(); ++i) {
+            size_t const base = i * 4u;
+            face.pixels[i] = glm::vec4{
+                static_cast<float>(pixels[base + 0]) / 255.0f,
+                static_cast<float>(pixels[base + 1]) / 255.0f,
+                static_cast<float>(pixels[base + 2]) / 255.0f,
+                static_cast<float>(pixels[base + 3]) / 255.0f,
+            };
+        }
+    }
+
+    out_source.ready = true;
+    return true;
+}
+
+void GenerateProceduralCubemapFace(std::vector<glm::vec4>& out,
+                                   uint32_t size,
+                                   uint32_t face,
+                                   glm::vec3 clear_color,
+                                   glm::vec3 ambient_color)
+{
+    out.resize(static_cast<size_t>(size) * static_cast<size_t>(size));
+    for (uint32_t y = 0; y < size; ++y) {
+        for (uint32_t x = 0; x < size; ++x) {
+            float const u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+            float const v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+            glm::vec3 const dir = FaceDirection(face, u, v);
+            glm::vec3 const color = SampleProceduralEnvironment(dir, clear_color, ambient_color);
+            out[static_cast<size_t>(y) * size + x] = glm::vec4{color, 1.0f};
+        }
+    }
+}
+
+glm::vec3 IntegrateDiffuseIrradiance(glm::vec3 const& normal,
+                                     CpuCubemapSource const* source,
+                                     glm::vec3 clear_color,
+                                     glm::vec3 ambient_color)
+{
+    constexpr uint32_t kSampleCount = 32;
+    glm::vec3 result{0.0f};
+    for (uint32_t i = 0; i < kSampleCount; ++i) {
+        glm::vec2 const xi = Hammersley(i, kSampleCount);
+        glm::vec3 const sample_dir = SampleHemisphereCosine(xi, normal);
+        result += source && source->ready
+            ? SampleCubemapSource(*source, sample_dir)
+            : SampleProceduralEnvironment(sample_dir, clear_color, ambient_color);
+    }
+    return result / static_cast<float>(kSampleCount);
+}
+
+glm::vec3 IntegratePrefilteredEnvironment(glm::vec3 const& normal,
+                                          float roughness,
+                                          CpuCubemapSource const* source,
+                                          glm::vec3 clear_color,
+                                          glm::vec3 ambient_color)
+{
+    constexpr uint32_t kSampleCount = 64;
+    glm::vec3 result{0.0f};
+    float total_weight = 0.0f;
+
+    for (uint32_t i = 0; i < kSampleCount; ++i) {
+        glm::vec2 const xi = Hammersley(i, kSampleCount);
+        glm::vec3 const h = ImportanceSampleGGX(xi, normal, roughness);
+        glm::vec3 const l = NormalizeSafe(2.0f * glm::dot(normal, h) * h - normal, normal);
+        float const n_dot_l = std::max(glm::dot(normal, l), 0.0f);
+        if (n_dot_l > 0.0f) {
+            result += (source && source->ready
+                ? SampleCubemapSource(*source, l)
+                : SampleProceduralEnvironment(l, clear_color, ambient_color)) * n_dot_l;
+            total_weight += n_dot_l;
+        }
+    }
+
+    if (total_weight <= 0.00001f) {
+        return source && source->ready
+            ? SampleCubemapSource(*source, normal)
+            : SampleProceduralEnvironment(normal, clear_color, ambient_color);
+    }
+    return result / total_weight;
+}
+
+glm::vec2 IntegrateBrdf(float n_dot_v, float roughness)
+{
+    constexpr uint32_t kSampleCount = 64;
+    glm::vec3 const v{std::sqrt(std::max(0.0f, 1.0f - n_dot_v * n_dot_v)), 0.0f, n_dot_v};
+    float a = 0.0f;
+    float b = 0.0f;
+
+    for (uint32_t i = 0; i < kSampleCount; ++i) {
+        glm::vec2 const xi = Hammersley(i, kSampleCount);
+        glm::vec3 const h = ImportanceSampleGGX(xi, glm::vec3{0.0f, 0.0f, 1.0f}, roughness);
+        glm::vec3 const l = NormalizeSafe(2.0f * glm::dot(v, h) * h - v, glm::vec3{0.0f, 0.0f, 1.0f});
+
+        float const n_dot_l = std::max(l.z, 0.0f);
+        float const n_dot_h = std::max(h.z, 0.0f);
+        float const v_dot_h = std::max(glm::dot(v, h), 0.0f);
+
+        if (n_dot_l > 0.0f) {
+            float const g = (2.0f * n_dot_h * n_dot_v / std::max(v_dot_h, 0.0001f));
+            float const g_vis = std::min(1.0f, std::min(g, 2.0f * n_dot_h * n_dot_v / std::max(v_dot_h, 0.0001f)));
+            float const fc = std::pow(1.0f - v_dot_h, 5.0f);
+            a += (1.0f - fc) * g_vis;
+            b += fc * g_vis;
+        }
+    }
+
+    return {a / static_cast<float>(kSampleCount), b / static_cast<float>(kSampleCount)};
+}
+
+void UploadCubemapFace(vkfw::VkContext& ctx,
+                       vkfw::VkTexture& texture,
+                       std::vector<glm::vec4> const& face_pixels,
+                       uint32_t mip_level,
+                       uint32_t face_index)
+{
+    texture.UpdateCubeFaceData(ctx,
+                               face_pixels.data(),
+                               static_cast<uint32_t>(face_pixels.size() * sizeof(glm::vec4)),
+                               face_index,
+                               mip_level);
 }
 
 
@@ -370,6 +752,52 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
     return true;
 }
 
+bool BeginDepthOnlyRendering(RenderPassContext const& context,
+                             vkfw::VkTexture const& depth_texture,
+                             vk::Extent2D extent,
+                             vk::ClearDepthStencilValue const& clear_depth)
+{
+    if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} || !depth_texture.IsInitialized()) {
+        return false;
+    }
+
+    if (!context.vk->SupportsDynamicRendering()) {
+        LOGE( "DepthPrepass requires dynamic rendering in the current backend");
+        return false;
+    }
+
+    bool const core_dynamic_rendering =
+        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    if (core_dynamic_rendering) {
+        vk::RenderingAttachmentInfo depth_attachment{};
+        depth_attachment.imageView = depth_texture.View();
+        depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+        depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+        depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+        depth_attachment.clearValue.depthStencil = clear_depth;
+        vk::RenderingInfo rendering_info{};
+        rendering_info.renderArea = vk::Rect2D{{0, 0}, extent};
+        rendering_info.layerCount = 1;
+        rendering_info.colorAttachmentCount = 0;
+        rendering_info.pDepthAttachment = &depth_attachment;
+        context.command_buffer.beginRendering(rendering_info);
+    } else {
+        vk::RenderingAttachmentInfoKHR depth_attachment{};
+        depth_attachment.imageView = depth_texture.View();
+        depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+        depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
+        depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
+        depth_attachment.clearValue.depthStencil = clear_depth;
+        vk::RenderingInfoKHR rendering_info{};
+        rendering_info.renderArea = vk::Rect2D{{0, 0}, extent};
+        rendering_info.layerCount = 1;
+        rendering_info.colorAttachmentCount = 0;
+        rendering_info.pDepthAttachment = &depth_attachment;
+        context.command_buffer.beginRenderingKHR(rendering_info);
+    }
+    return true;
+}
+
 void EndShadowMapRendering(RenderPassContext const& context)
 {
     if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{}) {
@@ -389,7 +817,11 @@ void EndShadowMapRendering(RenderPassContext const& context)
     }
 }
 
-bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue const& clear_value, bool clear_color, vkfw::VkTexture const* depth_texture = nullptr)
+bool BeginSwapchainRendering(RenderPassContext const& context,
+                             vk::ClearValue const& clear_value,
+                             bool clear_color,
+                             vkfw::VkTexture const* depth_texture = nullptr,
+                             bool clear_depth = true)
 {
     if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{}) {
         return false;
@@ -400,7 +832,7 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
     if (context.vk->SupportsDynamicRendering()) {
-        vk::ClearDepthStencilValue clear_depth{1.0f, 0};
+        vk::ClearDepthStencilValue depth_clear_value{1.0f, 0};
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo color_attachment{};
             color_attachment.imageView = context.swapchain->ImageView(context.swapchain_image_index);
@@ -413,9 +845,9 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
             if (depth_texture && depth_texture->IsInitialized()) {
                 depth_attachment.imageView = depth_texture->View();
                 depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
-                depth_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
+                depth_attachment.loadOp = clear_depth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
                 depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-                depth_attachment.clearValue.depthStencil = clear_depth;
+                depth_attachment.clearValue.depthStencil = depth_clear_value;
             }
 
             vk::RenderingInfo rendering_info{};
@@ -440,9 +872,9 @@ bool BeginSwapchainRendering(RenderPassContext const& context, vk::ClearValue co
             if (depth_texture && depth_texture->IsInitialized()) {
                 depth_attachment.imageView = depth_texture->View();
                 depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
-                depth_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
+                depth_attachment.loadOp = clear_depth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
                 depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
-                depth_attachment.clearValue.depthStencil = clear_depth;
+                depth_attachment.clearValue.depthStencil = depth_clear_value;
             }
 
             vk::RenderingInfoKHR rendering_info{};
@@ -559,6 +991,11 @@ void AppendUiQuad(std::vector<ave::render::UiVertex>& vertices,
 
 } // namespace
 
+void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
+                                 resource::ResourceSystem* resources,
+                                 glm::vec4 const& clear_color,
+                                 glm::vec3 const& ambient_color);
+
 PassDataFilter DepthPrepass::GetDataFilter() const
 {
     PassDataFilter filter{};
@@ -569,9 +1006,180 @@ PassDataFilter DepthPrepass::GetDataFilter() const
 
 void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: DepthPrepass");
-    (void)context;
-    (void)view;
+    if (context.resources == nullptr || context.pipelines == nullptr || context.vk == nullptr ||
+        context.command_buffer == vk::CommandBuffer{} || context.swapchain == nullptr) {
+        return;
+    }
+
+    auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
+    auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
+    auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+
+    struct FrameUbo {
+        glm::mat4 view_projection{1.0f};
+    };
+
+    struct ObjectPushConstants {
+        glm::mat4 world{1.0f};
+    };
+
+    if (depth_shader_id_ == 0) {
+        depth_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
+        if (depth_shader_id_ == 0) {
+            LOGE( "DepthPrepass failed to load depth shader");
+            return;
+        }
+    }
+
+    uint32_t const width = context.swapchain->Extent().width;
+    uint32_t const height = context.swapchain->Extent().height;
+    if (depth_texture_.IsInitialized()) {
+        auto const extent = depth_texture_.Extent();
+        if (extent.width != width || extent.height != height) {
+            depth_texture_.Shutdown(*context.vk);
+            depth_texture_ready_ = false;
+        }
+    }
+
+    if (!depth_texture_.IsInitialized()) {
+        if (!depth_texture_.Init(*context.vk, vkfw::TextureInfo{
+                                                .width = width,
+                                                .height = height,
+                                                .mip_levels = 1,
+                                                .format = vkfw::TextureFormat::D32_SFLOAT,
+                                                .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                .mipmap = false,
+                                            })) {
+            LOGE( "DepthPrepass failed to create depth texture");
+            return;
+        }
+        depth_texture_ready_ = false;
+    }
+
+    if (!depth_texture_ready_) {
+        TransitionImageLayout(context.command_buffer,
+                              depth_texture_.Handle(),
+                              vk::ImageAspectFlagBits::eDepth,
+                              vk::ImageLayout::eUndefined,
+                              vk::ImageLayout::eDepthAttachmentOptimal,
+                              {},
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                              vk::PipelineStageFlagBits::eTopOfPipe,
+                              vk::PipelineStageFlagBits::eEarlyFragmentTests);
+    }
+
+    vk::ClearDepthStencilValue clear_depth{};
+    clear_depth.depth = 1.0f;
+    clear_depth.stencil = 0;
+    if (!BeginDepthOnlyRendering(context, depth_texture_, context.swapchain->Extent(), clear_depth)) {
+        LOGE( "DepthPrepass failed to begin depth-only rendering");
+        return;
+    }
+    context.current_depth_texture = &depth_texture_;
+
+    FrameUbo frame_ubo{};
+    if (context.frame != nullptr) {
+        frame_ubo.view_projection = context.frame->view.view_projection;
+    }
+
+    if (!frame_ubo_.IsInitialized()) {
+        frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
+                                         .size = static_cast<uint32_t>(sizeof(FrameUbo)),
+                                         .usage = vkfw::BufferUsage::Uniform,
+                                         .mappable = true,
+                                     });
+    }
+    frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
+
+    if (frame_set_id_ == 0) {
+        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
+        frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+    }
+    if (frame_set_id_ != 0) {
+        desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
+    }
+
+    auto const* shader = shader_mgr.GetShader(depth_shader_id_);
+    if (shader == nullptr || shader->vertex_shader == nullptr) {
+        EndSwapchainRendering(context);
+        return;
+    }
+
+    PipelineKey cached_key{};
+    uint32_t cached_pipeline_id = 0;
+
+    for (auto const* renderable : view.renderables) {
+        if (!renderable) {
+            continue;
+        }
+
+        auto const* mesh = renderable->mesh_handle != 0
+            ? mesh_mgr.GetMesh(renderable->mesh_handle)
+            : mesh_mgr.GetMeshByPath(renderable->mesh_id);
+        if (!mesh) {
+            continue;
+        }
+
+        PipelineKey key = MakePipelineKey(shader->id, *mesh);
+        key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
+        key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
+        key.viewport_width = context.swapchain->Extent().width;
+        key.viewport_height = context.swapchain->Extent().height;
+
+        if (cached_pipeline_id == 0 || key.shader_id != cached_key.shader_id || key.vertex_layout_id != cached_key.vertex_layout_id ||
+            key.depth_format != cached_key.depth_format || key.viewport_width != cached_key.viewport_width ||
+            key.viewport_height != cached_key.viewport_height) {
+            cached_key = key;
+            cached_pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+        }
+
+        if (cached_pipeline_id == 0) {
+            continue;
+        }
+        auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(cached_pipeline_id);
+        if (!pipeline) {
+            continue;
+        }
+
+        context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+        ObjectPushConstants object_push{};
+        object_push.world = renderable->world;
+        context.command_buffer.pushConstants(pipeline->Layout(),
+                                             vk::ShaderStageFlagBits::eVertex,
+                                             0,
+                                             sizeof(ObjectPushConstants),
+                                             &object_push);
+
+        vk::DescriptorSet frame_set{};
+        if (frame_set_id_ != 0) {
+            frame_set = desc_alloc.GetHandle(frame_set_id_);
+        }
+        if (frame_set) {
+            context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                      pipeline->Layout(),
+                                                      0,
+                                                      1,
+                                                      &frame_set,
+                                                      0,
+                                                      nullptr);
+        }
+
+        vk::DeviceSize offset = 0;
+        context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
+        if (mesh->index_buffer && mesh->index_buffer->IsInitialized() && mesh->index_count > 0) {
+            context.command_buffer.bindIndexBuffer(mesh->index_buffer->Handle(), 0, vk::IndexType::eUint32);
+            uint32_t const index_count = renderable->index_count != 0 ? renderable->index_count : mesh->index_count;
+            context.command_buffer.drawIndexed(index_count, 1, renderable->first_index, static_cast<int32_t>(renderable->first_vertex), 0);
+        } else {
+            uint32_t const vertex_count = renderable->vertex_count != 0 ? renderable->vertex_count : mesh->vertex_count;
+            context.command_buffer.draw(vertex_count, 1, renderable->first_vertex, 0);
+        }
+    }
+
+    EndSwapchainRendering(context);
+    depth_texture_ready_ = true;
 }
 
 PassDataFilter ShadowPass::GetDataFilter() const
@@ -585,7 +1193,6 @@ PassDataFilter ShadowPass::GetDataFilter() const
 
 void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: ShadowPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -614,7 +1221,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     if (shadow_shader_id_ == 0) {
         shadow_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
         if (shadow_shader_id_ == 0) {
-            LOGE( "RenderVulkan", "ShadowPass failed to load shadow shader");
+            LOGE( "ShadowPass failed to load shadow shader");
             return;
         }
     }
@@ -630,7 +1237,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                                                    static_cast<uint32_t>(vkfw::TextureUsage::Sampled)),
                                                .mipmap = false,
                                            })) {
-            LOGE( "RenderVulkan", "ShadowPass failed to create shadow map");
+            LOGE( "ShadowPass failed to create shadow map");
             return;
         }
         shadow_map_initialized_ = false;
@@ -675,7 +1282,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     clear_depth.depth = 1.0f;
     clear_depth.stencil = 0;
     if (!BeginShadowMapRendering(context, shadow_map_, kShadowMapSize, clear_depth)) {
-        LOGE( "RenderVulkan", "ShadowPass failed to begin shadow-map rendering");
+        LOGE( "ShadowPass failed to begin shadow-map rendering");
         return;
     }
 
@@ -757,10 +1364,17 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
-    // LOGI( "setRenderVulkan", "Shadow map initialized");
     context.current_shadow_map = &shadow_map_;
     context.shadow_view_projection = shadow_view_projection_;
     shadow_map_initialized_ = true;
+}
+
+void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
+                                    resource::ResourceSystem* resources,
+                                    glm::vec4 const& clear_color,
+                                    glm::vec3 const& ambient_color)
+{
+    EnsureSharedEnvironmentMaps(ctx, resources, clear_color, ambient_color);
 }
 
 PassDataFilter PBRPass::GetDataFilter() const
@@ -771,9 +1385,351 @@ PassDataFilter PBRPass::GetDataFilter() const
     return filter;
 }
 
+void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
+                                 resource::ResourceSystem* resources,
+                                 glm::vec4 const& clear_color,
+                                 glm::vec3 const& ambient_color)
+{
+    if (resources != nullptr && !g_maskonaive_source.ready) {
+        auto& texture_mgr = resources->GetTextureManager();
+        if (LoadMaskonaiveCubemapSource(texture_mgr, g_maskonaive_source)) {
+            LOGI("Loaded Maskonaive2 cubemap source");
+        } else {
+            LOGW("Falling back to procedural skybox/environment");
+        }
+    }
+
+    bool const has_cubemap_source = g_maskonaive_source.ready;
+    bool const needs_rebuild =
+        !g_shared_environment_maps.ready ||
+        g_shared_environment_maps.last_clear_color != clear_color ||
+        g_shared_environment_maps.last_ambient_color != ambient_color ||
+        g_shared_environment_maps.last_use_cubemap_source != has_cubemap_source;
+    if (!needs_rebuild && g_shared_environment_maps.environment_cubemap.IsInitialized() &&
+        g_shared_environment_maps.irradiance_cubemap.IsInitialized() &&
+        g_shared_environment_maps.prefilter_cubemap.IsInitialized() &&
+        g_shared_environment_maps.brdf_lut.IsInitialized()) {
+        return;
+    }
+
+    if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
+        g_shared_environment_maps.environment_cubemap.Shutdown(ctx);
+    }
+    if (g_shared_environment_maps.irradiance_cubemap.IsInitialized()) {
+        g_shared_environment_maps.irradiance_cubemap.Shutdown(ctx);
+    }
+    if (g_shared_environment_maps.prefilter_cubemap.IsInitialized()) {
+        g_shared_environment_maps.prefilter_cubemap.Shutdown(ctx);
+    }
+    if (g_shared_environment_maps.brdf_lut.IsInitialized()) {
+        g_shared_environment_maps.brdf_lut.Shutdown(ctx);
+    }
+
+    constexpr uint32_t kIrradianceSize = 32;
+    constexpr uint32_t kPrefilterSize = 64;
+    constexpr uint32_t kBrdfLutSize = 128;
+    constexpr uint32_t kPrefilterMipLevels = 7;
+
+    uint32_t const kEnvironmentSize = has_cubemap_source ? g_maskonaive_source.faces[0].width : 64u;
+
+    vkfw::TextureInfo env_info{};
+    env_info.width = kEnvironmentSize;
+    env_info.height = kEnvironmentSize;
+    env_info.mip_levels = 1;
+    env_info.array_layers = 6;
+    env_info.cube_map = true;
+    env_info.format = vkfw::TextureFormat::R32G32B32A32_SFLOAT;
+    env_info.usage = static_cast<vkfw::TextureUsage>(
+        static_cast<uint32_t>(vkfw::TextureUsage::Sampled) |
+        static_cast<uint32_t>(vkfw::TextureUsage::TransferDst));
+    env_info.mipmap = false;
+    if (!g_shared_environment_maps.environment_cubemap.Init(ctx, env_info)) {
+        LOGE( "Failed to initialize environment cubemap");
+        return;
+    }
+
+    vkfw::TextureInfo irradiance_info = env_info;
+    irradiance_info.width = kIrradianceSize;
+    irradiance_info.height = kIrradianceSize;
+    if (!g_shared_environment_maps.irradiance_cubemap.Init(ctx, irradiance_info)) {
+        LOGE( "Failed to initialize irradiance cubemap");
+        return;
+    }
+
+    vkfw::TextureInfo prefilter_info = env_info;
+    prefilter_info.width = kPrefilterSize;
+    prefilter_info.height = kPrefilterSize;
+    prefilter_info.mip_levels = kPrefilterMipLevels;
+    if (!g_shared_environment_maps.prefilter_cubemap.Init(ctx, prefilter_info)) {
+        LOGE( "Failed to initialize prefilter cubemap");
+        return;
+    }
+
+    vkfw::TextureInfo brdf_info{};
+    brdf_info.width = kBrdfLutSize;
+    brdf_info.height = kBrdfLutSize;
+    brdf_info.mip_levels = 1;
+    brdf_info.format = vkfw::TextureFormat::R32G32B32A32_SFLOAT;
+    brdf_info.usage = static_cast<vkfw::TextureUsage>(
+        static_cast<uint32_t>(vkfw::TextureUsage::Sampled) |
+        static_cast<uint32_t>(vkfw::TextureUsage::TransferDst));
+    brdf_info.mipmap = false;
+    if (!g_shared_environment_maps.brdf_lut.Init(ctx, brdf_info)) {
+        LOGE( "Failed to initialize BRDF LUT texture");
+        return;
+    }
+
+    glm::vec3 const clear_rgb{clear_color.x, clear_color.y, clear_color.z};
+    CpuCubemapSource const* const source = has_cubemap_source ? &g_maskonaive_source : nullptr;
+
+    for (uint32_t face = 0; face < 6; ++face) {
+        std::vector<glm::vec4> env_pixels;
+        if (has_cubemap_source) {
+            env_pixels = g_maskonaive_source.faces[face].pixels;
+        } else {
+            GenerateProceduralCubemapFace(env_pixels, kEnvironmentSize, face, clear_rgb, ambient_color);
+        }
+        UploadCubemapFace(ctx, g_shared_environment_maps.environment_cubemap, env_pixels, 0, face);
+    }
+
+    for (uint32_t face = 0; face < 6; ++face) {
+        std::vector<glm::vec4> irradiance_pixels(static_cast<size_t>(kIrradianceSize) * kIrradianceSize);
+        for (uint32_t y = 0; y < kIrradianceSize; ++y) {
+            for (uint32_t x = 0; x < kIrradianceSize; ++x) {
+                float const u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(kIrradianceSize)) - 1.0f;
+                float const v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(kIrradianceSize)) - 1.0f;
+                glm::vec3 const normal = FaceDirection(face, u, v);
+                glm::vec3 const color = IntegrateDiffuseIrradiance(normal, source, clear_rgb, ambient_color);
+                irradiance_pixels[static_cast<size_t>(y) * kIrradianceSize + x] = glm::vec4{color, 1.0f};
+            }
+        }
+        UploadCubemapFace(ctx, g_shared_environment_maps.irradiance_cubemap, irradiance_pixels, 0, face);
+    }
+
+    for (uint32_t mip = 0; mip < kPrefilterMipLevels; ++mip) {
+        uint32_t const face_size = std::max(1u, kPrefilterSize >> mip);
+        float const roughness = kPrefilterMipLevels > 1
+            ? static_cast<float>(mip) / static_cast<float>(kPrefilterMipLevels - 1)
+            : 0.0f;
+        for (uint32_t face = 0; face < 6; ++face) {
+            std::vector<glm::vec4> face_pixels(static_cast<size_t>(face_size) * face_size);
+            for (uint32_t y = 0; y < face_size; ++y) {
+                for (uint32_t x = 0; x < face_size; ++x) {
+                    float const u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(face_size)) - 1.0f;
+                    float const v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(face_size)) - 1.0f;
+                    glm::vec3 const normal = FaceDirection(face, u, v);
+                    glm::vec3 const color = IntegratePrefilteredEnvironment(normal, roughness, source, clear_rgb, ambient_color);
+                    face_pixels[static_cast<size_t>(y) * face_size + x] = glm::vec4{color, 1.0f};
+                }
+            }
+            UploadCubemapFace(ctx, g_shared_environment_maps.prefilter_cubemap, face_pixels, mip, face);
+        }
+    }
+
+    std::vector<glm::vec4> brdf_pixels(static_cast<size_t>(kBrdfLutSize) * kBrdfLutSize);
+    for (uint32_t y = 0; y < kBrdfLutSize; ++y) {
+        float const roughness = (static_cast<float>(y) + 0.5f) / static_cast<float>(kBrdfLutSize);
+        for (uint32_t x = 0; x < kBrdfLutSize; ++x) {
+            float const n_dot_v = (static_cast<float>(x) + 0.5f) / static_cast<float>(kBrdfLutSize);
+            glm::vec2 const ab = IntegrateBrdf(n_dot_v, roughness);
+            brdf_pixels[static_cast<size_t>(y) * kBrdfLutSize + x] = glm::vec4{ab, 0.0f, 1.0f};
+        }
+    }
+    g_shared_environment_maps.brdf_lut.UpdateData(ctx, brdf_pixels.data(), static_cast<uint32_t>(brdf_pixels.size() * sizeof(glm::vec4)));
+
+    g_shared_environment_maps.last_clear_color = clear_color;
+    g_shared_environment_maps.last_ambient_color = ambient_color;
+    g_shared_environment_maps.last_use_cubemap_source = has_cubemap_source;
+    g_shared_environment_maps.ready = true;
+}
+
+PassDataFilter SkyboxPass::GetDataFilter() const
+{
+    PassDataFilter filter{};
+    filter.pass_bit = core::RenderPassBit::None;
+    filter.layer_mask = 0u;
+    return filter;
+}
+
+void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
+{
+    (void)view;
+    LOGI("SkyboxPass enter");
+    if (context.resources == nullptr || context.pipelines == nullptr) {
+        LOGW("SkyboxPass missing resources or pipelines");
+        return;
+    }
+
+    bool const has_vk =
+        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+    if (!has_vk) {
+        LOGW("SkyboxPass missing Vulkan context");
+        return;
+    }
+
+    auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
+    auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
+    auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+
+    if (skybox_shader_id_ == 0) {
+        skybox_shader_id_ = shader_mgr.LoadShader("compiled_shaders/skybox");
+        if (skybox_shader_id_ == 0) {
+            LOGE( "SkyboxPass failed to load skybox shader");
+            return;
+        }
+    }
+    if (skybox_mesh_id_ == 0) {
+        skybox_mesh_id_ = mesh_mgr.LoadMesh("Cube");
+        if (skybox_mesh_id_ == 0) {
+            LOGE( "SkyboxPass failed to load cube mesh for skybox");
+            return;
+        }
+    }
+
+    auto const* mesh = mesh_mgr.GetMesh(skybox_mesh_id_);
+    auto const* shader = shader_mgr.GetShader(skybox_shader_id_);
+    if (!mesh || !shader) {
+        LOGW("SkyboxPass missing mesh or shader");
+        return;
+    }
+
+    EnsureSharedEnvironmentMaps(*context.vk,
+                                context.resources,
+                                context.frame != nullptr ? context.frame->environment.clear_color
+                                                         : glm::vec4{0.03f, 0.04f, 0.06f, 1.0f},
+                                context.frame != nullptr ? context.frame->environment.ambient_color
+                                                         : glm::vec3{0.04f, 0.04f, 0.045f});
+
+    vk::ClearValue clear{};
+    clear.color.float32[0] = 0.0f;
+    clear.color.float32[1] = 0.0f;
+    clear.color.float32[2] = 0.0f;
+    clear.color.float32[3] = 1.0f;
+
+    if (!BeginSwapchainRendering(context, clear, false, context.current_depth_texture, false)) {
+        LOGE( "SkyboxPass failed to begin rendering");
+        return;
+    }
+    LOGI("SkyboxPass begin rendering ok");
+
+    struct FrameUboLocal {
+        glm::mat4 view_projection{1.0f};
+        glm::mat4 shadow_view_projection{1.0f};
+        glm::vec4 camera_position{0.0f, 0.0f, 0.0f, 1.0f};
+        glm::vec4 light_position_range{0.0f, 6.0f, 6.0f, 20.0f};
+        glm::vec4 light_direction_type{0.0f, -1.0f, 0.0f, 1.0f};
+        glm::vec4 light_color_intensity{1.0f, 1.0f, 1.0f, 5.0f};
+        glm::vec4 ambient_color{0.04f, 0.04f, 0.045f, 1.0f};
+        glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
+        glm::mat4 view{1.0f};
+        glm::mat4 projection{1.0f};
+    };
+
+    FrameUboLocal frame_ubo{};
+    if (context.frame != nullptr) {
+        frame_ubo.view_projection = context.frame->view.view_projection;
+        frame_ubo.shadow_view_projection = context.shadow_view_projection;
+        frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
+        frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
+        frame_ubo.clear_color = context.frame->environment.clear_color;
+        frame_ubo.view = context.frame->view.view;
+        frame_ubo.projection = context.frame->view.projection;
+    }
+
+    if (!frame_ubo_.IsInitialized()) {
+        frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
+                                         .size = static_cast<uint32_t>(sizeof(FrameUboLocal)),
+                                         .usage = vkfw::BufferUsage::Uniform,
+                                         .mappable = true,
+                                     });
+    }
+    frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUboLocal)));
+
+    if (frame_set_id_ == 0) {
+        uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
+        frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+    }
+    if (frame_set_id_ != 0) {
+        desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUboLocal));
+        vk::Sampler const sampler = GetCommonSampler(*context.vk);
+        if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
+            desc_alloc.UpdateImageSampler(frame_set_id_,
+                                          2,
+                                          sampler,
+                                          g_shared_environment_maps.environment_cubemap.View(),
+                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+        }
+    }
+
+    PipelineKey key = MakePipelineKey(shader->id, *mesh);
+    key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
+    key.render_state_id = 3;
+    key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
+    key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
+    key.viewport_width = context.swapchain->Extent().width;
+    key.viewport_height = context.swapchain->Extent().height;
+
+    vk::RenderPass const compatibility_render_pass = context.compatibility_load_render_pass != vk::RenderPass{}
+        ? context.compatibility_load_render_pass
+        : context.compatibility_render_pass;
+    uint32_t const pipeline_id =
+        context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, compatibility_render_pass);
+    if (pipeline_id == 0) {
+        LOGE("SkyboxPass pipeline create failed");
+        EndSwapchainRendering(context);
+        return;
+    }
+    auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
+    if (!pipeline) {
+        LOGE("SkyboxPass pipeline lookup failed");
+        EndSwapchainRendering(context);
+        return;
+    }
+    LOGI("SkyboxPass pipeline=%u", pipeline_id);
+
+    context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
+
+    glm::mat4 const world{1.0f};
+    context.command_buffer.pushConstants(pipeline->Layout(),
+                                         vk::ShaderStageFlagBits::eVertex,
+                                         0,
+                                         sizeof(glm::mat4),
+                                         &world);
+
+    if (frame_set_id_ != 0) {
+        vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
+        if (frame_set) {
+            context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                      pipeline->Layout(),
+                                                      0,
+                                                      1,
+                                                      &frame_set,
+                                                      0,
+                                                      nullptr);
+        }
+    }
+
+    LOGI("SkyboxPass drawing: env=%s depth=%s",
+         g_shared_environment_maps.environment_cubemap.IsInitialized() ? "bound" : "missing",
+         context.current_depth_texture != nullptr && context.current_depth_texture->IsInitialized() ? "present" : "missing");
+
+    vk::DeviceSize offset = 0;
+    context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
+    if (mesh->index_buffer && mesh->index_buffer->IsInitialized() && mesh->index_count > 0) {
+        context.command_buffer.bindIndexBuffer(mesh->index_buffer->Handle(), 0, vk::IndexType::eUint32);
+        context.command_buffer.drawIndexed(mesh->index_count, 1, 0, 0, 0);
+    } else {
+        context.command_buffer.draw(mesh->vertex_count, 1, 0, 0);
+    }
+    LOGI("SkyboxPass draw submitted");
+
+    EndSwapchainRendering(context);
+    LOGI("SkyboxPass end");
+}
+
 void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: PBRPass");
 
     if (context.resources == nullptr || context.pipelines == nullptr) {
         return;
@@ -798,6 +1754,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         glm::vec4 light_color_intensity{1.0f, 1.0f, 1.0f, 5.0f};
         glm::vec4 ambient_color{0.04f, 0.04f, 0.045f, 1.0f};
         glm::vec4 clear_color{0.03f, 0.04f, 0.06f, 1.0f};
+        glm::mat4 view{1.0f};
+        glm::mat4 projection{1.0f};
     };
 
     struct MaterialUbo {
@@ -815,45 +1773,42 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         uint32_t const width = context.swapchain->Extent().width;
         uint32_t const height = context.swapchain->Extent().height;
 
-        if (depth_stencil_.IsInitialized()) {
-            auto const extent = depth_stencil_.Extent();
-            if (extent.width != width || extent.height != height) {
-                depth_stencil_.Shutdown(*context.vk);
+        vkfw::VkTexture* depth_target = context.current_depth_texture;
+        if (depth_target == nullptr || !depth_target->IsInitialized()) {
+            if (depth_stencil_.IsInitialized()) {
+                auto const extent = depth_stencil_.Extent();
+                if (extent.width != width || extent.height != height) {
+                    depth_stencil_.Shutdown(*context.vk);
+                }
             }
-        }
 
-        if (!depth_stencil_.IsInitialized()) {
-            if (!depth_stencil_.Init(*context.vk, vkfw::TextureInfo{
-                                                   .width = width,
-                                                   .height = height,
-                                                   .mip_levels = 1,
-                                                   .format = vkfw::TextureFormat::D32_SFLOAT,
-                                                   .usage = vkfw::TextureUsage::DepthStencilAttachment,
-                                                   .mipmap = false,
-                                               })) {
-                LOGE( "RenderVulkan", "PBRPass failed to create depth stencil texture");
-                return;
+            if (!depth_stencil_.IsInitialized()) {
+                if (!depth_stencil_.Init(*context.vk, vkfw::TextureInfo{
+                                                       .width = width,
+                                                       .height = height,
+                                                       .mip_levels = 1,
+                                                       .format = vkfw::TextureFormat::D32_SFLOAT,
+                                                       .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                       .mipmap = false,
+                                                   })) {
+                    LOGE( "PBRPass failed to create depth stencil texture");
+                    return;
+                }
             }
-        }
 
-        TransitionImageLayout(context.command_buffer,
-                              depth_stencil_.Handle(),
-                              vk::ImageAspectFlagBits::eDepth,
-                              vk::ImageLayout::eUndefined,
-                              vk::ImageLayout::eDepthAttachmentOptimal,
-                              {},
-                              vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentRead,
-                              vk::PipelineStageFlagBits::eTopOfPipe,
-                              vk::PipelineStageFlagBits::eEarlyFragmentTests);
+            depth_target = &depth_stencil_;
+            context.current_depth_texture = depth_target;
+        }
 
         vk::ClearValue clear{};
         clear.color.float32[0] = context.frame != nullptr ? context.frame->environment.clear_color.x : 0.03f;
         clear.color.float32[1] = context.frame != nullptr ? context.frame->environment.clear_color.y : 0.04f;
         clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
         clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
-        began_rendering = BeginSwapchainRendering(context, clear, true, &depth_stencil_);
+        bool const clear_depth = depth_target == &depth_stencil_;
+        began_rendering = BeginSwapchainRendering(context, clear, true, depth_target, clear_depth);
         if (!began_rendering) {
-            LOGE( "RenderVulkan", "PBRPass failed to begin rendering");
+            LOGE( "PBRPass failed to begin rendering");
             return;
         }
     }
@@ -867,6 +1822,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
             frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
             frame_ubo.clear_color = context.frame->environment.clear_color;
+            frame_ubo.view = context.frame->view.view;
+            frame_ubo.projection = context.frame->view.projection;
         }
 
         if (!view.lights.empty() && view.lights.front() != nullptr) {
@@ -885,6 +1842,14 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
         frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
 
+        glm::vec4 const clear_color = context.frame != nullptr
+            ? context.frame->environment.clear_color
+            : frame_ubo.clear_color;
+        glm::vec3 const ambient_color = context.frame != nullptr
+            ? context.frame->environment.ambient_color
+            : glm::vec3{frame_ubo.ambient_color.x, frame_ubo.ambient_color.y, frame_ubo.ambient_color.z};
+        EnsureEnvironmentMaps(*context.vk, context.resources, clear_color, ambient_color);
+
         if (frame_set_id_ == 0) {
             uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
             frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
@@ -892,11 +1857,23 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         if (frame_set_id_ != 0) {
             desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
             if(context.current_shadow_map) {
-            vk::Sampler sampler = GetShadowSampler(*context.vk);
-            desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                vk::Sampler sampler = GetShadowSampler(*context.vk);
+                desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            vk::Sampler const sampler = GetCommonSampler(*context.vk);
+            if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 2, sampler, g_shared_environment_maps.environment_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.irradiance_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 3, sampler, g_shared_environment_maps.irradiance_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.prefilter_cubemap.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 4, sampler, g_shared_environment_maps.prefilter_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (g_shared_environment_maps.brdf_lut.IsInitialized()) {
+                desc_alloc.UpdateImageSampler(frame_set_id_, 5, sampler, g_shared_environment_maps.brdf_lut.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
         }
-
     }
     uint32_t renderable_index = 0;
     for (auto const* renderable : view.renderables) {
@@ -910,7 +1887,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
         // Apply GPU-based/CPU-fallback Frustum Culling
         if (renderable_index < g_culling_visibility.size() && g_culling_visibility[renderable_index] == 0) {
-            LOGI( "CullingSystem", "  Skip draw call (culled): %s", renderable->debug_name.c_str());
+            LOGI(" CullingSystem: Skip draw call (culled): %s", renderable->debug_name.c_str());
             renderable_index++;
             continue;
         }
@@ -930,7 +1907,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             }
         }
         if (!material) {
-            LOGI( "RenderVulkan", "  skip material: %s", renderable->material_id.c_str());
+            LOGI( "  skip material: %s", renderable->material_id.c_str());
             continue;
         }
 
@@ -938,13 +1915,13 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             ? mesh_mgr.GetMesh(renderable->mesh_handle)
             : mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
-            LOGI( "RenderVulkan", "  skip mesh: %s", renderable->mesh_id.c_str());
+            LOGI( "  skip mesh: %s", renderable->mesh_id.c_str());
             continue;
         }
 
         auto const* shader = material->shader_id != 0 ? shader_mgr.GetShader(material->shader_id) : nullptr;
         if (!shader) {
-            LOGI( "RenderVulkan", "  skip shader for material: %s", material->name.c_str());
+            LOGI( "  skip shader for material: %s", material->name.c_str());
             continue;
         }
 
@@ -960,7 +1937,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         uint32_t const pipeline_id =
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
-            LOGI( "RenderVulkan", "  pipeline create failed: %s", renderable->debug_name.c_str());
+            LOGI( "  pipeline create failed: %s", renderable->debug_name.c_str());
             continue;
         }
 
@@ -1070,7 +2047,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             context.command_buffer.draw(vertex_count, 1, renderable->first_vertex, 0);
         }
 
-        // LOGI( "RenderVulkan", "  draw: %s", renderable->debug_name.c_str());
     }
 
     if (began_rendering) {
@@ -1087,7 +2063,6 @@ PassDataFilter ComputePass::GetDataFilter() const
 
 void ComputePass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: ComputePass");
     (void)view;
     uint32_t const object_count = static_cast<uint32_t>(view.renderables.size());
     
@@ -1320,8 +2295,6 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
     for (uint32_t i = 0; i < object_count; ++i) {
         if (g_culling_visibility[i] != 0) visible_count++;
     }
-    // LOGI( "CullingSystem", "GPU Culling: %u / %u visible (Ratio: %.2f%%)",
-    //                     visible_count, object_count, (float)visible_count / (float)object_count * 100.0f);
 }
 
 PassDataFilter UIPass::GetDataFilter() const
@@ -1334,7 +2307,6 @@ PassDataFilter UIPass::GetDataFilter() const
 
 void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: UIPass");
     if (view.ui_items.empty()) {
         return;
     }
@@ -1395,7 +2367,6 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         if (!item || !item->visible) {
             continue;
         }
-        // LOGI( "RenderVulkan", "  ui: %s", item->debug_name.c_str());
         
         uint32_t texture_index = 0; // Default to fallback white slot
         if (!item->texture_id.empty()) {
@@ -1416,7 +2387,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     if (ui_shader_id_ == 0) {
         ui_shader_id_ = shader_mgr.LoadShader("compiled_shaders/ui_textured");
         if (ui_shader_id_ == 0) {
-            LOGE( "RenderVulkan", "UIPass failed to load ui_textured shader");
+            LOGE( "UIPass failed to load ui_textured shader");
             return;
         }
     }
@@ -1434,7 +2405,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                      .usage = vkfw::BufferUsage::Vertex,
                                                      .mappable = true,
                                                  })) {
-            LOGE( "RenderVulkan", "UIPass failed to create vertex buffer");
+            LOGE( "UIPass failed to create vertex buffer");
             return;
         }
     }
@@ -1447,7 +2418,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                     .usage = vkfw::BufferUsage::Index,
                                                     .mappable = true,
                                                 })) {
-            LOGE( "RenderVulkan", "UIPass failed to create index buffer");
+            LOGE( "UIPass failed to create index buffer");
             return;
         }
     }
@@ -1461,7 +2432,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     clear.color.float32[2] = 0.0f;
     clear.color.float32[3] = 0.0f;
     if (!BeginSwapchainRendering(context, clear, false)) {
-        LOGE( "RenderVulkan", "UIPass failed to begin rendering");
+        LOGE( "UIPass failed to begin rendering");
         return;
     }
 
@@ -1485,7 +2456,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
     if (!pipeline) {
         EndSwapchainRendering(context);
-        LOGE( "RenderVulkan", "UIPass failed to create pipeline");
+        LOGE( "UIPass failed to create pipeline");
         return;
     }
 
@@ -1556,7 +2527,7 @@ PassDataFilter ToneMappingPass::GetDataFilter() const
 
 void ToneMappingPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
-    // LOGI( "RenderVulkan", "Pass: ToneMappingPass");
+
     (void)context;
     (void)view;
 }

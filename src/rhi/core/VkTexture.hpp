@@ -35,10 +35,12 @@ struct TextureInfo {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t depth = 1;
+    uint32_t array_layers = 1;
     uint32_t mip_levels = 1;
     TextureFormat format = TextureFormat::R8G8B8A8_SRGB;
     TextureUsage usage = TextureUsage::Sampled;
     bool mipmap = false;
+    bool cube_map = false;
 };
 
 class VkTexture {
@@ -62,7 +64,16 @@ public:
     vk::DeviceMemory Memory() const noexcept { return *memory_; }
     vk::Format Format() const noexcept { return format_; }
     vk::Extent3D Extent() const noexcept { return extent_; }
-    void UpdateData(VkContext& ctx, void const* data, uint32_t size);
+    void UpdateData(VkContext& ctx,
+                    void const* data,
+                    uint32_t size,
+                    uint32_t mip_level = 0,
+                    uint32_t array_layer = 0);
+    void UpdateCubeFaceData(VkContext& ctx,
+                            void const* data,
+                            uint32_t size,
+                            uint32_t face_index,
+                            uint32_t mip_level = 0);
 
 private:
     std::unique_ptr<vk::raii::Image> image_;

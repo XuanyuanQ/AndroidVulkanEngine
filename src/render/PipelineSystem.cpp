@@ -29,6 +29,30 @@ DescriptorSetLayoutKey MakeFrameSetLayoutKey()
             .descriptor_count = 1,
             .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
         },
+        DescriptorBinding{
+            .binding = 2,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
+        DescriptorBinding{
+            .binding = 3,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
+        DescriptorBinding{
+            .binding = 4,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
+        DescriptorBinding{
+            .binding = 5,
+            .descriptor_type = static_cast<uint32_t>(vkfw::DescriptorType::CombinedImageSampler),
+            .descriptor_count = 1,
+            .stage_flags = static_cast<uint32_t>(vk::ShaderStageFlagBits::eFragment),
+        },
     };
     return key;
 }
@@ -265,6 +289,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         bool const depth_only_pipeline =
             (key.rt_format == 0) && (key.depth_format != 0 || key.stencil_format != 0);
         bool const alpha_blended_pipeline = key.render_state_id == 2;
+        bool const skybox_pipeline = key.render_state_id == 3;
 
         // Set vertex input state (simplified for now)
         vkfw::PipelineVertexInputState vertex_input;
@@ -368,7 +393,8 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
         pipeline_info.rasterization = rasterization;
 
         pipeline_info.depth_stencil.depth_test_enable = (key.depth_format != 0);
-        pipeline_info.depth_stencil.depth_write_enable = (key.depth_format != 0) && !alpha_blended_pipeline;
+        pipeline_info.depth_stencil.depth_write_enable =
+            (key.depth_format != 0) && !alpha_blended_pipeline && !skybox_pipeline;
         pipeline_info.depth_stencil.depth_compare_op = vk::CompareOp::eLessOrEqual;
 
         if (!depth_only_pipeline) {

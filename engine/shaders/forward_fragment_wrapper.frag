@@ -20,6 +20,8 @@ layout(set = 0, binding = 0) uniform FrameUbo {
     vec4 light_color_intensity;
     vec4 ambient_color;
     vec4 clear_color;
+    mat4 view;
+    mat4 projection;
 } frame;
 
 layout(set = 1, binding = 0) uniform MaterialUbo {
@@ -31,6 +33,11 @@ layout(set = 1, binding = 0) uniform MaterialUbo {
 layout(set = 1, binding = 1) uniform sampler2D baseColorTexture;
 layout(set = 1, binding = 2) uniform sampler2D normalTexture;
 layout(set = 1, binding = 3) uniform sampler2D metallicRoughnessTexture;
+
+layout(set = 0, binding = 2) uniform samplerCube environmentMap;
+layout(set = 0, binding = 3) uniform samplerCube irradianceMap;
+layout(set = 0, binding = 4) uniform samplerCube prefilterMap;
+layout(set = 0, binding = 5) uniform sampler2D brdfLut;
 
 vec4 aveUserColor;
 
@@ -86,14 +93,16 @@ vec3 AveSampleEnvironment(vec3 direction) {
 }
 
 vec3 AveEvaluateEnvironmentDiffuse(vec3 normal) {
-    return AveSampleEnvironment(normal);
+    return texture(irradianceMap, normal).rgb;
 }
 
-vec3 AveEvaluateEnvironmentSpecular(vec3 normal, vec3 viewDir, float roughness) {
+vec3 AveEvaluateEnvironmentSpecular(vec3 normal, vec3 viewDir, vec3 albedo, float metallic, float roughness) {
     vec3 reflectionDir = reflect(-viewDir, normal);
-    vec3 envColor = AveSampleEnvironment(reflectionDir);
-    float gloss = 1.0 - clamp(roughness, 0.0, 1.0);
-    return mix(AveEvaluateEnvironmentDiffuse(normal), envColor, gloss * gloss);
+    float lodCount = 6.0;
+    vec3 prefilteredColor = textureLod(prefilterMap, reflectionDir, roughness * lodCount).rgb;
+    vec2 brdf = texture(brdfLut, vec2(clamp(dot(normal, viewDir), 0.0, 1.0), roughness)).rg;
+    vec3 f0 = mix(vec3(0.04), albedo, metallic);
+    return prefilteredColor * (f0 * brdf.x + brdf.y) * (0.65 + 0.35 * (1.0 - roughness));
 }
 
 float AveComputeShadow(vec4 shadowCoord) {
@@ -168,10 +177,12 @@ void main() {
     float shadowFactor = AveComputeShadow(inShadowCoord);
     vec3 directLighting = (diffuse + specular) * radiance * nDotL * shadowFactor;
 
-    vec3 environmentDiffuse = AveEvaluateEnvironmentDiffuse(geometricNormal) * albedo * (1.0 - metallic);
-    vec3 environmentSpecular = AveEvaluateEnvironmentSpecular(normal, viewDir, roughness) * fresnel * (0.35 + 0.65 * (1.0 - roughness));
-    vec3 ambientDiffuse = frame.ambient_color.rgb * albedo * (0.15 + 0.85 * (1.0 - metallic));
-    vec3 color = ambientDiffuse + environmentDiffuse + environmentSpecular + directLighting;
+    // Keep indirect light intentionally conservative so the shadowed side remains readable.
+    vec3 environmentDiffuse = AveEvaluateEnvironmentDiffuse(geometricNormal) * albedo * (0.30 + 0.20 * (1.0 - metallic));
+    vec3 environmentSpecular = AveEvaluateEnvironmentSpecular(normal, viewDir, albedo, metallic, roughness) * 0.75;
+    vec3 ambientDiffuse = frame.ambient_color.rgb * albedo * (0.08 + 0.40 * (1.0 - metallic));
+    float indirectShadow = mix(0.35, 1.0, shadowFactor);
+    vec3 color = ambientDiffuse + environmentDiffuse*indirectShadow + environmentSpecular*indirectShadow  + directLighting;
 
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0 / 2.2));

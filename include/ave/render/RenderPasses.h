@@ -3,6 +3,7 @@
 #include "ave/render/RenderPass.h"
 
 #include <unordered_map>
+#include <array>
 
 #include "VkBuffer.hpp"
 #include "VkTexture.hpp"
@@ -14,6 +15,13 @@ public:
     std::string_view Name() const override { return "DepthPrepass"; }
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    vkfw::VkBuffer frame_ubo_{};
+    uint32_t frame_set_id_ = 0;
+    vkfw::VkTexture depth_texture_{};
+    uint32_t depth_shader_id_ = 0;
+    bool depth_texture_ready_ = false;
 };
 
 class ShadowPass final : public RenderPass {
@@ -31,6 +39,19 @@ private:
     glm::mat4 shadow_view_projection_{1.0f};
 };
 
+class SkyboxPass final : public RenderPass {
+public:
+    std::string_view Name() const override { return "SkyboxPass"; }
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    vkfw::VkBuffer frame_ubo_{};
+    uint32_t frame_set_id_ = 0;
+    uint32_t skybox_shader_id_ = 0;
+    uint32_t skybox_mesh_id_ = 0;
+};
+
 class PBRPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "PBRPass"; }
@@ -38,6 +59,11 @@ public:
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
 private:
+    void EnsureEnvironmentMaps(vkfw::VkContext& ctx,
+                               resource::ResourceSystem* resources,
+                               glm::vec4 const& clear_color,
+                               glm::vec3 const& ambient_color);
+
     struct MaterialBinding {
         vkfw::VkBuffer ubo{};
         uint32_t descriptor_set_id = 0;

@@ -5,8 +5,6 @@
 
 namespace vkfw {
 
-constexpr char kLogTag[] = "VkBuffer";
-
 static vk::BufferUsageFlags GetBufferUsageFlags(BufferUsage usage) {
     switch (usage) {
         case BufferUsage::Vertex:
@@ -56,7 +54,7 @@ bool VkBuffer::Init(VkContext& ctx, BufferInfo const& info) {
     try {
         buffer_ = std::make_unique<vk::raii::Buffer>(ctx.Device(), buffer_info);
     } catch (vk::SystemError& e) {
-        LOGE( kLogTag, "createBuffer failed: %s", e.what());
+        LOGE("VkBuffer: createBuffer failed: %s", e.what());
         return false;
     }
 
@@ -72,7 +70,7 @@ bool VkBuffer::Init(VkContext& ctx, BufferInfo const& info) {
     try {
         memory_ = std::make_unique<vk::raii::DeviceMemory>(ctx.Device(), alloc_info);
     } catch (vk::SystemError& e) {
-        LOGE( kLogTag, "allocateMemory failed: %s", e.what());
+        LOGE("VkBuffer: allocateMemory failed: %s", e.what());
         return false;
     }
 

@@ -2,6 +2,7 @@
 #include "VkContext.hpp"
 #include "VkBuffer.hpp"
 #include <cstring>
+#include <algorithm>
 
 namespace vkfw {
 
@@ -45,8 +46,21 @@ static vk::ImageUsageFlags GetImageUsageFlags(TextureUsage usage) {
     return flags;
 }
 
-static vk::ImageType GetImageType(uint32_t depth) {
-    return (depth == 1) ? vk::ImageType::e2D : vk::ImageType::e3D;
+static vk::ImageType GetImageType(TextureInfo const& info) {
+    return (info.depth == 1) ? vk::ImageType::e2D : vk::ImageType::e3D;
+}
+
+static vk::ImageViewType GetImageViewType(TextureInfo const& info) {
+    if (info.cube_map) {
+        return info.array_layers >= 6 ? vk::ImageViewType::eCube : vk::ImageViewType::e2DArray;
+    }
+    if (info.depth > 1) {
+        return vk::ImageViewType::e3D;
+    }
+    if (info.array_layers > 1) {
+        return vk::ImageViewType::e2DArray;
+    }
+    return vk::ImageViewType::e2D;
 }
 
 static uint32_t FindMemoryType(VkContext& ctx, uint32_t type_filter, vk::MemoryPropertyFlags properties) {
@@ -67,15 +81,18 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
 
     // Create image
     vk::ImageCreateInfo image_info{};
-    image_info.imageType = GetImageType(info.depth);
+    image_info.imageType = GetImageType(info);
     image_info.extent = extent_;
-    image_info.mipLevels = info.mipmap ? (info.mip_levels > 0 ? info.mip_levels : 1) : 1;
-    image_info.arrayLayers = 1;
+    image_info.mipLevels = std::max(1u, info.mip_levels);
+    image_info.arrayLayers = info.cube_map ? 6 : std::max(1u, info.array_layers);
     image_info.format = format_;
     image_info.tiling = vk::ImageTiling::eOptimal;
     image_info.initialLayout = vk::ImageLayout::eUndefined;
     image_info.usage = GetImageUsageFlags(info.usage);
     image_info.sharingMode = vk::SharingMode::eExclusive;
+    if (info.cube_map) {
+        image_info.flags |= vk::ImageCreateFlagBits::eCubeCompatible;
+    }
 
     image_ = std::make_unique<vk::raii::Image>(ctx.Device(), image_info);
 
@@ -94,7 +111,7 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
     // Create image view
     vk::ImageViewCreateInfo view_info{};
     view_info.image = *image_;
-    view_info.viewType = (info.depth == 1) ? vk::ImageViewType::e2D : vk::ImageViewType::e3D;
+    view_info.viewType = GetImageViewType(info);
     view_info.format = format_;
     view_info.components.r = vk::ComponentSwizzle::eIdentity;
     view_info.components.g = vk::ComponentSwizzle::eIdentity;
@@ -105,7 +122,7 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = image_info.mipLevels;
     view_info.subresourceRange.baseArrayLayer = 0;
-    view_info.subresourceRange.layerCount = 1;
+    view_info.subresourceRange.layerCount = info.depth > 1 ? 1u : image_info.arrayLayers;
 
     image_view_ = std::make_unique<vk::raii::ImageView>(ctx.Device(), view_info);
 
@@ -120,7 +137,7 @@ void VkTexture::Shutdown(VkContext& ctx) {
     format_ = vk::Format::eUndefined;
 }
 
-void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size) {
+void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size, uint32_t mip_level, uint32_t array_layer) {
     // Create staging buffer
     VkBuffer staging_buffer;
     BufferInfo staging_info{};
@@ -161,9 +178,9 @@ void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size) {
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = *image_;
     barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.baseMipLevel = mip_level;
     barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.baseArrayLayer = array_layer;
     barrier.subresourceRange.layerCount = 1;
 
     command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, 
@@ -172,11 +189,15 @@ void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size) {
     vk::BufferImageCopy copy_region{};
     copy_region.bufferOffset = 0;
     copy_region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-    copy_region.imageSubresource.mipLevel = 0;
-    copy_region.imageSubresource.baseArrayLayer = 0;
+    copy_region.imageSubresource.mipLevel = mip_level;
+    copy_region.imageSubresource.baseArrayLayer = array_layer;
     copy_region.imageSubresource.layerCount = 1;
     copy_region.imageOffset = {0, 0, 0};
-    copy_region.imageExtent = {extent_.width, extent_.height, extent_.depth};
+    copy_region.imageExtent = {
+        std::max(1u, extent_.width >> mip_level),
+        std::max(1u, extent_.height >> mip_level),
+        extent_.depth,
+    };
 
     command_buffer.copyBufferToImage(staging_buffer.Handle(), *image_, vk::ImageLayout::eTransferDstOptimal, {copy_region});
 
@@ -203,6 +224,17 @@ void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size) {
     ctx.GraphicsQueue().waitIdle();
 
     staging_buffer.Shutdown(ctx);
+}
+
+void VkTexture::UpdateCubeFaceData(VkContext& ctx,
+                                   void const* data,
+                                   uint32_t size,
+                                   uint32_t face_index,
+                                   uint32_t mip_level) {
+    if (face_index >= 6) {
+        return;
+    }
+    UpdateData(ctx, data, size, mip_level, face_index);
 }
 
 } // namespace vkfw

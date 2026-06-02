@@ -107,13 +107,11 @@ bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
                                             RasterShaderCode const& shaders)
 {
     (void)shaders; // Unused for now but kept for signature compatibility
-      graph_.AddPass(std::make_unique<ComputePass>());
-      graph_.AddPass(std::make_unique<PBRPass>());
-      graph_.AddPass(std::make_unique<ShadowPass>());
-      graph_.AddPass(std::make_unique<DepthPrepass>());
-      graph_.AddPass(std::make_unique<UIPass>());
-      return true;
-
+    (void)ctx;
+    (void)swapchain;
+    (void)sync;
+    (void)mesh_id;
+    return true;
 }
 
 void Renderer::ShutdownRaster()
@@ -214,7 +212,7 @@ void Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
     SetVkContext(&ctx);
 
     sync.WaitForFrame(ctx, frame_index);
-    // LOGE( "RenderVulkan", "frame_index: %u", frame_index);
+    // LOGE( "frame_index: %u", frame_index);
     auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
     if (acq_result == vk::Result::eErrorOutOfDateKHR) {
         return;

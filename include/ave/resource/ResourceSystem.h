@@ -133,6 +133,10 @@ public:
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     void SetBinaryAssetLoader(BinaryAssetLoader loader) { binary_asset_loader_ = std::move(loader); }
     
+    bool LoadImagePixels(std::string const& path,
+                         std::vector<std::uint8_t>& out_pixels,
+                         uint32_t& out_width,
+                         uint32_t& out_height) const;
     uint32_t LoadTexture(std::string const& path);
     uint32_t LoadTextureFromData(std::string const& name, uint32_t width, uint32_t height, 
                                  void const* data, uint32_t mip_levels = 1);

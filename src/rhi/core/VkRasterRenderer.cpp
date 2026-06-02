@@ -7,8 +7,6 @@
 namespace ave::rhi {
 namespace {
 
-constexpr char kLogTag[] = "AveRuntime";
-
 } // namespace
 
 bool VulkanRasterRenderer::Initialize(vkfw::VkContext& ctx,
@@ -184,7 +182,7 @@ bool VulkanRasterRenderer::createVertexBuffer(vkfw::VkContext& ctx, std::span<Ra
           .usage = vkfw::BufferUsage::Vertex,
           .mappable = true,
       })) {
-    LOGE( kLogTag, "createVertexBuffer failed");
+    LOGE("VkRasterRenderer: createVertexBuffer failed");
     return false;
   }
 
@@ -197,7 +195,7 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
                                           RasterShaderCode const& shaders)
 {
   if (shaders.vertex.empty() || shaders.fragment.empty()) {
-    LOGE( kLogTag, "createPipeline failed: shader code is empty");
+    LOGE("VkRasterRenderer: createPipeline failed: shader code is empty");
     return false;
   }
 
@@ -208,7 +206,7 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
             .stage = vkfw::ShaderStage::Vertex,
             .entry_point = "main",
         })) {
-      LOGE( kLogTag, "createPipeline failed: vertex shader init");
+      LOGE("VkRasterRenderer: createPipeline failed: vertex shader init");
       return false;
     }
 
@@ -218,12 +216,12 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
             .stage = vkfw::ShaderStage::Fragment,
             .entry_point = "main",
         })) {
-      LOGE( kLogTag, "createPipeline failed: fragment shader init");
+      LOGE("VkRasterRenderer: createPipeline failed: fragment shader init");
       return false;
     }
 
     if (!pipeline_layout_.Init(ctx, {})) {
-      LOGE( kLogTag, "createPipeline failed: pipeline layout init");
+      LOGE("VkRasterRenderer: createPipeline failed: pipeline layout init");
       return false;
     }
 
@@ -282,13 +280,13 @@ bool VulkanRasterRenderer::createPipeline(vkfw::VkContext& ctx,
     pipeline_info.depth_stencil.depth_write_enable = false;
     pipeline_info.color_blend.attachments = {vkfw::PipelineColorBlendAttachment{}};
     if (!pipeline_.Init(ctx, pipeline_info)) {
-      LOGE( kLogTag, "createPipeline failed: pipeline init");
+      LOGE("VkRasterRenderer: createPipeline failed: pipeline init");
       pipeline_layout_.Shutdown(ctx);
       return false;
     }
     return true;
   } catch (std::exception const& e) {
-    LOGE( kLogTag, "createPipeline failed: %s", e.what());
+    LOGE("VkRasterRenderer: createPipeline failed: %s", e.what());
     return false;
   }
 }
@@ -317,12 +315,12 @@ bool VulkanRasterRenderer::createRenderTargets(vkfw::VkContext& ctx, vkfw::VkSwa
   render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
   if (!render_pass_.Init(ctx, render_pass_info)) {
-    LOGE( kLogTag, "createRenderTargets failed: render pass init");
+    LOGE("VkRasterRenderer: createRenderTargets failed: render pass init");
     return false;
   }
 
   if (!framebuffers_.Init(ctx, swapchain, render_pass_)) {
-    LOGE( kLogTag, "createRenderTargets failed: framebuffer init");
+    LOGE("VkRasterRenderer: createRenderTargets failed: framebuffer init");
     render_pass_.Shutdown(ctx);
     return false;
   }
@@ -337,7 +335,7 @@ bool VulkanRasterRenderer::createCommandPoolAndBuffers(vkfw::VkContext& ctx, vkf
           .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
           .count = sync.FramesInFlight(),
       })) {
-    LOGE( kLogTag, "createCommandPoolAndBuffers failed");
+    LOGE("VkRasterRenderer: createCommandPoolAndBuffers failed");
     return false;
   }
   return true;
