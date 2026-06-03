@@ -293,6 +293,50 @@ void VkContext::Shutdown()
   impl_->initialized = false;
 }
 
+#if defined(__ANDROID__)
+void VkContext::SetWindow(::ANativeWindow* window)
+{
+  impl_->window = window;
+  if (!impl_->initialized || impl_->instance == nullptr) {
+    return;
+  }
+
+  impl_->surface = nullptr;
+  if (window == nullptr) {
+    return;
+  }
+
+  VkAndroidSurfaceCreateInfoKHR createInfo{};
+  createInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+  createInfo.window = window;
+
+  VkSurfaceKHR raw_surface = VK_NULL_HANDLE;
+  VkResult res = vkCreateAndroidSurfaceKHR(*impl_->instance, &createInfo, nullptr, &raw_surface);
+  if (res != VK_SUCCESS) {
+    throw std::runtime_error("failed to recreate Android window surface!");
+  }
+  impl_->surface = vk::raii::SurfaceKHR(impl_->instance, raw_surface);
+}
+#else
+void VkContext::SetWindow(::GLFWwindow* window)
+{
+  impl_->window = window;
+  if (!impl_->initialized || impl_->instance == nullptr) {
+    return;
+  }
+
+  impl_->surface = nullptr;
+  if (window == nullptr) {
+    return;
+  }
+
+  VkSurfaceKHR raw_surface{};
+  if (glfwCreateWindowSurface(*impl_->instance, impl_->window, nullptr, &raw_surface) != VK_SUCCESS)
+    throw std::runtime_error("glfwCreateWindowSurface failed");
+  impl_->surface = vk::raii::SurfaceKHR{impl_->instance, raw_surface};
+}
+#endif
+
 bool VkContext::IsInitialized() const noexcept { return impl_->initialized; }
 
 vk::raii::Context& VkContext::Context() const { return impl_->context; }

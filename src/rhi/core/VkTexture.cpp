@@ -95,6 +95,7 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
     }
 
     image_ = std::make_unique<vk::raii::Image>(ctx.Device(), image_info);
+    image_handle_ = *image_;
 
     // Allocate memory
     auto memory_requirements = image_->getMemoryRequirements();
@@ -106,6 +107,7 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
     alloc_info.memoryTypeIndex = memory_type;
 
     memory_ = std::make_unique<vk::raii::DeviceMemory>(ctx.Device(), alloc_info);
+    memory_handle_ = *memory_;
     image_->bindMemory(*memory_, 0);
 
     // Create image view
@@ -125,6 +127,7 @@ bool VkTexture::Init(VkContext& ctx, TextureInfo const& info) {
     view_info.subresourceRange.layerCount = info.depth > 1 ? 1u : image_info.arrayLayers;
 
     image_view_ = std::make_unique<vk::raii::ImageView>(ctx.Device(), view_info);
+    image_view_handle_ = *image_view_;
 
     return true;
 }
@@ -133,6 +136,9 @@ void VkTexture::Shutdown(VkContext& ctx) {
     image_view_.reset();
     image_.reset();
     memory_.reset();
+    image_view_handle_ = nullptr;
+    image_handle_ = nullptr;
+    memory_handle_ = nullptr;
     extent_ = {};
     format_ = vk::Format::eUndefined;
 }

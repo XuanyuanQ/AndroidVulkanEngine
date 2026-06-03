@@ -70,6 +70,8 @@ extern CpuCubemapSource g_maskonaive_source;
 
 vk::Sampler GetCommonSampler(vkfw::VkContext& ctx);
 vk::Sampler GetShadowSampler(vkfw::VkContext& ctx);
+void ResetCommonSampler();
+void ResetShadowSampler();
 
 void EnsureFallbackWhiteTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture);
 void EnsureFallbackNormalTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture);

@@ -57,11 +57,11 @@ public:
     bool Init(VkContext& ctx, TextureInfo const& info);
     void Shutdown(VkContext& ctx);
 
-    bool IsInitialized() const noexcept { return image_ != nullptr; }
+    bool IsInitialized() const noexcept { return image_ != nullptr && image_view_ != nullptr && memory_ != nullptr; }
     
-    vk::Image Handle() const noexcept { return *image_; }
-    vk::ImageView View() const noexcept { return *image_view_; }
-    vk::DeviceMemory Memory() const noexcept { return *memory_; }
+    vk::Image Handle() const noexcept { return image_handle_; }
+    vk::ImageView View() const noexcept { return image_view_handle_; }
+    vk::DeviceMemory Memory() const noexcept { return memory_handle_; }
     vk::Format Format() const noexcept { return format_; }
     vk::Extent3D Extent() const noexcept { return extent_; }
     void UpdateData(VkContext& ctx,
@@ -79,6 +79,9 @@ private:
     std::unique_ptr<vk::raii::Image> image_;
     std::unique_ptr<vk::raii::ImageView> image_view_;
     std::unique_ptr<vk::raii::DeviceMemory> memory_;
+    vk::Image image_handle_ = nullptr;
+    vk::ImageView image_view_handle_ = nullptr;
+    vk::DeviceMemory memory_handle_ = nullptr;
     vk::Format format_ = vk::Format::eUndefined;
     vk::Extent3D extent_ = {};
     TextureUsage usage_ = TextureUsage::Sampled;

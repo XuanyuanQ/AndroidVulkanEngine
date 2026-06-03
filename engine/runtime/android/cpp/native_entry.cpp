@@ -395,6 +395,14 @@ Java_com_ave_engine_AveActivity_nativeClearSurface(JNIEnv*, jclass)
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetForeground(JNIEnv*, jclass, jboolean foreground)
+{
+    if (g_runtime) {
+        g_runtime->setForeground(foreground == JNI_TRUE);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeResize(JNIEnv*, jclass, jint width, jint height)
 {
     if (g_runtime) {

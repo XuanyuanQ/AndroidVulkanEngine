@@ -41,6 +41,7 @@ public:
     void destroy();
     void setSurface(ANativeWindow* window);
     void clearSurface();
+    void setForeground(bool foreground);
     void resize(int width, int height);
     bool onTouchEvent(float x, float y, int32_t action, int32_t input_width, int32_t input_height, int32_t input_rotation);
     void setObjectPosition(std::string const& object_id, float x, float y, float z);
@@ -70,7 +71,7 @@ private:
     void releaseWindow();
     void drawFrame();
 
-    void cleanupSurfaceResources();
+    void cleanupSurfaceResources(bool full_cleanup);
     void logProjectAsset() const;
     std::vector<uint32_t> readShaderAsset(char const* path) const;
     std::vector<std::uint8_t> readBinaryAsset(char const* path) const;
@@ -94,12 +95,15 @@ private:
     std::vector<ave::render::RasterColorVertex> vertices_{};
     uint32_t model_mesh_id_ = 0;
     bool use_frame_data_path_ = false;
+    bool app_initialized_ = false;
+    bool scene_loaded_ = false;
 
 private:
 
     // 线程控制变量
     std::thread m_render_thread;
     std::atomic<bool> m_running{false};
+    std::atomic<bool> m_foreground{true};
     
     // 保护 Surface 的互斥锁（因为 Java 线程会异步传进来 Surface）
     std::mutex m_surface_mutex;

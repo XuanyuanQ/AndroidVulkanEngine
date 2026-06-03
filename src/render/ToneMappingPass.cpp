@@ -2,6 +2,10 @@
 
 namespace ave::render {
 
+void ToneMappingPass::Reset(vkfw::VkContext* /*ctx*/)
+{
+}
+
 PassDataFilter ToneMappingPass::GetDataFilter() const
 {
     PassDataFilter filter{};

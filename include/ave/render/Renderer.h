@@ -57,6 +57,7 @@ public:
     bool InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                      vkfw::VkSwapchain& swapchain,
                                      vkfw::VkFrameSync& sync);
+    void ResetFrameGraphRuntimeState(vkfw::VkContext& ctx);
     void ShutdownFrameGraphBackend();
     FrameGraphRenderResult RenderFrameGraphFrame(core::FrameData const& frame,
                                                  vkfw::VkContext& ctx,

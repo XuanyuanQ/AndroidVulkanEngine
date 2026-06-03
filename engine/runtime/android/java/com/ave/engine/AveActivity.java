@@ -7,8 +7,10 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.util.Log;
 
 public class AveActivity extends Activity implements SurfaceHolder.Callback {
+    private static final String TAG = "AveActivity";
     private SurfaceView surfaceView;
     private boolean isResumed = false;
     private boolean surfaceAvailable = false;
@@ -46,12 +48,16 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     protected void onResume() {
         super.onResume();
         isResumed = true;
+        Log.i(TAG, "onResume -> setForeground(true), isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
+        nativeSetForeground(true);
         attachNativeSurfaceIfReady();
         pushSurfaceSizeIfReady();
     }
 
     @Override
     protected void onPause() {
+        Log.i(TAG, "onPause -> setForeground(false), isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
+        nativeSetForeground(false);
         detachNativeSurfaceIfAttached();
         isResumed = false;
         super.onPause();
@@ -60,11 +66,13 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
         surfaceAvailable = true;
+        Log.i(TAG, "surfaceCreated -> surfaceAvailable=true, isResumed=" + isResumed + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
         attachNativeSurfaceIfReady();
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        Log.i(TAG, "surfaceChanged -> " + width + "x" + height + ", isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
         attachNativeSurfaceIfReady();
         nativeResize(width, height);
     }
@@ -72,6 +80,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
         surfaceAvailable = false;
+        Log.i(TAG, "surfaceDestroyed -> surfaceAvailable=false, isResumed=" + isResumed + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
         detachNativeSurfaceIfAttached();
     }
 
@@ -246,6 +255,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
         nativeSetSurface(surface);
         nativeSurfaceAttached = true;
+        Log.i(TAG, "nativeSetSurface attached, isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
     private void detachNativeSurfaceIfAttached() {
@@ -254,6 +264,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         }
         nativeClearSurface();
         nativeSurfaceAttached = false;
+        Log.i(TAG, "nativeClearSurface detached, isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
     private void pushSurfaceSizeIfReady() {
@@ -271,6 +282,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeClearSurface();
+    private static native void nativeSetForeground(boolean foreground);
     private static native boolean nativeTouchEvent(float x, float y, int action, int inputWidth, int inputHeight, int inputRotation);
     private static native void nativeSetObjectPosition(String objectId, float x, float y, float z);
     private static native void nativeSetObjectRotation(String objectId, float x, float y, float z);

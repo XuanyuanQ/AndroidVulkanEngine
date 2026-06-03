@@ -4,6 +4,28 @@
 
 namespace ave::render {
 
+
+void PBRPass::Reset(vkfw::VkContext* ctx)
+{
+    frame_set_id_ = 0;
+    material_bindings_.clear();
+    fallback_material_id_ = 0;
+    if (ctx != nullptr) {
+        if (frame_ubo_.IsInitialized()) {
+            frame_ubo_.Shutdown(*ctx);
+        }
+        if (fallback_white_texture_.IsInitialized()) {
+            fallback_white_texture_.Shutdown(*ctx);
+        }
+        if (fallback_normal_texture_.IsInitialized()) {
+            fallback_normal_texture_.Shutdown(*ctx);
+        }
+        if (depth_stencil_.IsInitialized()) {
+            depth_stencil_.Shutdown(*ctx);
+        }
+    }
+}
+
 void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
                                     resource::ResourceSystem* resources,
                                     glm::vec4 const& clear_color,
@@ -179,20 +201,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
 
-        if (renderable->debug_name.find("inst_") != std::string::npos || renderable->debug_name.find("Sphere") != std::string::npos) {
-            static int log_counter = 0;
-            if (log_counter++ % 60 == 0) {
-                LOGI("[PBRPass DEBUG] Renderable name=%s, mesh=%s (handle=%u), mat=%s (handle=%u), pos=(%.2f, %.2f, %.2f), visible=%d",
-                     renderable->debug_name.c_str(),
-                     renderable->mesh_id.c_str(), renderable->mesh_handle,
-                     renderable->material_id.c_str(), renderable->material_handle,
-                     renderable->world[3][0], renderable->world[3][1], renderable->world[3][2],
-                     renderable->visible);
-            }
-        }
-
         if (false && culling_index < g_culling_visibility.size() && g_culling_visibility[culling_index] == 0) {
-            LOGI(" CullingSystem: Skip draw call (culled): %s", renderable->debug_name.c_str());
             continue;
         }
         auto const* material = renderable->material_handle != 0
@@ -211,7 +220,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             }
         }
         if (!material) {
-            LOGI("  skip material: %s", renderable->material_id.c_str());
             continue;
         }
 
@@ -219,13 +227,11 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             ? mesh_mgr.GetMesh(renderable->mesh_handle)
             : mesh_mgr.GetMeshByPath(renderable->mesh_id);
         if (!mesh) {
-            LOGI("  skip mesh: %s", renderable->mesh_id.c_str());
             continue;
         }
 
         auto const* shader = material->shader_id != 0 ? shader_mgr.GetShader(material->shader_id) : nullptr;
         if (!shader) {
-            LOGI("  skip shader for material: %s", material->name.c_str());
             continue;
         }
 
@@ -241,7 +247,6 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         uint32_t const pipeline_id =
             context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
         if (pipeline_id == 0) {
-            LOGI("  pipeline create failed: %s", renderable->debug_name.c_str());
             continue;
         }
 

@@ -5,6 +5,7 @@
 #include "VkDescriptor.hpp"
 #include "VkPipeline.hpp"
 #include "VkContext.hpp"
+#include "LogUtil.h"
 #include <cstddef>
 
 #include <cstddef>
@@ -677,10 +678,11 @@ bool DescriptorAllocator::UpdateUniformBuffer(uint32_t set_id,
 }
 
 bool DescriptorAllocator::UpdateImageSampler(uint32_t set_id,
-                            uint32_t binding,
-                            vk::Sampler sampler,
-                            vk::ImageView image_view,
-                            vk::ImageLayout image_layout){
+                                             uint32_t binding,
+                                             vk::Sampler sampler,
+                                             vk::ImageView image_view,
+                                             vk::ImageLayout image_layout)
+{
     if (!ctx_) {
         return false;
     }
@@ -690,34 +692,30 @@ bool DescriptorAllocator::UpdateImageSampler(uint32_t set_id,
         return false;
     }
 
-    // 1. 核心区别：Buffer 换成 ImageInfo
     vk::DescriptorImageInfo img_info{};
-    img_info.sampler = sampler;               // 传入的采样器
-    img_info.imageView = image_view;           // 传入的图片视图
-    img_info.imageLayout = image_layout;       // 通常是 vk::ImageLayout::eShaderReadOnlyOptimal
+    img_info.sampler = sampler;
+    img_info.imageView = image_view;
+    img_info.imageLayout = image_layout;
 
-    // 2. 配置写入结构体
     vk::WriteDescriptorSet write{};
     write.dstSet = *it->second;
     write.dstBinding = binding;
     write.dstArrayElement = 0;
     write.descriptorCount = 1;
-    
-    // 3. 核心区别：类型换成 eCombinedImageSampler
     write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    write.pImageInfo = &img_info;              // 注意：这里是 pImageInfo，而不是 pBufferInfo
+    write.pImageInfo = &img_info;
 
-    // 4. 提交给 Vulkan 设备更新
     ctx_->Device().updateDescriptorSets(write, {});
     return true;
 }
 
 bool DescriptorAllocator::UpdateImageSamplerArray(uint32_t set_id,
-                            uint32_t binding,
-                            uint32_t array_index,
-                            vk::Sampler sampler,
-                            vk::ImageView image_view,
-                            vk::ImageLayout image_layout){
+                                                  uint32_t binding,
+                                                  uint32_t array_index,
+                                                  vk::Sampler sampler,
+                                                  vk::ImageView image_view,
+                                                  vk::ImageLayout image_layout)
+{
     if (!ctx_) {
         return false;
     }
@@ -737,7 +735,6 @@ bool DescriptorAllocator::UpdateImageSamplerArray(uint32_t set_id,
     write.dstBinding = binding;
     write.dstArrayElement = array_index;
     write.descriptorCount = 1;
-    
     write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
     write.pImageInfo = &img_info;
 
@@ -746,10 +743,10 @@ bool DescriptorAllocator::UpdateImageSamplerArray(uint32_t set_id,
 }
 
 bool DescriptorAllocator::UpdateStorageBuffer(uint32_t set_id,
-                                             uint32_t binding,
-                                             vk::Buffer buffer,
-                                             vk::DeviceSize offset,
-                                             vk::DeviceSize range)
+                                              uint32_t binding,
+                                              vk::Buffer buffer,
+                                              vk::DeviceSize offset,
+                                              vk::DeviceSize range)
 {
     if (!ctx_) {
         return false;
@@ -779,6 +776,10 @@ bool DescriptorAllocator::UpdateStorageBuffer(uint32_t set_id,
 
 void DescriptorAllocator::Clear()
 {
+    if (ctx_ && pool_) {
+        pool_->Shutdown(*ctx_);
+    }
+    pool_.reset();
     free_sets_.clear();
     sets_.clear();
     next_set_id_ = 1;
@@ -823,3 +824,4 @@ void PipelineSystem::Clear()
 } 
 
 }// namespace ave::render
+

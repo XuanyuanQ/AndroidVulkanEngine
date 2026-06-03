@@ -4,6 +4,16 @@
 
 namespace ave::render {
 
+void ShadowPass::Reset(vkfw::VkContext* ctx)
+{
+    frame_set_id_ = 0;
+    shadow_map_initialized_ = false;
+    shadow_view_projection_ = glm::mat4{1.0f};
+    if (ctx != nullptr && shadow_map_.IsInitialized()) {
+        shadow_map_.Shutdown(*ctx);
+    }
+}
+
 void ShadowPass::Preload(RenderPassContext const& context)
 {
     if (context.resources == nullptr) {

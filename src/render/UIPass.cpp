@@ -4,6 +4,30 @@
 
 namespace ave::render {
 
+
+void UIPass::Reset(vkfw::VkContext* ctx)
+{
+    texture_descriptor_sets_.clear();
+    ui_shader_id_ = 0;
+    if (ctx != nullptr) {
+        if (ui_vertex_buffers_[0].IsInitialized()) {
+            ui_vertex_buffers_[0].Shutdown(*ctx);
+        }
+        if (ui_vertex_buffers_[1].IsInitialized()) {
+            ui_vertex_buffers_[1].Shutdown(*ctx);
+        }
+        if (ui_index_buffers_[0].IsInitialized()) {
+            ui_index_buffers_[0].Shutdown(*ctx);
+        }
+        if (ui_index_buffers_[1].IsInitialized()) {
+            ui_index_buffers_[1].Shutdown(*ctx);
+        }
+        if (fallback_white_texture_.IsInitialized()) {
+            fallback_white_texture_.Shutdown(*ctx);
+        }
+    }
+}
+
 PassDataFilter UIPass::GetDataFilter() const
 {
     PassDataFilter filter{};

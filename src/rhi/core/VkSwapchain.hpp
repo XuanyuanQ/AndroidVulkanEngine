@@ -35,7 +35,7 @@ public:
   uint32_t ImageCount() const noexcept { return static_cast<uint32_t>(images_.size()); }
 
   vk::Image Image(uint32_t index) const { return images_.at(index); }
-  vk::ImageView ImageView(uint32_t index) const { return *image_views_.at(index); }
+  vk::ImageView ImageView(uint32_t index) const noexcept { return image_view_handles_.at(index); }
 
   std::pair<vk::Result, uint32_t> AcquireNextImage(uint64_t timeout,
                                                    vk::Semaphore image_available,
@@ -57,6 +57,7 @@ private:
   vk::raii::SwapchainKHR swapchain_{nullptr};
   std::vector<vk::Image> images_{};
   std::vector<vk::raii::ImageView> image_views_{};
+  std::vector<vk::ImageView> image_view_handles_{};
   std::vector<bool> first_use_{};
 };
 

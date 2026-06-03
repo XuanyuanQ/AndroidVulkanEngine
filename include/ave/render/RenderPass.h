@@ -77,6 +77,9 @@ public:
 
     virtual std::string_view Name() const = 0;
 
+    // Reset runtime-owned Vulkan state while keeping the pass object alive.
+    virtual void Reset(vkfw::VkContext* ctx = nullptr) { (void)ctx; }
+
     // Optional preload hook for one-time resource warmup before the frame loop.
     virtual void Preload(RenderPassContext const& context) { (void)context; }
 

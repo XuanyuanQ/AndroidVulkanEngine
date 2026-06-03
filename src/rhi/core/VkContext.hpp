@@ -39,6 +39,11 @@ public:
 
   bool Init(ContextCreateInfo const& info);
   void Shutdown();
+  #if defined(__ANDROID__)
+  void SetWindow(::ANativeWindow* window);
+#else
+  void SetWindow(::GLFWwindow* window);
+#endif
 
   bool IsInitialized() const noexcept;
 

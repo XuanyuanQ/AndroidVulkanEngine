@@ -89,6 +89,7 @@ void VkSwapchain::Shutdown(VkContext& ctx)
 void VkSwapchain::CleanupSwapchain()
 {
   image_views_.clear();
+  image_view_handles_.clear();
   images_.clear();
   swapchain_ = nullptr;
 }
@@ -131,7 +132,9 @@ void VkSwapchain::CreateImageViews(VkContext& ctx)
 {
   auto& device = ctx.Device();
   image_views_.clear();
+  image_view_handles_.clear();
   image_views_.reserve(images_.size());
+  image_view_handles_.reserve(images_.size());
 
   vk::ImageViewCreateInfo ivci{};
   ivci.viewType = vk::ImageViewType::e2D;
@@ -145,6 +148,7 @@ void VkSwapchain::CreateImageViews(VkContext& ctx)
   for (auto img : images_) {
     ivci.image = img;
     image_views_.emplace_back(device, ivci);
+    image_view_handles_.push_back(*image_views_.back());
   }
 }
 

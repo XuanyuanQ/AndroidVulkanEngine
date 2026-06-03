@@ -187,6 +187,12 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                                       });
 }
 
+void Renderer::ResetFrameGraphRuntimeState(vkfw::VkContext& ctx)
+{
+    graph_.ResetRuntimeState(&ctx);
+    pipeline_system_.Clear();
+}
+
 void Renderer::ShutdownFrameGraphBackend()
 {
     if (impl_ != nullptr && vk_context_ != nullptr) {
@@ -214,9 +220,11 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
     sync.WaitForFrame(ctx, frame_index);
     auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
     if (acq_result == vk::Result::eErrorOutOfDateKHR) {
+        LOGW("RenderFrameGraphFrame acquire out-of-date");
         return FrameGraphRenderResult::SwapchainOutOfDate;
     }
     if (acq_result != vk::Result::eSuccess && acq_result != vk::Result::eSuboptimalKHR) {
+        LOGW("RenderFrameGraphFrame acquire skipped result=%d", static_cast<int>(acq_result));
         return FrameGraphRenderResult::Skipped;
     }
 

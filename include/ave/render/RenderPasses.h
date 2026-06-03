@@ -13,6 +13,7 @@ namespace ave::render {
 class DepthPrepass final : public RenderPass {
 public:
     std::string_view Name() const override { return "DepthPrepass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
@@ -28,6 +29,7 @@ private:
 class ShadowPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ShadowPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
@@ -44,6 +46,7 @@ private:
 class SkyboxPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "SkyboxPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
@@ -58,6 +61,7 @@ private:
 class PBRPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "PBRPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
@@ -85,6 +89,7 @@ private:
 class ComputePass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ComputePass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
@@ -97,6 +102,7 @@ private:
 class UIPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "UIPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
@@ -111,6 +117,7 @@ private:
 class ToneMappingPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ToneMappingPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 };

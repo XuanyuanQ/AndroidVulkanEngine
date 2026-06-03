@@ -4,6 +4,16 @@
 
 namespace ave::render {
 
+void DepthPrepass::Reset(vkfw::VkContext* ctx)
+{
+    frame_set_id_ = 0;
+    depth_texture_ready_ = false;
+    if (ctx != nullptr && depth_texture_.IsInitialized()) {
+        depth_texture_.Shutdown(*ctx);
+    }
+    depth_shader_id_ = 0;
+}
+
 void DepthPrepass::Preload(RenderPassContext const& context)
 {
     if (context.resources == nullptr) {
@@ -53,7 +63,6 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
             return;
         }
     }
-
     uint32_t const width = context.swapchain->Extent().width;
     uint32_t const height = context.swapchain->Extent().height;
     if (depth_texture_.IsInitialized()) {
@@ -72,7 +81,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
                                                 .format = vkfw::TextureFormat::D32_SFLOAT,
                                                 .usage = vkfw::TextureUsage::DepthStencilAttachment,
                                                 .mipmap = false,
-                                            })) {
+        })) {
             LOGE("DepthPrepass failed to create depth texture");
             return;
         }

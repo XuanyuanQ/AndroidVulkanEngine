@@ -4,6 +4,26 @@
 
 namespace ave::render {
 
+void ComputePass::Reset(vkfw::VkContext* ctx)
+{
+    descriptor_set_ids_[0] = 0;
+    descriptor_set_ids_[1] = 0;
+    if (ctx != nullptr) {
+        if (instances_buffers_[0].IsInitialized()) {
+            instances_buffers_[0].Shutdown(*ctx);
+        }
+        if (instances_buffers_[1].IsInitialized()) {
+            instances_buffers_[1].Shutdown(*ctx);
+        }
+        if (visibility_buffers_[0].IsInitialized()) {
+            visibility_buffers_[0].Shutdown(*ctx);
+        }
+        if (visibility_buffers_[1].IsInitialized()) {
+            visibility_buffers_[1].Shutdown(*ctx);
+        }
+    }
+}
+
 PassDataFilter ComputePass::GetDataFilter() const
 {
     PassDataFilter filter{};

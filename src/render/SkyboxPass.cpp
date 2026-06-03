@@ -4,6 +4,16 @@
 
 namespace ave::render {
 
+void SkyboxPass::Reset(vkfw::VkContext* ctx)
+{
+    frame_set_id_ = 0;
+    skybox_shader_id_ = 0;
+    skybox_mesh_id_ = 0;
+    if (ctx != nullptr && frame_ubo_.IsInitialized()) {
+        frame_ubo_.Shutdown(*ctx);
+    }
+}
+
 PassDataFilter SkyboxPass::GetDataFilter() const
 {
     PassDataFilter filter{};

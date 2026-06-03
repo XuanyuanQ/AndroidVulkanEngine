@@ -15,9 +15,21 @@ CpuCubemapSource g_maskonaive_source;
 
 namespace {
 
-vk::Sampler& CommonSamplerStorage(vkfw::VkContext& ctx)
+std::unique_ptr<vk::raii::Sampler>& CommonSamplerObject()
 {
     static std::unique_ptr<vk::raii::Sampler> sampler;
+    return sampler;
+}
+
+vk::Sampler& CommonSamplerHandle()
+{
+    static vk::Sampler handle{};
+    return handle;
+}
+
+vk::Sampler& CommonSamplerStorage(vkfw::VkContext& ctx)
+{
+    auto& sampler = CommonSamplerObject();
     if (!sampler) {
         vk::SamplerCreateInfo create_info{};
         create_info.magFilter = vk::Filter::eLinear;
@@ -29,14 +41,33 @@ vk::Sampler& CommonSamplerStorage(vkfw::VkContext& ctx)
         create_info.maxLod = VK_LOD_CLAMP_NONE;
         sampler = std::make_unique<vk::raii::Sampler>(ctx.Device(), create_info);
     }
-    static vk::Sampler handle{};
+    auto& handle = CommonSamplerHandle();
     handle = **sampler;
+    return handle;
+}
+
+void ResetCommonSamplerStorage()
+{
+    auto& sampler = CommonSamplerObject();
+    sampler.reset();
+    CommonSamplerHandle() = nullptr;
+}
+
+std::unique_ptr<vk::raii::Sampler>& ShadowSamplerObject()
+{
+    static std::unique_ptr<vk::raii::Sampler> sampler;
+    return sampler;
+}
+
+vk::Sampler& ShadowSamplerHandle()
+{
+    static vk::Sampler handle{};
     return handle;
 }
 
 vk::Sampler& ShadowSamplerStorage(vkfw::VkContext& ctx)
 {
-    static std::unique_ptr<vk::raii::Sampler> sampler;
+    auto& sampler = ShadowSamplerObject();
     if (!sampler) {
         vk::SamplerCreateInfo create_info{};
         create_info.magFilter = vk::Filter::eLinear;
@@ -51,9 +82,16 @@ vk::Sampler& ShadowSamplerStorage(vkfw::VkContext& ctx)
         create_info.compareOp = vk::CompareOp::eLessOrEqual;
         sampler = std::make_unique<vk::raii::Sampler>(ctx.Device(), create_info);
     }
-    static vk::Sampler handle{};
+    auto& handle = ShadowSamplerHandle();
     handle = **sampler;
     return handle;
+}
+
+void ResetShadowSamplerStorage()
+{
+    auto& sampler = ShadowSamplerObject();
+    sampler.reset();
+    ShadowSamplerHandle() = nullptr;
 }
 
 glm::vec3 NormalizeSafe(glm::vec3 value, glm::vec3 fallback = glm::vec3{0.0f, 1.0f, 0.0f})
@@ -419,6 +457,16 @@ vk::Sampler GetShadowSampler(vkfw::VkContext& ctx)
     return ShadowSamplerStorage(ctx);
 }
 
+void ResetCommonSampler()
+{
+    ResetCommonSamplerStorage();
+}
+
+void ResetShadowSampler()
+{
+    ResetShadowSamplerStorage();
+}
+
 void EnsureFallbackWhiteTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture)
 {
     if (texture.IsInitialized()) {
@@ -724,8 +772,9 @@ bool BeginDepthOnlyRendering(RenderPassContext const& context,
     bool const core_dynamic_rendering =
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
     if (core_dynamic_rendering) {
+        vk::ImageView const raw_depth_view = depth_texture.View();
         vk::RenderingAttachmentInfo depth_attachment{};
-        depth_attachment.imageView = depth_texture.View();
+        depth_attachment.imageView = raw_depth_view;
         depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
         depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
         depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
@@ -737,8 +786,9 @@ bool BeginDepthOnlyRendering(RenderPassContext const& context,
         rendering_info.pDepthAttachment = &depth_attachment;
         context.command_buffer.beginRendering(rendering_info);
     } else {
+        vk::ImageView const raw_depth_view = depth_texture.View();
         vk::RenderingAttachmentInfoKHR depth_attachment{};
-        depth_attachment.imageView = depth_texture.View();
+        depth_attachment.imageView = raw_depth_view;
         depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
         depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
         depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
@@ -936,7 +986,6 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
     if (resources != nullptr && !g_maskonaive_source.ready) {
         auto& texture_mgr = resources->GetTextureManager();
         if (LoadMaskonaiveCubemapSource(texture_mgr, g_maskonaive_source)) {
-            LOGI("Loaded Maskonaive2 cubemap source");
         } else {
             LOGW("Falling back to procedural skybox/environment");
         }
@@ -1035,17 +1084,17 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
         UploadCubemapFace(ctx, g_shared_environment_maps.environment_cubemap, env_pixels, 0, face);
     }
 
-    for (uint32_t face = 0; face < 6; ++face) {
-        std::vector<glm::vec4> irradiance_pixels(static_cast<size_t>(kIrradianceSize) * kIrradianceSize);
+        for (uint32_t face = 0; face < 6; ++face) {
+            std::vector<glm::vec4> irradiance_pixels(static_cast<size_t>(kIrradianceSize) * kIrradianceSize);
         for (uint32_t y = 0; y < kIrradianceSize; ++y) {
             for (uint32_t x = 0; x < kIrradianceSize; ++x) {
                 float const u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(kIrradianceSize)) - 1.0f;
                 float const v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(kIrradianceSize)) - 1.0f;
                 glm::vec3 const normal = FaceDirection(face, u, v);
                 glm::vec3 const color = IntegrateDiffuseIrradiance(normal, source, clear_rgb, ambient_color);
-                irradiance_pixels[static_cast<size_t>(y) * kIrradianceSize + x] = glm::vec4{color, 1.0f};
+                    irradiance_pixels[static_cast<size_t>(y) * kIrradianceSize + x] = glm::vec4{color, 1.0f};
+                }
             }
-        }
         UploadCubemapFace(ctx, g_shared_environment_maps.irradiance_cubemap, irradiance_pixels, 0, face);
     }
 
