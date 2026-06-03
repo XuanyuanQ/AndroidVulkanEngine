@@ -27,8 +27,8 @@ public:
     uint32_t AddPointLight(float x, float y, float z, float intensity);
     void BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const;
     void RebuildFromScene(project::SceneData const& scene,
-                          resource::ResourceSystem const& resources,
-                          render::MaterialSystem const& materials,
+                          resource::ResourceSystem& resources,
+                          render::MaterialSystem& materials,
                           float aspect_ratio = 16.0f / 9.0f);
     void SetAspectRatio(float aspect_ratio);
     bool SetObjectTransform(std::string const& object_id, project::TransformData const& transform);

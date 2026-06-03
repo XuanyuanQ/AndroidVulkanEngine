@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-import re
 from pathlib import Path
 
 
@@ -137,23 +136,6 @@ def compile_shaders(project_dir: Path, output_dir: Path) -> None:
     spv_dir = output_dir / "app" / "src" / "main" / "assets" / "compiled_shaders"
     spv_dir.mkdir(parents=True, exist_ok=True)
 
-    wrapper_template_path = ENGINE_ROOT / "engine" / "shaders" / "forward_fragment_wrapper.frag"
-    wrapper_template = wrapper_template_path.read_text(encoding="utf-8")
-
-    def extract_forward_user_fragment(user_source: str) -> str:
-        match = re.search(r"void\s+AveUserFragmentMain\s*\(\s*\)\s*\{(?P<body>[\s\S]*)\}\s*$", user_source)
-        if match is None:
-            raise RuntimeError("Forward material fragment shaders must define void AveUserFragmentMain().")
-        body = match.group("body")
-        body = re.sub(r"\boutColor\b", "aveUserColor", body)
-        return "void AveUserFragmentMain() {\n" + body + "\n}\n"
-
-    def wrap_forward_fragment_shader(user_source: str) -> str:
-        return wrapper_template.replace("// __AVE_USER_FRAGMENT__", extract_forward_user_fragment(user_source))
-
-    generated_dir = output_dir / "app" / "build" / "generated" / "ave_wrapped_shaders"
-    generated_dir.mkdir(parents=True, exist_ok=True)
-
     for shader in shader_dir.iterdir():
         if shader.suffix not in [".vert", ".frag", ".comp"]:
             continue
@@ -163,14 +145,7 @@ def compile_shaders(project_dir: Path, output_dir: Path) -> None:
             print(f"[warn] glslc not found, shader left as source: {shader.name}")
             continue
 
-        source_path = shader
-        if shader.suffix == ".frag":
-            source_text = shader.read_text(encoding="utf-8")
-            if "AveUserFragmentMain" in source_text:
-                source_path = generated_dir / shader.name
-                source_path.write_text(wrap_forward_fragment_shader(source_text), encoding="utf-8")
-
-        subprocess.run([glslc, str(source_path), "-o", str(out)], check=True)
+        subprocess.run([glslc, str(shader), "-o", str(out)], check=True)
 
 
 def run_gradle(output_dir: Path) -> None:

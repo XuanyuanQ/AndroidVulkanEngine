@@ -1,0 +1,8 @@
+<Material name="TreeStemMaterial" shader="solid_triangle">
+    <Color name="baseColor" value="1,1,1,1" />
+    <Float name="metallic" value="0.0" />
+    <Float name="roughness" value="0.88" />
+    <Float name="normalScale" value="1.0" />
+    <Texture name="baseColor" path="meshes/47-mapletree/maple_bark.png" />
+    <Texture name="normal" path="meshes/47-mapletree/maple_bark_normal.png" />
+</Material>

@@ -1197,6 +1197,8 @@ bool MaterialManager::SetTexture(uint32_t material_id, std::string const& slot, 
         it->second.normal_texture = texture_id;
     } else if (slot == "metallic_roughness") {
         it->second.metallic_roughness_texture = texture_id;
+    } else if (slot == "alpha_mask") {
+        it->second.alpha_mask_texture = texture_id;
     }
     
     return true;

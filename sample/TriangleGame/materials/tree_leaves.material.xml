@@ -1,0 +1,9 @@
+<Material name="TreeLeavesMaterial" shader="tree_cutout">
+    <Color name="baseColor" value="1,1,1,1" />
+    <Float name="metallic" value="0.0" />
+    <Float name="roughness" value="0.72" />
+    <Float name="normalScale" value="0.8" />
+    <Texture name="baseColor" path="meshes/47-mapletree/maple_leaf.png" />
+    <Texture name="normal" path="meshes/47-mapletree/maple_leaf_normal.png" />
+    <Texture name="alphaMask" path="meshes/47-mapletree/maple_leaf_Mask.png" />
+</Material>

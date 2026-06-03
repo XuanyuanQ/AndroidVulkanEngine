@@ -47,6 +47,7 @@ struct Material {
     std::string base_color_texture_path;
     std::string normal_texture_path;
     std::string metallic_roughness_texture_path;
+    std::string alpha_mask_texture_path;
     bool is_pbr = true;
 };
 

@@ -75,6 +75,7 @@ struct MaterialRuntime {
     uint32_t base_color_texture = 0;
     uint32_t normal_texture = 0;
     uint32_t metallic_roughness_texture = 0;
+    uint32_t alpha_mask_texture = 0;
     
     // PBR parameters
     glm::vec4 base_color{0.5f, 0.5f, 0.5f, 1.0f};

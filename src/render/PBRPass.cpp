@@ -86,7 +86,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
         clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
         bool const clear_depth = depth_target == &depth_stencil_;
-        began_rendering = BeginSwapchainRendering(context, clear, true, depth_target, clear_depth);
+        began_rendering = BeginSwapchainRendering(context, clear, false, depth_target, clear_depth);
         if (!began_rendering) {
             LOGE("PBRPass failed to begin rendering");
             return;
@@ -270,12 +270,20 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                                               vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             if (auto const* mr_texture =
-                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->metallic_roughness_texture, fallback_white_texture_)) {
+                     ResolveTextureOrFallback(*context.vk, texture_mgr, material->metallic_roughness_texture, fallback_white_texture_)) {
                 desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
-                                              3,
-                                              sampler,
-                                              mr_texture->View(),
-                                              vk::ImageLayout::eShaderReadOnlyOptimal);
+                                                3,
+                                                sampler,
+                                                mr_texture->View(),
+                                                vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
+            if (auto const* alpha_mask_texture =
+                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->alpha_mask_texture, fallback_white_texture_)) {
+                desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
+                                                4,
+                                                sampler,
+                                                alpha_mask_texture->View(),
+                                                vk::ImageLayout::eShaderReadOnlyOptimal);
             }
         }
 

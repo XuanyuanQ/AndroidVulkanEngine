@@ -188,6 +188,13 @@ struct TriangleRendererData {
 struct MeshRendererData {
     std::string mesh;
     std::string material;
+    std::string base_color_texture;
+    std::string normal_texture;
+    std::string metallic_roughness_texture;
+    glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    float metallic = 0.0f;
+    float roughness = 0.5f;
+    float normal_scale = 1.0f;
     std::string topology{"triangleList"};
     std::vector<VertexData> vertices;
     std::vector<uint32_t> indices;

@@ -268,6 +268,22 @@ GameObjectData ParseGameObjectData(ElementMatch const& element, std::string cons
         }
         mesh.mesh = Attribute(tag_text, "mesh");
         mesh.material = Attribute(tag_text, "material");
+        mesh.base_color_texture = Attribute(tag_text, "baseColorTexture");
+        if (mesh.base_color_texture.empty()) {
+            mesh.base_color_texture = Attribute(tag_text, "base_color_texture");
+        }
+        mesh.normal_texture = Attribute(tag_text, "normalTexture");
+        if (mesh.normal_texture.empty()) {
+            mesh.normal_texture = Attribute(tag_text, "normal_texture");
+        }
+        mesh.metallic_roughness_texture = Attribute(tag_text, "metallicRoughnessTexture");
+        if (mesh.metallic_roughness_texture.empty()) {
+            mesh.metallic_roughness_texture = Attribute(tag_text, "metallic_roughness_texture");
+        }
+        mesh.base_color = Float4(Attribute(tag_text, "baseColor"), mesh.base_color);
+        mesh.metallic = std::stof(Attribute(tag_text, "metallic", std::to_string(mesh.metallic)));
+        mesh.roughness = std::stof(Attribute(tag_text, "roughness", std::to_string(mesh.roughness)));
+        mesh.normal_scale = std::stof(Attribute(tag_text, "normalScale", std::to_string(mesh.normal_scale)));
         mesh.topology = Attribute(tag_text, "topology", mesh.topology);
 
         std::string cs = Attribute(tag_text, "casts_shadow");
@@ -811,6 +827,11 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
             doc.metallic_roughness_texture = Attribute(texture_tag, "path");
             if (doc.metallic_roughness_texture.empty()) {
                 doc.metallic_roughness_texture = Attribute(texture_tag, "texture");
+            }
+        } else if (name == "alphaMask" || name == "alpha_mask") {
+            doc.alpha_mask_texture = Attribute(texture_tag, "path");
+            if (doc.alpha_mask_texture.empty()) {
+                doc.alpha_mask_texture = Attribute(texture_tag, "texture");
             }
         }
     }

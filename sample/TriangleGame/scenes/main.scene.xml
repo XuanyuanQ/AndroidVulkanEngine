@@ -1,5 +1,5 @@
 <Scene name="TriangleScene">
-    <Environment clearColor="0.36,0.58,0.88,1" ambientColor="0.08,0.10,0.14" />
+    <Environment clearColor="0.00,0.00,0.00,0.00" ambientColor="0.00,0.00,0.00,0.00" />
 
     <GameObject id="MainCamera" name="Main Camera">
         <Transform position="0,2,8" rotation="0,-12,0" scale="1,1,1" />
@@ -15,10 +15,39 @@
         
         <MeshRenderer 
             mesh="meshes/viking_room.obj" 
-            material="materials/triangle.material.xml"
+            baseColorTexture="textures/viking_room.png"
+            baseColor="1,1,1,1"
+            metallic="0.0"
+            roughness="0.65"
+            normalScale="1.0"
             visible="true"
             casts_shadow="true"
             receives_shadow="true"/>
+    </GameObject>
+    
+    <GameObject id="Tree" name="Tree">
+        <Transform position="0,0.0,0" rotation="90,0,0" scale="2,2,2" />
+        <GameObject id="tree_stem" name="tree stem">
+            <Transform position="0.0,0,0" rotation="0,0,0" scale="1,1,1" />
+            
+            <MeshRenderer 
+                mesh="meshes/47-mapletree/MapleTreeStem.obj" 
+                material="materials/tree_stem.material.xml"
+                visible="true"
+                casts_shadow="true"
+                receives_shadow="true"/>
+        </GameObject>
+
+        <GameObject id="tree_leaves" name="tree leaves">
+            <Transform position="0.0,0,0" rotation="0,0,0" scale="1,1,1" />
+            
+            <MeshRenderer 
+                mesh="meshes/47-mapletree/MapleTreeLeaves.obj" 
+                material="materials/tree_leaves.material.xml"
+                visible="true"
+                casts_shadow="true"
+                receives_shadow="true"/>
+        </GameObject>
     </GameObject>
 
     <GameObject id="Ground" name="Ground">

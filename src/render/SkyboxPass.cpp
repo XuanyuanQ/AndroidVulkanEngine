@@ -65,12 +65,12 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
                                                          : glm::vec3{0.04f, 0.04f, 0.045f});
 
     vk::ClearValue clear{};
-    clear.color.float32[0] = 0.0f;
-    clear.color.float32[1] = 0.0f;
-    clear.color.float32[2] = 0.0f;
-    clear.color.float32[3] = 1.0f;
+    clear.color.float32[0] = context.frame != nullptr ? context.frame->environment.clear_color.x : 0.03f;
+    clear.color.float32[1] = context.frame != nullptr ? context.frame->environment.clear_color.y : 0.04f;
+    clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
+    clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
 
-    if (!BeginSwapchainRendering(context, clear, false, context.current_depth_texture, false)) {
+    if (!BeginSwapchainRendering(context, clear, true, nullptr, false)) {
         LOGE("SkyboxPass failed to begin rendering");
         return;
     }
@@ -115,7 +115,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     PipelineKey key = MakePipelineKey(shader->id, *mesh);
     key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
     key.render_state_id = 3;
-    key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
+    key.depth_format = 0;
     key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
     key.viewport_width = context.swapchain->Extent().width;
     key.viewport_height = context.swapchain->Extent().height;

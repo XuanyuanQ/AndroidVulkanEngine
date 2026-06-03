@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -77,6 +78,16 @@ void Deduplicate(std::vector<std::string>& values)
 {
     std::sort(values.begin(), values.end());
     values.erase(std::unique(values.begin(), values.end()), values.end());
+}
+
+std::string ResolveSceneAssetPath(std::string const& asset_text)
+{
+    if (asset_text.empty()) {
+        return {};
+    }
+
+    std::filesystem::path asset_path = asset_text;
+    return asset_path.lexically_normal().generic_string();
 }
 
 
@@ -545,8 +556,8 @@ bool SceneWorld::GetObjectColor(std::string const& object_id, glm::vec4& out_col
 }
 
 void SceneWorld::RebuildFromScene(project::SceneData const& scene,
-                                  resource::ResourceSystem const& resources,
-                                  render::MaterialSystem const& materials,
+                                  resource::ResourceSystem& resources,
+                                  render::MaterialSystem& materials,
                                   float aspect_ratio)
 {
     scene_ = scene;
@@ -589,17 +600,50 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             renderable.object_id = object.id;
             renderable.debug_name = object.name;
             renderable.mesh_id = mesh.mesh;
-            renderable.material_id = mesh.material;
             if (!mesh.mesh.empty()) {
                 if (auto const* mesh_runtime = resources.GetMeshManager().GetMeshByPath(mesh.mesh)) {
                     renderable.mesh_handle = mesh_runtime->id;
                 }
             }
             if (!mesh.material.empty()) {
+                renderable.material_id = mesh.material;
                 if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(mesh.material)) {
                     renderable.material_handle = gpu_material->id;
                 } else if (auto const* material = materials.GetMaterial(mesh.material)) {
                     renderable.material_handle = material->id;
+                }
+            } else {
+                bool const has_texture_overrides =
+                    !mesh.base_color_texture.empty() ||
+                    !mesh.normal_texture.empty() ||
+                    !mesh.metallic_roughness_texture.empty();
+                bool const has_param_overrides =
+                    std::abs(mesh.base_color.r - 1.0f) > 0.0001f ||
+                    std::abs(mesh.base_color.g - 1.0f) > 0.0001f ||
+                    std::abs(mesh.base_color.b - 1.0f) > 0.0001f ||
+                    std::abs(mesh.base_color.a - 1.0f) > 0.0001f ||
+                    std::abs(mesh.metallic - 0.0f) > 0.0001f ||
+                    std::abs(mesh.roughness - 0.5f) > 0.0001f ||
+                    std::abs(mesh.normal_scale - 1.0f) > 0.0001f;
+
+                render::Material logical_mat{};
+                logical_mat.name = (has_texture_overrides || has_param_overrides)
+                    ? "__default/pbr/" + object.id
+                    : "__default/pbr_material__";
+                logical_mat.shader_name = "solid_triangle";
+                logical_mat.params.base_color = mesh.base_color;
+                logical_mat.params.metallic = mesh.metallic;
+                logical_mat.params.roughness = mesh.roughness;
+                logical_mat.params.normal_scale = mesh.normal_scale;
+                logical_mat.base_color_texture_path = ResolveSceneAssetPath(mesh.base_color_texture);
+                logical_mat.normal_texture_path = ResolveSceneAssetPath(mesh.normal_texture);
+                logical_mat.metallic_roughness_texture_path =
+                    ResolveSceneAssetPath(mesh.metallic_roughness_texture);
+
+                renderable.material_id = logical_mat.name;
+                materials.CreateMaterial(logical_mat);
+                if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(logical_mat.name)) {
+                    renderable.material_handle = gpu_material->id;
                 }
             }
             renderable.index_count = static_cast<uint32_t>(mesh.indices.size());

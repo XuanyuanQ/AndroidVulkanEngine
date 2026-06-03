@@ -18,6 +18,7 @@ struct MaterialDocument {
     std::string base_color_texture;
     std::string normal_texture;
     std::string metallic_roughness_texture;
+    std::string alpha_mask_texture;
     float metallic = 0.0f;
     float roughness = 0.5f;
     float normal_scale = 1.0f;

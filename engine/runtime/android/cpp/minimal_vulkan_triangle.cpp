@@ -490,8 +490,8 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         renderer_.Graph().AddPass(std::make_unique<ave::render::ShadowPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::ComputePass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::DepthPrepass>());
-        renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
     }
     if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {

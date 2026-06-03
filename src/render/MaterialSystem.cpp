@@ -72,6 +72,7 @@ uint32_t MaterialSystem::LoadMaterial(std::string const& path)
     logical_mat.base_color_texture_path = resolve_texture_path(mat_doc.base_color_texture);
     logical_mat.normal_texture_path = resolve_texture_path(mat_doc.normal_texture);
     logical_mat.metallic_roughness_texture_path = resolve_texture_path(mat_doc.metallic_roughness_texture);
+    logical_mat.alpha_mask_texture_path = resolve_texture_path(mat_doc.alpha_mask_texture);
     logical_mat.params.metallic = mat_doc.metallic;
     logical_mat.params.roughness = mat_doc.roughness;
     logical_mat.params.normal_scale = mat_doc.normal_scale;
@@ -313,6 +314,22 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
         }
     } else {
         gpu_mat_mgr.SetTexture(gpu_mat_id, "metallic_roughness", 0);
+    }
+
+    if (!logical_mat.alpha_mask_texture_path.empty()) {
+        auto& texture_mgr = resource_system_->GetTextureManager();
+        uint32_t texture_id = 0;
+        if (auto const* texture = texture_mgr.GetTextureByPath(logical_mat.alpha_mask_texture_path)) {
+            texture_id = texture->id;
+        } else {
+            texture_id = texture_mgr.LoadTexture(logical_mat.alpha_mask_texture_path);
+        }
+
+        if (texture_id != 0) {
+            gpu_mat_mgr.SetTexture(gpu_mat_id, "alpha_mask", texture_id);
+        }
+    } else {
+        gpu_mat_mgr.SetTexture(gpu_mat_id, "alpha_mask", 0);
     }
 }
 
