@@ -4,6 +4,18 @@
 
 namespace ave::render {
 
+void ShadowPass::Preload(RenderPassContext const& context)
+{
+    if (context.resources == nullptr) {
+        return;
+    }
+
+    auto& shader_mgr = context.resources->GetShaderManager();
+    if (shadow_shader_id_ == 0) {
+        shadow_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
+    }
+}
+
 PassDataFilter ShadowPass::GetDataFilter() const
 {
     PassDataFilter filter{};

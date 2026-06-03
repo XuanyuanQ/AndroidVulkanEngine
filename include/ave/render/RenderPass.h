@@ -77,6 +77,9 @@ public:
 
     virtual std::string_view Name() const = 0;
 
+    // Optional preload hook for one-time resource warmup before the frame loop.
+    virtual void Preload(RenderPassContext const& context) { (void)context; }
+
     // Default filter for this pass. FrameGraph may override per-node.
     virtual PassDataFilter GetDataFilter() const = 0;
 

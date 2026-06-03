@@ -12,6 +12,20 @@ void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
     detail::EnsureSharedEnvironmentMaps(ctx, resources, clear_color, ambient_color);
 }
 
+void PBRPass::Preload(RenderPassContext const& context)
+{
+    if (context.vk == nullptr || context.resources == nullptr || context.frame == nullptr) {
+        return;
+    }
+
+    detail::EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
+    detail::EnsureFallbackNormalTexture(*context.vk, fallback_normal_texture_);
+
+    glm::vec4 const clear_color = context.frame->environment.clear_color;
+    glm::vec3 const ambient_color = context.frame->environment.ambient_color;
+    EnsureEnvironmentMaps(*context.vk, context.resources, clear_color, ambient_color);
+}
+
 PassDataFilter PBRPass::GetDataFilter() const
 {
     PassDataFilter filter{};

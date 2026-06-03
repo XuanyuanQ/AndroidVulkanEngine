@@ -21,6 +21,20 @@ void FrameGraph::AddPass(std::unique_ptr<RenderPass> pass, PassDataFilter const&
     passes_.push_back(std::move(node));
 }
 
+void FrameGraph::Preload(RenderPassContext const& context)
+{
+    if (context.frame == nullptr) {
+        return;
+    }
+
+    for (auto& node : passes_) {
+        if (!node.pass) {
+            continue;
+        }
+        node.pass->Preload(context);
+    }
+}
+
 void FrameGraph::Execute(RenderPassContext const& context)
 {
     if (context.frame == nullptr) {

@@ -12,6 +12,23 @@ PassDataFilter SkyboxPass::GetDataFilter() const
     return filter;
 }
 
+void SkyboxPass::Preload(RenderPassContext const& context)
+{
+    if (context.resources == nullptr) {
+        return;
+    }
+
+    auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& shader_mgr = context.resources->GetShaderManager();
+
+    if (skybox_shader_id_ == 0) {
+        skybox_shader_id_ = shader_mgr.LoadShader("compiled_shaders/skybox");
+    }
+    if (skybox_mesh_id_ == 0) {
+        skybox_mesh_id_ = mesh_mgr.LoadMesh("Cube");
+    }
+}
+
 void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
     using namespace detail;

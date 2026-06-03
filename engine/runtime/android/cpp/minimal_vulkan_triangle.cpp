@@ -4,6 +4,7 @@
 
 #include "ave/project/XmlSceneLoader.h"
 #include "ave/render/RenderPasses.h"
+#include "ave/render/RenderPassCommon.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/MaterialSystem.h"
 
@@ -594,6 +595,21 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
     if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
         LOGE("Failed to initialize FrameGraph backend.");
         return false;
+    }
+
+    ave::render::detail::EnsureSharedEnvironmentMaps(
+        ctx_,
+        &renderer_.GetResourceSystem(),
+        frame_data_.environment.clear_color,
+        frame_data_.environment.ambient_color);
+
+    {
+        ave::render::RenderPassContext preload_context{};
+        preload_context.frame = &frame_data_;
+        preload_context.resources = &renderer_.GetResourceSystem();
+        preload_context.pipelines = &renderer_.GetPipelineSystem();
+        preload_context.vk = &ctx_;
+        renderer_.Graph().Preload(preload_context);
     }
 
     sync_frame_index_ = 0;

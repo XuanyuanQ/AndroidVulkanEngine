@@ -768,8 +768,8 @@ void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame
 
 std::string SceneWorld::InstantiatePrefab(project::PrefabDocument const& prefab,
                                           std::string const& parent_id,
-                                          resource::ResourceSystem const& resources,
-                                          render::MaterialSystem const& materials)
+                                          resource::ResourceSystem& resources,
+                                          render::MaterialSystem& materials)
 {
     std::string const suffix = "_inst_" + std::to_string(++prefab_instance_counter_);
     std::unordered_map<std::string, std::string> id_map;

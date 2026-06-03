@@ -13,6 +13,7 @@ namespace ave::render {
 class DepthPrepass final : public RenderPass {
 public:
     std::string_view Name() const override { return "DepthPrepass"; }
+    void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
@@ -27,6 +28,7 @@ private:
 class ShadowPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ShadowPass"; }
+    void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
@@ -42,6 +44,7 @@ private:
 class SkyboxPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "SkyboxPass"; }
+    void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
@@ -55,6 +58,7 @@ private:
 class PBRPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "PBRPass"; }
+    void Preload(RenderPassContext const& context) override;
     PassDataFilter GetDataFilter() const override;
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 

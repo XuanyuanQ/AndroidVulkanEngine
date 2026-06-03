@@ -4,6 +4,18 @@
 
 namespace ave::render {
 
+void DepthPrepass::Preload(RenderPassContext const& context)
+{
+    if (context.resources == nullptr) {
+        return;
+    }
+
+    auto& shader_mgr = context.resources->GetShaderManager();
+    if (depth_shader_id_ == 0) {
+        depth_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
+    }
+}
+
 PassDataFilter DepthPrepass::GetDataFilter() const
 {
     PassDataFilter filter{};
