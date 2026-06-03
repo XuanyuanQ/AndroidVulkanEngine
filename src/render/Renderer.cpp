@@ -21,6 +21,7 @@ public:
     vkfw::VkFramebufferSet framegraph_framebuffers{};
     vkfw::VkRenderPass framegraph_load_render_pass{};
     vkfw::VkFramebufferSet framegraph_load_framebuffers{};
+    vkfw::VkTexture depth_texture{};
 };
 
 Renderer::Renderer()
@@ -134,6 +135,21 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
     SetVkContext(&ctx);
 
     if (!ctx.SupportsDynamicRendering()) {
+        vk::Extent2D const extent = swapchain.Extent();
+        if (impl_->depth_texture.IsInitialized()) {
+            impl_->depth_texture.Shutdown(ctx);
+        }
+        if (!impl_->depth_texture.Init(ctx, vkfw::TextureInfo{
+                                                .width = extent.width,
+                                                .height = extent.height,
+                                                .mip_levels = 1,
+                                                .format = vkfw::TextureFormat::D32_SFLOAT,
+                                                .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                .mipmap = false,
+                                            })) {
+            return false;
+        }
+
         vkfw::RenderPassAttachment color_attachment{};
         color_attachment.binding = 0;
         color_attachment.type = vkfw::RenderPassAttachmentType::Color;
@@ -144,24 +160,41 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         color_attachment.initial_layout = vk::ImageLayout::eColorAttachmentOptimal;
         color_attachment.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
+        vkfw::RenderPassAttachment depth_attachment{};
+        depth_attachment.binding = 1;
+        depth_attachment.type = vkfw::RenderPassAttachmentType::Depth;
+        depth_attachment.format = vk::Format::eD32Sfloat;
+        depth_attachment.samples = vk::SampleCountFlagBits::e1;
+        depth_attachment.load_op = vkfw::RenderPassLoadOp::Clear;
+        depth_attachment.store_op = vkfw::RenderPassStoreOp::Store;
+        depth_attachment.initial_layout = vk::ImageLayout::eUndefined;
+        depth_attachment.final_layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
         vkfw::RenderPassSubpass subpass{};
         subpass.color_attachments.push_back(color_attachment);
+        subpass.depth_attachment = depth_attachment;
 
         vkfw::RenderPassInfo render_pass_info{};
         render_pass_info.subpasses.push_back(subpass);
         render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
         if (!impl_->framegraph_render_pass.Init(ctx, render_pass_info)) {
+            impl_->depth_texture.Shutdown(ctx);
             return false;
         }
-        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass)) {
+        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass, impl_->depth_texture.View())) {
             impl_->framegraph_render_pass.Shutdown(ctx);
+            impl_->depth_texture.Shutdown(ctx);
             return false;
         }
 
         color_attachment.load_op = vkfw::RenderPassLoadOp::Load;
+        depth_attachment.load_op = vkfw::RenderPassLoadOp::Load;
+        depth_attachment.initial_layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
         vkfw::RenderPassSubpass load_subpass{};
         load_subpass.color_attachments.push_back(color_attachment);
+        load_subpass.depth_attachment = depth_attachment;
 
         vkfw::RenderPassInfo load_render_pass_info{};
         load_render_pass_info.subpasses.push_back(load_subpass);
@@ -170,12 +203,14 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         if (!impl_->framegraph_load_render_pass.Init(ctx, load_render_pass_info)) {
             impl_->framegraph_framebuffers.Shutdown(ctx);
             impl_->framegraph_render_pass.Shutdown(ctx);
+            impl_->depth_texture.Shutdown(ctx);
             return false;
         }
-        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass)) {
+        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass, impl_->depth_texture.View())) {
             impl_->framegraph_load_render_pass.Shutdown(ctx);
             impl_->framegraph_framebuffers.Shutdown(ctx);
             impl_->framegraph_render_pass.Shutdown(ctx);
+            impl_->depth_texture.Shutdown(ctx);
             return false;
         }
     }
@@ -201,6 +236,9 @@ void Renderer::ShutdownFrameGraphBackend()
         impl_->framegraph_load_render_pass.Shutdown(*vk_context_);
         impl_->framegraph_framebuffers.Shutdown(*vk_context_);
         impl_->framegraph_render_pass.Shutdown(*vk_context_);
+        if (impl_->depth_texture.IsInitialized()) {
+            impl_->depth_texture.Shutdown(*vk_context_);
+        }
     }
 }
 
@@ -265,6 +303,7 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
         pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
         pass_ctx.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
         pass_ctx.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
+        pass_ctx.current_depth_texture = &impl_->depth_texture;
     }
     graph_.Execute(pass_ctx);
 

@@ -119,6 +119,21 @@ bool VkRenderPass::Init(VkContext& ctx, RenderPassInfo const& info) {
     dependency.srcAccessMask = vk::AccessFlagBits::eNone;
     dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
 
+    // If the render pass has a depth attachment, synchronize depth stages and access
+    bool has_depth = false;
+    for (auto const& subpass_info : info.subpasses) {
+        if (subpass_info.depth_attachment.format != vk::Format::eUndefined) {
+            has_depth = true;
+            break;
+        }
+    }
+    if (has_depth) {
+        dependency.srcStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+        dependency.dstStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+        dependency.srcAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        dependency.dstAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+    }
+
     vk::RenderPassCreateInfo create_info{};
     create_info.attachmentCount = static_cast<uint32_t>(attachments.size());
     create_info.pAttachments    = attachments.data();

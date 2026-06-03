@@ -908,12 +908,16 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
         return false;
     }
 
+    std::array<vk::ClearValue, 2> clear_values{};
+    clear_values[0] = clear_value;
+    clear_values[1].depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+
     vk::RenderPassBeginInfo render_pass_begin{};
     render_pass_begin.renderPass = compatibility_render_pass;
     render_pass_begin.framebuffer = compatibility_framebuffer;
     render_pass_begin.renderArea = vk::Rect2D{{0, 0}, extent};
-    render_pass_begin.clearValueCount = 1;
-    render_pass_begin.pClearValues = &clear_value;
+    render_pass_begin.clearValueCount = 2;
+    render_pass_begin.pClearValues = clear_values.data();
     context.command_buffer.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
     return true;
 }
