@@ -65,10 +65,6 @@ public final class AveObjectController {
     }
 
     public static String instantiatePrefab(String prefabPath, String parentId, float x, float y, float z) {
-        String objId = AveActivity.jniInstantiatePrefab(prefabPath, parentId);
-        if (objId != null && !objId.isEmpty()) {
-            setPosition(objId, x, y, z);
-        }
-        return objId;
+        return AveActivity.jniInstantiatePrefab(prefabPath, parentId, x, y, z);
     }
 }

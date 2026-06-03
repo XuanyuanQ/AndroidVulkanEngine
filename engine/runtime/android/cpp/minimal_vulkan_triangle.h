@@ -52,6 +52,7 @@ public:
     void setObjectProgress(std::string const& object_id, float value);
     void registerFontAtlas(int width, int height, void const* pixel_data);
     std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id);
+    std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id, float x, float y, float z);
 
     bool getObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
     bool getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;
@@ -107,6 +108,7 @@ private:
     // 保护场景树与 UI 的递归锁，防并发访问崩溃
     mutable std::recursive_mutex m_scene_mutex;
     std::unordered_set<std::string> instantiated_scripts_;
+    bool ui_touch_captured_{false};
 };
 
 } // namespace ave::android

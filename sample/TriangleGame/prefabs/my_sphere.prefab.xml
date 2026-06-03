@@ -3,6 +3,7 @@
         <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
         <MeshRenderer
             mesh="Sphere"
+            material="materials/triangle.material.xml"
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />

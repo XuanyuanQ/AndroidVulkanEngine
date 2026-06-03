@@ -51,8 +51,10 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
     if (action == AMOTION_EVENT_ACTION_DOWN) {
         auto action_info = ui_runtime_.HandlePointerDown(x, y);
         if (!action_info.has_value()) {
+            ui_touch_captured_ = false;
             return false;
         }
+        ui_touch_captured_ = true;
         if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
             Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
         }
@@ -60,10 +62,19 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
     }
 
     if (action == AMOTION_EVENT_ACTION_CANCEL) {
-        return ui_runtime_.HandlePointerCancel().has_value();
+        bool const handled = ui_touch_captured_ || ui_runtime_.HandlePointerCancel().has_value();
+        ui_touch_captured_ = false;
+        return handled;
     }
 
     if (action == AMOTION_EVENT_ACTION_MOVE) {
+        if (ui_touch_captured_) {
+            auto action_info = ui_runtime_.HandlePointerMove(x, y);
+            if (action_info.has_value() && action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+                Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+            }
+            return true;
+        }
         auto action_info = ui_runtime_.HandlePointerMove(x, y);
         if (!action_info.has_value()) {
             return false;
@@ -76,6 +87,21 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
 
     if (action != AMOTION_EVENT_ACTION_UP) {
         return false;
+    }
+    if (ui_touch_captured_) {
+        auto action_info = ui_runtime_.HandlePointerUp(x, y);
+        ui_touch_captured_ = false;
+        if (!action_info.has_value()) {
+            return true;
+        }
+
+        if (action_info->type == ave::ui::UIRuntime::ActionType::Click) {
+            LOGI("UI click hit, trigger script target=%s method=%s", action_info->target.c_str(), action_info->method.c_str());
+            Jni_TriggerScriptMethod(action_info->target, action_info->method);
+        } else if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+        }
+        return true;
     }
     auto action_info = ui_runtime_.HandlePointerUp(x, y);
     if (!action_info.has_value()) {
@@ -95,8 +121,20 @@ void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, floa
 {
     std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec3 const position{x, y, z};
-    if (!scene_world_.SetObjectPosition(object_id, position)) {
-        ui_runtime_.SetObjectPosition(object_id, position);
+    if (scene_world_.SetObjectPosition(object_id, position)) {
+        LOGI("setObjectPosition scene object=%s position=(%.2f, %.2f, %.2f)",
+             object_id.c_str(),
+             x,
+             y,
+             z);
+    } else if (!ui_runtime_.SetObjectPosition(object_id, position)) {
+        LOGW("setObjectPosition failed, object not found: %s", object_id.c_str());
+    } else {
+        LOGI("setObjectPosition ui object=%s position=(%.2f, %.2f, %.2f)",
+             object_id.c_str(),
+             x,
+             y,
+             z);
     }
 }
 
@@ -213,11 +251,18 @@ std::string MinimalVulkanTriangle::instantiatePrefab(std::string const& prefab_p
     }
 
     // 4. Delegate instantiation to SceneWorld (which clones, suffix-renames, and appends to the scene)
+    size_t const before_object_count = scene_world_.GetSceneData().objects.size();
     std::string root_id = scene_world_.InstantiatePrefab(prefab, parent_id, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem());
     if (root_id.empty()) {
         LOGE("Failed to instantiate prefab into SceneWorld");
         return "";
     }
+    size_t const after_object_count = scene_world_.GetSceneData().objects.size();
+    LOGI("Prefab instantiation complete: prefab=%s root_id=%s objects_before=%zu objects_after=%zu",
+         prefab_path.c_str(),
+         root_id.c_str(),
+         before_object_count,
+         after_object_count);
 
     // 5. Query the newly rebuilt scene and instantiate any new scripts
     project::SceneData const& active_scene = scene_world_.GetSceneData();
@@ -236,6 +281,27 @@ std::string MinimalVulkanTriangle::instantiatePrefab(std::string const& prefab_p
         instantiated_scripts_.insert(object.id);
     }
 
+    return root_id;
+}
+
+std::string MinimalVulkanTriangle::instantiatePrefab(std::string const& prefab_path,
+                                                     std::string const& parent_id,
+                                                     float x,
+                                                     float y,
+                                                     float z)
+{
+    std::string const root_id = instantiatePrefab(prefab_path, parent_id);
+    if (root_id.empty()) {
+        return "";
+    }
+
+    setObjectPosition(root_id, x, y, z);
+    LOGI("Prefab instantiation positioned: prefab=%s root_id=%s position=(%.2f, %.2f, %.2f)",
+         prefab_path.c_str(),
+         root_id.c_str(),
+         x,
+         y,
+         z);
     return root_id;
 }
 

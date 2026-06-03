@@ -225,6 +225,10 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         bitmap.recycle();
     }
 
+    public static String jniInstantiatePrefab(String prefabPath, String parentId, float x, float y, float z) {
+        return nativeInstantiatePrefab(prefabPath, parentId, x, y, z);
+    }
+
     private void attachNativeSurfaceIfReady() {
         if (!isResumed || !surfaceAvailable || nativeSurfaceAttached || surfaceView == null) {
             return;
@@ -286,9 +290,9 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native float[] nativeGetObjectColor(String objectId);
     private static native String nativeGetObjectTexture(String objectId);
     public static String jniInstantiatePrefab(String prefabPath, String parentId) {
-        return nativeInstantiatePrefab(prefabPath, parentId);
+        return jniInstantiatePrefab(prefabPath, parentId, 0.0f, 0.0f, 0.0f);
     }
 
     private static native void nativeRegisterFontAtlas(int width, int height, int[] pixels);
-    private static native String nativeInstantiatePrefab(String prefabPath, String parentId);
+    private static native String nativeInstantiatePrefab(String prefabPath, String parentId, float x, float y, float z);
 }

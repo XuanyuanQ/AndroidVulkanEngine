@@ -64,6 +64,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     bool began_rendering = false;
     if (has_vk) {
         EnsureFallbackNormalTexture(*context.vk, fallback_normal_texture_);
+        EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
         uint32_t const width = context.swapchain->Extent().width;
         uint32_t const height = context.swapchain->Extent().height;
 

@@ -143,7 +143,10 @@
 
     <GameObject id="MySpawner" name="My Spawner">
         <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
-        <Script class="com.example.trianglegame.MySpawner" />
+        <Script class="com.example.trianglegame.MySpawner"
+                prefab="prefabs/my_sphere.prefab.xml"
+                spawnScale="1.0"
+                spawnPositions="-6.0,3.0,0.0;-3.0,3.0,0.0;0.0,3.0,0.0;3.0,3.0,0.0;6.0,3.0,0.0" />
     </GameObject>
 
     <GameObject id="spawn_hero_button" name="Spawn Hero Button">

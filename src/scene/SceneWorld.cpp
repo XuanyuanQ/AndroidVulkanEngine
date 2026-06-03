@@ -403,6 +403,13 @@ void SceneWorld::RefreshDirtyDerivedState()
 
 bool SceneWorld::SetObjectTransform(std::string const& object_id, project::TransformData const& transform)
 {
+    for (auto& object : scene_.objects) {
+        if (object.id == object_id) {
+            object.components.transform = transform;
+            break;
+        }
+    }
+
     int32_t const node_index = FindTransformNodeIndex(object_id);
     if (node_index < 0) {
         return false;
@@ -418,6 +425,16 @@ bool SceneWorld::SetObjectTransform(std::string const& object_id, project::Trans
 
 bool SceneWorld::SetObjectPosition(std::string const& object_id, glm::vec3 const& position)
 {
+    for (auto& object : scene_.objects) {
+        if (object.id == object_id) {
+            if (!object.components.transform.has_value()) {
+                object.components.transform = project::TransformData{};
+            }
+            object.components.transform->position = position;
+            break;
+        }
+    }
+
     int32_t const node_index = FindTransformNodeIndex(object_id);
     if (node_index >= 0) {
         auto& node = transform_nodes_[static_cast<size_t>(node_index)];
@@ -442,6 +459,16 @@ bool SceneWorld::SetObjectPosition(std::string const& object_id, glm::vec3 const
 
 bool SceneWorld::SetObjectRotation(std::string const& object_id, glm::vec3 const& rotation)
 {
+    for (auto& object : scene_.objects) {
+        if (object.id == object_id) {
+            if (!object.components.transform.has_value()) {
+                object.components.transform = project::TransformData{};
+            }
+            object.components.transform->rotation = rotation;
+            break;
+        }
+    }
+
     int32_t const node_index = FindTransformNodeIndex(object_id);
     if (node_index < 0) {
         return false;
@@ -457,6 +484,16 @@ bool SceneWorld::SetObjectRotation(std::string const& object_id, glm::vec3 const
 
 bool SceneWorld::SetObjectScale(std::string const& object_id, glm::vec3 const& scale)
 {
+    for (auto& object : scene_.objects) {
+        if (object.id == object_id) {
+            if (!object.components.transform.has_value()) {
+                object.components.transform = project::TransformData{};
+            }
+            object.components.transform->scale = scale;
+            break;
+        }
+    }
+
     int32_t const node_index = FindTransformNodeIndex(object_id);
     if (node_index < 0) {
         return false;

@@ -488,23 +488,9 @@ std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerUp(float x_px, float 
         return action;
     }
 
-    UiButtonNode const* button = HitTestButton(x_px, y_px);
-    if (button == nullptr) {
-        LOGD("HandlePointerUp: no button hit at (%.2f, %.2f)", x_px, y_px);
-        HandlePointerCancel();
-        return std::nullopt;
-    }
-
-    UiAction action{
-        .type = ActionType::Click,
-        .target = button->target,
-        .method = button->method,
-        .source_id = button->object_id,
-    };
-    LOGI("HandlePointerUp: button '%s' clicked, target=%s, method=%s",
-         button->debug_name.c_str(), button->target.c_str(), button->method.c_str());
+    LOGD("HandlePointerUp: no captured button, ignoring release at (%.2f, %.2f)", x_px, y_px);
     HandlePointerCancel();
-    return action;
+    return std::nullopt;
 }
 
 UiButtonNode* UIRuntime::FindButtonNode(std::string const& object_id)
@@ -566,8 +552,9 @@ UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
             continue;
         }
 
-        float const half_w = (button.size.x / aspect_ratio) * 0.5f;
-        float const half_h = button.size.y * 0.5f;
+        float const hit_slop = 0.18f;
+        float const half_w = (button.size.x / aspect_ratio) * 0.5f + hit_slop;
+        float const half_h = button.size.y * 0.5f + hit_slop;
 
         float const left = button.position.x - half_w;
         float const right = button.position.x + half_w;

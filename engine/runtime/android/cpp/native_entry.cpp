@@ -413,10 +413,16 @@ Java_com_ave_engine_AveActivity_nativeRegisterFontAtlas(JNIEnv* env, jclass, jin
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ave_engine_AveActivity_nativeInstantiatePrefab(JNIEnv* env, jclass, jstring prefab_path, jstring parent_id)
+Java_com_ave_engine_AveActivity_nativeInstantiatePrefab(
+    JNIEnv* env, jclass, jstring prefab_path, jstring parent_id, jfloat x, jfloat y, jfloat z)
 {
     if (g_runtime) {
-        std::string res = g_runtime->instantiatePrefab(ReadJString(env, prefab_path), ReadJString(env, parent_id));
+        std::string res = g_runtime->instantiatePrefab(
+            ReadJString(env, prefab_path),
+            ReadJString(env, parent_id),
+            x,
+            y,
+            z);
         return env->NewStringUTF(res.c_str());
     }
     return env->NewStringUTF("");
