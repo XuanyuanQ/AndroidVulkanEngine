@@ -39,6 +39,7 @@ bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_pa
 
 bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32_t input_width, int32_t input_height, int32_t input_rotation)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     if (input_width > 0 && input_height > 0) {
         ui_runtime_.SetInputViewportSize(
             static_cast<uint32_t>(input_width),
@@ -91,6 +92,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
 
 void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, float x, float y, float z)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec3 const position{x, y, z};
     if (!scene_world_.SetObjectPosition(object_id, position)) {
         ui_runtime_.SetObjectPosition(object_id, position);
@@ -99,6 +101,7 @@ void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, floa
 
 void MinimalVulkanTriangle::setObjectRotation(std::string const& object_id, float x, float y, float z)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec3 const rotation{x, y, z};
     if (!scene_world_.SetObjectRotation(object_id, rotation)) {
         ui_runtime_.SetObjectRotation(object_id, rotation);
@@ -107,6 +110,7 @@ void MinimalVulkanTriangle::setObjectRotation(std::string const& object_id, floa
 
 void MinimalVulkanTriangle::setObjectScale(std::string const& object_id, float x, float y, float z)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec3 const scale{x, y, z};
     if (!scene_world_.SetObjectScale(object_id, scale)) {
         ui_runtime_.SetObjectScale(object_id, scale);
@@ -115,6 +119,7 @@ void MinimalVulkanTriangle::setObjectScale(std::string const& object_id, float x
 
 void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool visible)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     LOGI("setObjectVisible object_id=%s visible=%d", object_id.c_str(),visible);
     bool const scene_updated = scene_world_.SetObjectVisible(object_id, visible);
     bool const ui_updated = ui_runtime_.SetObjectVisible(object_id, visible);
@@ -125,6 +130,7 @@ void MinimalVulkanTriangle::setObjectVisible(std::string const& object_id, bool 
 
 void MinimalVulkanTriangle::setObjectColor(std::string const& object_id, float r, float g, float b, float a)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec4 const color{r, g, b, a};
     if (!scene_world_.SetObjectColor(object_id, color)) {
         ui_runtime_.SetObjectColor(object_id, color);
@@ -133,6 +139,7 @@ void MinimalVulkanTriangle::setObjectColor(std::string const& object_id, float r
 
 void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::string const& texture_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     if (!ui_runtime_.SetObjectTexture(object_id, texture_id)) {
         LOGW("setObjectTexture failed, UI object not found or not textured: %s", object_id.c_str());
     }
@@ -140,6 +147,7 @@ void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::
 
 void MinimalVulkanTriangle::setObjectProgress(std::string const& object_id, float value)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     if (!ui_runtime_.SetObjectProgress(object_id, value)) {
         LOGW("setObjectProgress failed, UI progress bar not found: %s", object_id.c_str());
     }
@@ -156,43 +164,124 @@ void MinimalVulkanTriangle::registerFontAtlas(int width, int height, void const*
     );
 }
 
+std::string MinimalVulkanTriangle::instantiatePrefab(std::string const& prefab_path, std::string const& parent_id)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
+
+    // 1. Read the prefab XML text
+    std::string const prefab_text = readTextAsset(prefab_path.c_str());
+    if (prefab_text.empty()) {
+        LOGE("Failed to read prefab XML asset from path: %s", prefab_path.c_str());
+        return "";
+    }
+
+    // 2. Parse the prefab XML using XmlSceneLoader
+    ave::project::XmlSceneLoader loader;
+    loader.SetTextAssetLoader([this](std::string const& path) {
+        return readTextAsset(path.c_str());
+    });
+
+    ave::project::PrefabDocument prefab;
+    try {
+        prefab = loader.LoadPrefabText(prefab_text);
+    } catch (std::exception const& e) {
+        LOGE("Failed to parse prefab XML from path %s: %s", prefab_path.c_str(), e.what());
+        return "";
+    }
+
+    // 3. Load all meshes and materials referenced in the prefab
+    auto& mesh_manager = renderer_.GetResourceSystem().GetMeshManager();
+    auto& material_system = renderer_.GetMaterialSystem();
+
+    for (auto const& object : prefab.objects) {
+        if (object.components.mesh_renderer.has_value()) {
+            auto const& mesh = *object.components.mesh_renderer;
+            if (!mesh.mesh.empty()) {
+                uint32_t mesh_id = mesh_manager.LoadMesh(mesh.mesh);
+                if (mesh_id == 0) {
+                    LOGE("Failed to load mesh resource %s during prefab instantiation", mesh.mesh.c_str());
+                }
+            }
+            if (!mesh.material.empty()) {
+                uint32_t mat_id = material_system.LoadMaterial(mesh.material);
+                if (mat_id == 0) {
+                    LOGE("Failed to load material resource %s during prefab instantiation", mesh.material.c_str());
+                }
+            }
+        }
+    }
+
+    // 4. Delegate instantiation to SceneWorld (which clones, suffix-renames, and appends to the scene)
+    std::string root_id = scene_world_.InstantiatePrefab(prefab, parent_id, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem());
+    if (root_id.empty()) {
+        LOGE("Failed to instantiate prefab into SceneWorld");
+        return "";
+    }
+
+    // 5. Query the newly rebuilt scene and instantiate any new scripts
+    project::SceneData const& active_scene = scene_world_.GetSceneData();
+    for (auto const& object : active_scene.objects) {
+        if (!object.components.script.has_value()) {
+            continue;
+        }
+        if (instantiated_scripts_.count(object.id)) {
+            continue;
+        }
+
+        auto const& script = *object.components.script;
+        LOGI("[Dynamic] Instantiating Java script %s for GameObject %s (target_object=%s)",
+             script.java_class.c_str(), object.id.c_str(), script.target_object.c_str());
+        Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
+        instantiated_scripts_.insert(object.id);
+    }
+
+    return root_id;
+}
+
 bool MinimalVulkanTriangle::getObjectPosition(std::string const& object_id, glm::vec3& out_position) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return scene_world_.GetObjectPosition(object_id, out_position) ||
            ui_runtime_.GetObjectPosition(object_id, out_position);
 }
 
 bool MinimalVulkanTriangle::getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return scene_world_.GetObjectRotation(object_id, out_rotation) ||
            ui_runtime_.GetObjectRotation(object_id, out_rotation);
 }
 
 bool MinimalVulkanTriangle::getObjectScale(std::string const& object_id, glm::vec3& out_scale) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return scene_world_.GetObjectScale(object_id, out_scale) ||
            ui_runtime_.GetObjectScale(object_id, out_scale);
 }
 
 bool MinimalVulkanTriangle::getObjectVisible(std::string const& object_id, bool& out_visible) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return scene_world_.GetObjectVisible(object_id, out_visible) ||
            ui_runtime_.GetObjectVisible(object_id, out_visible);
 }
 
 bool MinimalVulkanTriangle::getObjectColor(std::string const& object_id, glm::vec4& out_color) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return scene_world_.GetObjectColor(object_id, out_color) ||
            ui_runtime_.GetObjectColor(object_id, out_color);
 }
 
 bool MinimalVulkanTriangle::getObjectTexture(std::string const& object_id, std::string& out_texture_id) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return ui_runtime_.GetObjectTexture(object_id, out_texture_id);
 }
 
 bool MinimalVulkanTriangle::getObjectProgress(std::string const& object_id, float& out_value) const
 {
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     return ui_runtime_.GetObjectProgress(object_id, out_value);
 }
 
@@ -281,6 +370,7 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     auto& material_manager = renderer_.GetResourceSystem().GetMaterialManager();
     uint32_t shader_id = 0;
     Jni_ClearScripts();
+    instantiated_scripts_.clear();
     for (auto const& object : scene.objects) {
         if (!object.components.mesh_renderer.has_value()) {
             continue;
@@ -334,11 +424,15 @@ bool MinimalVulkanTriangle::loadSceneMesh()
         if (!object.components.script.has_value()) {
             continue;
         }
+        if (instantiated_scripts_.count(object.id)) {
+            continue;
+        }
 
         auto const& script = *object.components.script;
         LOGI("Instantiating Java script %s for GameObject %s (target_object=%s)",
              script.java_class.c_str(), object.id.c_str(), script.target_object.c_str());
         Jni_InstantiateScript(object.id, script.java_class, script.target_object, script.parameters);
+        instantiated_scripts_.insert(object.id);
     }
 
     scene_world_.BuildFrameData(frame_index_, frame_data_);
@@ -391,10 +485,13 @@ void MinimalVulkanTriangle::drawFrame()
         if (delta_time > 0.1f) delta_time = 0.1f; // 限制单帧最大时长
         // 4. 【核心更新】调用你的摄像机更新（它会自动读取 JNI 传进来的按键状态）
         if (use_frame_data_path_) {
-            Jni_UpdateScripts(delta_time);
-            scene_world_.BuildFrameData(frame_index_, frame_data_);
-            ui_runtime_.Update(delta_time);
-            ui_runtime_.BuildFrameUi(frame_data_.ui_items);
+            {
+                std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
+                Jni_UpdateScripts(delta_time);
+                scene_world_.BuildFrameData(frame_index_, frame_data_);
+                ui_runtime_.Update(delta_time);
+                ui_runtime_.BuildFrameUi(frame_data_.ui_items);
+            }
             auto const render_result =
                 renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
             if (render_result == ave::render::FrameGraphRenderResult::SwapchainOutOfDate) {

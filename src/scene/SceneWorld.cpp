@@ -766,4 +766,90 @@ void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame
     Deduplicate(out_frame.resources.shaders);
 }
 
+std::string SceneWorld::InstantiatePrefab(project::PrefabDocument const& prefab,
+                                          std::string const& parent_id,
+                                          resource::ResourceSystem const& resources,
+                                          render::MaterialSystem const& materials)
+{
+    std::string const suffix = "_inst_" + std::to_string(++prefab_instance_counter_);
+    std::unordered_map<std::string, std::string> id_map;
+    std::string root_id = "";
+
+    // Step 1: Map all original IDs to new unique IDs with suffix
+    for (auto const& obj : prefab.objects) {
+        std::string new_id = obj.id + suffix;
+        id_map[obj.id] = new_id;
+
+        // Check if this object is a root of the prefab (has no parent, or parent is not within the prefab)
+        bool parent_in_prefab = false;
+        if (!obj.hierarchy.parent.empty()) {
+            for (auto const& p_obj : prefab.objects) {
+                if (p_obj.id == obj.hierarchy.parent) {
+                    parent_in_prefab = true;
+                    break;
+                }
+            }
+        }
+        if (!parent_in_prefab) {
+            if (root_id.empty()) {
+                root_id = new_id;
+            }
+        }
+    }
+
+    // Step 2: Clone and rewrite game objects
+    for (auto const& obj : prefab.objects) {
+        project::GameObjectData new_obj = obj;
+        new_obj.id = id_map[obj.id];
+        new_obj.name = obj.name + suffix;
+
+        // Parent ID rewrite
+        if (!obj.hierarchy.parent.empty()) {
+            auto it = id_map.find(obj.hierarchy.parent);
+            if (it != id_map.end()) {
+                new_obj.hierarchy.parent = it->second;
+            } else {
+                new_obj.hierarchy.parent = parent_id;
+            }
+        } else {
+            new_obj.hierarchy.parent = parent_id;
+        }
+
+        // Button target rewrite
+        if (new_obj.components.button.has_value()) {
+            auto& btn = *new_obj.components.button;
+            auto it = id_map.find(btn.target);
+            if (it != id_map.end()) {
+                btn.target = it->second;
+            }
+        }
+
+        // Slider target rewrite
+        if (new_obj.components.slider.has_value()) {
+            auto& slider = *new_obj.components.slider;
+            auto it = id_map.find(slider.target);
+            if (it != id_map.end()) {
+                slider.target = it->second;
+            }
+        }
+
+        // Script target rewrite
+        if (new_obj.components.script.has_value()) {
+            auto& script = *new_obj.components.script;
+            auto it = id_map.find(script.target_object);
+            if (it != id_map.end()) {
+                script.target_object = it->second;
+            }
+        }
+
+        new_obj.hierarchy.children.clear();
+        scene_.objects.push_back(std::move(new_obj));
+    }
+
+    // Step 3: Rebuild the scene graph to reflect new objects in physics/renderables
+    RebuildFromScene(scene_, resources, materials, aspect_ratio_);
+
+    return root_id;
+}
+
 } // namespace ave::scene

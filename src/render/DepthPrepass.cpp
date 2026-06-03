@@ -83,7 +83,11 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     clear_depth.depth = 1.0f;
     clear_depth.stencil = 0;
     if (!BeginDepthOnlyRendering(context, depth_texture_, context.swapchain->Extent(), clear_depth)) {
-        LOGE("DepthPrepass failed to begin depth-only rendering");
+        static bool logged_error = false;
+        if (!logged_error) {
+            LOGE("DepthPrepass failed to begin depth-only rendering");
+            logged_error = true;
+        }
         return;
     }
     context.current_depth_texture = &depth_texture_;

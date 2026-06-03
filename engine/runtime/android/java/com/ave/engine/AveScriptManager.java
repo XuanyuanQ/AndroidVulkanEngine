@@ -74,7 +74,7 @@ public final class AveScriptManager {
                     Log.i(TAG, "Method not found, falling back to onClick: " + methodName);
                     script.onClick(methodName);
                     invoked = true;
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     Log.e(TAG, "Failed to invoke method '" + methodName + "' on " + targetClassName, e);
                 }
             }

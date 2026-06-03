@@ -59,4 +59,16 @@ public final class AveObjectController {
     public static float getProgress(String objectId) {
         return AveActivity.jniGetObjectProgress(objectId);
     }
+
+    public static String instantiatePrefab(String prefabPath, String parentId) {
+        return AveActivity.jniInstantiatePrefab(prefabPath, parentId);
+    }
+
+    public static String instantiatePrefab(String prefabPath, String parentId, float x, float y, float z) {
+        String objId = AveActivity.jniInstantiatePrefab(prefabPath, parentId);
+        if (objId != null && !objId.isEmpty()) {
+            setPosition(objId, x, y, z);
+        }
+        return objId;
+    }
 }

@@ -17,7 +17,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     using namespace detail;
 
     (void)view;
-    LOGI("SkyboxPass enter");
+    // LOGI("SkyboxPass enter");
     if (context.resources == nullptr || context.pipelines == nullptr) {
         LOGW("SkyboxPass missing resources or pipelines");
         return;
@@ -74,7 +74,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
         LOGE("SkyboxPass failed to begin rendering");
         return;
     }
-    LOGI("SkyboxPass begin rendering ok");
+    // LOGI("SkyboxPass begin rendering ok");
 
     FrameUbo frame_ubo{};
     if (context.frame != nullptr) {
@@ -136,7 +136,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
         EndSwapchainRendering(context);
         return;
     }
-    LOGI("SkyboxPass pipeline=%u", pipeline_id);
+    // LOGI("SkyboxPass pipeline=%u", pipeline_id);
 
     context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
@@ -160,9 +160,9 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
         }
     }
 
-    LOGI("SkyboxPass drawing: env=%s depth=%s",
-         g_shared_environment_maps.environment_cubemap.IsInitialized() ? "bound" : "missing",
-         context.current_depth_texture != nullptr && context.current_depth_texture->IsInitialized() ? "present" : "missing");
+    // LOGI("SkyboxPass drawing: env=%s depth=%s",
+    //      g_shared_environment_maps.environment_cubemap.IsInitialized() ? "bound" : "missing",
+    //      context.current_depth_texture != nullptr && context.current_depth_texture->IsInitialized() ? "present" : "missing");
 
     vk::DeviceSize offset = 0;
     context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
@@ -172,10 +172,10 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     } else {
         context.command_buffer.draw(mesh->vertex_count, 1, 0, 0);
     }
-    LOGI("SkyboxPass draw submitted");
+    // LOGI("SkyboxPass draw submitted");
 
     EndSwapchainRendering(context);
-    LOGI("SkyboxPass end");
+    // LOGI("SkyboxPass end");
 }
 
 } // namespace ave::render

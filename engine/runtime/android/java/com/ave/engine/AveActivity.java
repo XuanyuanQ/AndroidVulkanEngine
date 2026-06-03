@@ -285,5 +285,10 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private static native boolean nativeGetObjectVisible(String objectId);
     private static native float[] nativeGetObjectColor(String objectId);
     private static native String nativeGetObjectTexture(String objectId);
+    public static String jniInstantiatePrefab(String prefabPath, String parentId) {
+        return nativeInstantiatePrefab(prefabPath, parentId);
+    }
+
     private static native void nativeRegisterFontAtlas(int width, int height, int[] pixels);
+    private static native String nativeInstantiatePrefab(String prefabPath, String parentId);
 }

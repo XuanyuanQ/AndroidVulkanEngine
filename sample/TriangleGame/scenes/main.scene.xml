@@ -140,4 +140,17 @@
         <Slider value="6" min="-8" max="8" target="LightControlScript" onValueChanged="setLightAxis" />
         <Text value="LIGHT Z" color="1,1,1,1" size="0.02" />
     </GameObject>
+
+    <GameObject id="MySpawner" name="My Spawner">
+        <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+        <Script class="com.example.trianglegame.MySpawner" />
+    </GameObject>
+
+    <GameObject id="spawn_hero_button" name="Spawn Hero Button">
+        <Transform position="0.72,0.45,0.01" rotation="0,0,0" scale="0.90,0.45,1" />
+        <UILayout size="0.36,0.12" />
+        <Image texture="textures/tanslate.png" color="0.1,0.8,0.2,1.0" />
+        <Button target="MySpawner" onClick="spawnDynamicObject" />
+        <Text value="SPAWN HERO" color="1,1,1,1" size="0.03" />
+    </GameObject>
 </Scene>

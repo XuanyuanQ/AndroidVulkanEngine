@@ -164,7 +164,19 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
 
-        if (culling_index < g_culling_visibility.size() && g_culling_visibility[culling_index] == 0) {
+        if (renderable->debug_name.find("inst_") != std::string::npos || renderable->debug_name.find("Sphere") != std::string::npos) {
+            static int log_counter = 0;
+            if (log_counter++ % 60 == 0) {
+                LOGI("[PBRPass DEBUG] Renderable name=%s, mesh=%s (handle=%u), mat=%s (handle=%u), pos=(%.2f, %.2f, %.2f), visible=%d",
+                     renderable->debug_name.c_str(),
+                     renderable->mesh_id.c_str(), renderable->mesh_handle,
+                     renderable->material_id.c_str(), renderable->material_handle,
+                     renderable->world[3][0], renderable->world[3][1], renderable->world[3][2],
+                     renderable->visible);
+            }
+        }
+
+        if (false && culling_index < g_culling_visibility.size() && g_culling_visibility[culling_index] == 0) {
             LOGI(" CullingSystem: Skip draw call (culled): %s", renderable->debug_name.c_str());
             continue;
         }

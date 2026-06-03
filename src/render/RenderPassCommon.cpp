@@ -712,8 +712,12 @@ bool BeginDepthOnlyRendering(RenderPassContext const& context,
         return false;
     }
 
+    static bool logged_warning = false;
     if (!context.vk->SupportsDynamicRendering()) {
-        LOGE("DepthPrepass requires dynamic rendering in the current backend");
+        if (!logged_warning) {
+            LOGE("DepthPrepass requires dynamic rendering in the current backend");
+            logged_warning = true;
+        }
         return false;
     }
 

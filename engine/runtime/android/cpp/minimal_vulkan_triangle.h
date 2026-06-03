@@ -15,6 +15,7 @@
 #include <mutex>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <thread>
 #include <jni.h>
@@ -50,6 +51,7 @@ public:
     void setObjectTexture(std::string const& object_id, std::string const& texture_id);
     void setObjectProgress(std::string const& object_id, float value);
     void registerFontAtlas(int width, int height, void const* pixel_data);
+    std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id);
 
     bool getObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
     bool getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;
@@ -101,6 +103,10 @@ private:
     // 保护 Surface 的互斥锁（因为 Java 线程会异步传进来 Surface）
     std::mutex m_surface_mutex;
     bool m_surface_changed{false};
+
+    // 保护场景树与 UI 的递归锁，防并发访问崩溃
+    mutable std::recursive_mutex m_scene_mutex;
+    std::unordered_set<std::string> instantiated_scripts_;
 };
 
 } // namespace ave::android

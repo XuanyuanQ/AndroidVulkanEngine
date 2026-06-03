@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ave/core/FrameData.h"
 #include "ave/project/SceneDocument.h"
@@ -23,6 +23,10 @@ namespace ave::scene {
 
 class SceneWorld {
 public:
+    std::string InstantiatePrefab(project::PrefabDocument const& prefab,
+                                  std::string const& parent_id,
+                                  resource::ResourceSystem const& resources,
+                                  render::MaterialSystem const& materials);
     uint32_t AddRenderable(std::string object_id, std::string debug_name, std::string mesh_id, std::string material_id);
     uint32_t AddPointLight(float x, float y, float z, float intensity);
     void BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const;
@@ -43,6 +47,7 @@ public:
     bool GetObjectVisible(std::string const& object_id, bool& out_visible) const;
     bool GetObjectColor(std::string const& object_id, glm::vec4& out_color) const;
     std::string DumpTransformHierarchy() const;
+    project::SceneData const& GetSceneData() const { return scene_; }
 
 private:
     struct TransformNode {
@@ -89,6 +94,7 @@ private:
     project::CameraData camera_data_{};
     bool has_scene_camera_ = false;
     float aspect_ratio_ = 16.0f / 9.0f;
+    uint32_t prefab_instance_counter_ = 0;
 };
 
 } // namespace ave::scene

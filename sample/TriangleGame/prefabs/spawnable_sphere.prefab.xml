@@ -1,0 +1,11 @@
+<Prefab name="SpawnableSpherePrefab">
+    <GameObject id="SphereInstance" name="Spawned Sphere">
+        <Transform position="0,0,0" rotation="0,0,0" scale="0.8,0.8,0.8" />
+        <MeshRenderer
+            mesh="Sphere"
+            material="materials/triangle.material.xml"
+            visible="true"
+            casts_shadow="true"
+            receives_shadow="true" />
+    </GameObject>
+</Prefab>
