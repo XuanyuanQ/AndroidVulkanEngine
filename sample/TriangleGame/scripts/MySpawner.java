@@ -36,9 +36,10 @@ public final class MySpawner extends AveScript {
 
     public void spawnDynamicObject() {
         spawnCount++;
+        int cycle = (spawnCount - 1) / spawnPositions.size();
         float[] spawn = spawnPositions.get((spawnCount - 1) % spawnPositions.size());
         float x = spawn[0];
-        float y = spawn[1];
+        float y = spawn[1] + cycle * 1.2f;
         float z = spawn[2];
 
         log("Spawning dynamic sphere #" + spawnCount + " at position (" + x + ", " + y + ", " + z + ") using " + prefabPath);
