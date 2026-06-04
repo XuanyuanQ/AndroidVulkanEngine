@@ -422,7 +422,6 @@ void MinimalVulkanTriangle::resize(int width, int height)
 
 bool MinimalVulkanTriangle::loadSceneMesh()
 {
-    vertices_.clear();
     model_mesh_id_ = 0;
     frame_data_ = {};
 
@@ -435,9 +434,6 @@ bool MinimalVulkanTriangle::loadSceneMesh()
     auto const scene_text = readTextAsset(project.entry_scene.c_str());
     auto const scene = loader.LoadSceneText(scene_text);
     auto& mesh_manager = renderer_.GetResourceSystem().GetMeshManager();
-    auto& shader_manager = renderer_.GetResourceSystem().GetShaderManager();
-    auto& material_manager = renderer_.GetResourceSystem().GetMaterialManager();
-    uint32_t shader_id = 0;
     Jni_ClearScripts();
     instantiated_scripts_.clear();
     for (auto const& object : scene.objects) {
@@ -461,19 +457,11 @@ bool MinimalVulkanTriangle::loadSceneMesh()
                     LOGE("Failed to load material for %s", mesh.material.c_str());
                 }
             }
-            continue;
-        }
-
-        for (auto const& source : mesh.vertices) {
-            ave::render::RasterColorVertex vertex{};
-            vertex.position = source.position;
-            vertex.color = source.color;
-            vertices_.push_back(vertex);
         }
     }
 
-    if (vertices_.size() < 3 && model_mesh_id_ == 0) {
-        LOGE("Scene XML must define at least three <Vertex> entries or a valid external mesh.");
+    if (model_mesh_id_ == 0) {
+        LOGE("Scene XML must define at least one valid external mesh.");
         return false;
     }
 
@@ -591,7 +579,6 @@ void MinimalVulkanTriangle::cleanupSurfaceResources(bool full_cleanup)
         // so the next surface restore does not reuse stale descriptor/image view state.
         renderer_.ResetFrameGraphRuntimeState(ctx_);
         renderer_.ShutdownFrameGraphBackend();
-        renderer_.ShutdownRaster();
         swapchainWrap_.Shutdown(ctx_);
         sync_.Shutdown(ctx_);
         if (full_cleanup) {

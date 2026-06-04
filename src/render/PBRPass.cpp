@@ -28,12 +28,15 @@ void PBRPass::Reset(vkfw::VkContext* ctx)
         if (fallback_normal_texture_.IsInitialized()) {
             fallback_normal_texture_.Shutdown(*ctx);
         }
-        if (depth_stencil_.IsInitialized()) {
-            depth_stencil_.Shutdown(*ctx);
+        for (auto& depth_stencil : depth_stencils_) {
+            if (depth_stencil.IsInitialized()) {
+                depth_stencil.Shutdown(*ctx);
+            }
         }
     }
     frame_bindings_.clear();
     material_bindings_.clear();
+    depth_stencils_.clear();
 }
 
 void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
@@ -91,7 +94,11 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     if (frame_bindings_.size() != image_count) {
         frame_bindings_.resize(image_count);
     }
+    if (depth_stencils_.size() != image_count) {
+        depth_stencils_.resize(image_count);
+    }
     auto& frame_binding = frame_bindings_[image_index];
+    auto& fallback_depth_stencil = depth_stencils_[image_index];
 
     struct MaterialUbo {
         glm::vec4 base_color{1.0f};
@@ -111,15 +118,15 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
         vkfw::VkTexture* depth_target = context.current_depth_texture;
         if (depth_target == nullptr || !depth_target->IsInitialized()) {
-            if (depth_stencil_.IsInitialized()) {
-                auto const extent = depth_stencil_.Extent();
+            if (fallback_depth_stencil.IsInitialized()) {
+                auto const extent = fallback_depth_stencil.Extent();
                 if (extent.width != width || extent.height != height) {
-                    depth_stencil_.Shutdown(*context.vk);
+                    fallback_depth_stencil.Shutdown(*context.vk);
                 }
             }
 
-            if (!depth_stencil_.IsInitialized()) {
-                if (!depth_stencil_.Init(*context.vk, vkfw::TextureInfo{
+            if (!fallback_depth_stencil.IsInitialized()) {
+                if (!fallback_depth_stencil.Init(*context.vk, vkfw::TextureInfo{
                                                        .width = width,
                                                        .height = height,
                                                        .mip_levels = 1,
@@ -132,7 +139,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
                 }
             }
 
-            depth_target = &depth_stencil_;
+            depth_target = &fallback_depth_stencil;
             context.current_depth_texture = depth_target;
         }
 
@@ -141,7 +148,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         clear.color.float32[1] = context.frame != nullptr ? context.frame->environment.clear_color.y : 0.04f;
         clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
         clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
-        bool const clear_depth = depth_target == &depth_stencil_;
+        bool const clear_depth = depth_target == &fallback_depth_stencil;
         began_rendering = BeginSwapchainRendering(context, clear, false, depth_target, clear_depth);
         if (!began_rendering) {
             LOGE("PBRPass failed to begin rendering");

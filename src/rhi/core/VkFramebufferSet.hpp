@@ -27,6 +27,10 @@ public:
     VkFramebufferSet& operator=(VkFramebufferSet const&) = delete;
 
     bool Init(VkContext& ctx, VkSwapchain& swapchain, VkRenderPass const& render_pass, vk::ImageView depth_view = {});
+    bool Init(VkContext& ctx,
+              VkSwapchain& swapchain,
+              VkRenderPass const& render_pass,
+              std::vector<vk::ImageView> const& depth_views);
     void Shutdown(VkContext& ctx);
 
     bool IsInitialized() const noexcept { return !framebuffers_.empty(); }

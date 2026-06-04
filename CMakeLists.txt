@@ -62,7 +62,6 @@ if (Vulkan_FOUND)
         src/rhi/core/VkFrameSync.cpp
         src/rhi/core/VkMemory.cpp
         src/rhi/core/VkPipeline.cpp
-        src/rhi/core/VkRasterRenderer.cpp
         src/rhi/core/VkRenderPass.cpp
         src/rhi/core/VkShader.cpp
         src/rhi/core/VkSwapchain.cpp

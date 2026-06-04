@@ -92,7 +92,6 @@ private:
     ave::scene::SceneWorld scene_world_{};
     ave::ui::UIRuntime ui_runtime_{};
     ave::core::FrameData frame_data_{};
-    std::vector<ave::render::RasterColorVertex> vertices_{};
     uint32_t model_mesh_id_ = 0;
     bool use_frame_data_path_ = false;
     bool app_initialized_ = false;

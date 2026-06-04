@@ -126,6 +126,7 @@ DescriptorSetLayoutKey MakeTextureSetLayoutKey()
 
 // Descriptor Set Layout Cache
 DescriptorSetLayoutCache::DescriptorSetLayoutCache() = default;
+DescriptorSetLayoutCache::~DescriptorSetLayoutCache() = default;
 
 uint32_t DescriptorSetLayoutCache::GetOrCreateLayout(DescriptorSetLayoutKey const& key)
 {
@@ -193,6 +194,7 @@ void DescriptorSetLayoutCache::Clear()
 
 // Pipeline Layout Cache
 PipelineLayoutCache::PipelineLayoutCache() = default;
+PipelineLayoutCache::~PipelineLayoutCache() = default;
 
 uint32_t PipelineLayoutCache::GetOrCreateLayout(PipelineLayoutKey const& key, std::vector<vk::PushConstantRange> const& push_constants)
 {
@@ -254,6 +256,7 @@ void PipelineLayoutCache::Clear()
 
 // Pipeline Cache
 PipelineCache::PipelineCache() = default;
+PipelineCache::~PipelineCache() = default;
 
 uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPass compatibility_render_pass)
 {
@@ -571,6 +574,7 @@ void PipelineCache::Clear()
 
 // Descriptor Allocator
 DescriptorAllocator::DescriptorAllocator() = default;
+DescriptorAllocator::~DescriptorAllocator() = default;
 
 uint32_t DescriptorAllocator::AllocateDescriptorSet(uint32_t layout_id)
 {
@@ -796,6 +800,7 @@ void DescriptorAllocator::Clear()
 
 // Pipeline System
 PipelineSystem::PipelineSystem() = default;
+PipelineSystem::~PipelineSystem() = default;
 
 void PipelineSystem::SetContext(vkfw::VkContext* ctx)
 {

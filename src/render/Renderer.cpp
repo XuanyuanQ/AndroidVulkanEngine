@@ -3,7 +3,6 @@
 #include "VkContext.hpp"
 #include "VkFrameSync.hpp"
 #include "VkSwapchain.hpp"
-#include "VkRasterRenderer.hpp"
 #include "VkCommandBuffer.hpp"
 #include "VkFramebufferSet.hpp"
 #include "VkRenderPass.hpp"
@@ -15,13 +14,13 @@ namespace ave::render {
 
 class Renderer::Impl {
 public:
-    rhi::VulkanRasterRenderer raster_renderer{};
     vkfw::VkCommandBuffer framegraph_command_buffers{};
     vkfw::VkRenderPass framegraph_render_pass{};
     vkfw::VkFramebufferSet framegraph_framebuffers{};
     vkfw::VkRenderPass framegraph_load_render_pass{};
     vkfw::VkFramebufferSet framegraph_load_framebuffers{};
-    vkfw::VkTexture depth_texture{};
+    std::vector<vkfw::VkTexture> depth_textures{};
+    std::vector<vk::Fence> image_in_flight_fences{};
 };
 
 Renderer::Renderer()
@@ -39,8 +38,6 @@ bool Renderer::Initialize(RendererConfig const& config)
 
 void Renderer::Shutdown()
 {
-    ShutdownRaster();
-
 }
 
 void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)
@@ -67,64 +64,6 @@ void Renderer::SetVkContext(vkfw::VkContext* ctx)
     pipeline_system_.SetResourceSystem(&resource_system_);
 }
 
-bool Renderer::InitializeRaster(vkfw::VkContext& ctx,
-                                vkfw::VkSwapchain& swapchain,
-                                vkfw::VkFrameSync& sync,
-                                std::span<RasterColorVertex const> vertices,
-                                RasterShaderCode const& shaders)
-{
-    ShutdownRaster();
-    impl_ = std::make_unique<Impl>();
-
-    std::vector<rhi::RasterColorVertex> raster_vertices;
-    raster_vertices.reserve(vertices.size());
-    for (auto const& vertex : vertices) {
-        raster_vertices.push_back(rhi::RasterColorVertex{
-            .position = vertex.position,
-            .color = vertex.color,
-        });
-    }
-
-    if (!impl_->raster_renderer.Initialize(
-            ctx,
-            swapchain,
-            sync,
-            raster_vertices,
-            {
-                shaders.vertex,
-                shaders.fragment,
-            })) {
-        impl_.reset();
-        return false;
-    }
-
-    return true;
-}
-
-bool Renderer::InitializeRasterMeshResource(vkfw::VkContext& ctx,
-                                            vkfw::VkSwapchain& swapchain,
-                                            vkfw::VkFrameSync& sync,
-                                            uint32_t mesh_id,
-                                            RasterShaderCode const& shaders)
-{
-    (void)shaders; // Unused for now but kept for signature compatibility
-    (void)ctx;
-    (void)swapchain;
-    (void)sync;
-    (void)mesh_id;
-    return true;
-}
-
-void Renderer::ShutdownRaster()
-{
-    if (impl_ != nullptr) {
-        impl_->raster_renderer.Shutdown();
-    }
-    impl_.reset();
-}
-
-
-
 bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                            vkfw::VkSwapchain& swapchain,
                                            vkfw::VkFrameSync& sync)
@@ -133,21 +72,37 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         impl_ = std::make_unique<Impl>();
     }
     SetVkContext(&ctx);
+    impl_->image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
 
     if (!ctx.SupportsDynamicRendering()) {
         vk::Extent2D const extent = swapchain.Extent();
-        if (impl_->depth_texture.IsInitialized()) {
-            impl_->depth_texture.Shutdown(ctx);
+        for (auto& depth_texture : impl_->depth_textures) {
+            if (depth_texture.IsInitialized()) {
+                depth_texture.Shutdown(ctx);
+            }
         }
-        if (!impl_->depth_texture.Init(ctx, vkfw::TextureInfo{
-                                                .width = extent.width,
-                                                .height = extent.height,
-                                                .mip_levels = 1,
-                                                .format = vkfw::TextureFormat::D32_SFLOAT,
-                                                .usage = vkfw::TextureUsage::DepthStencilAttachment,
-                                                .mipmap = false,
-                                            })) {
-            return false;
+        impl_->depth_textures.clear();
+        impl_->depth_textures.resize(swapchain.ImageCount());
+        std::vector<vk::ImageView> depth_views;
+        depth_views.reserve(swapchain.ImageCount());
+        for (auto& depth_texture : impl_->depth_textures) {
+            if (!depth_texture.Init(ctx, vkfw::TextureInfo{
+                                             .width = extent.width,
+                                             .height = extent.height,
+                                             .mip_levels = 1,
+                                             .format = vkfw::TextureFormat::D32_SFLOAT,
+                                             .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                             .mipmap = false,
+                                         })) {
+                for (auto& created_depth : impl_->depth_textures) {
+                    if (created_depth.IsInitialized()) {
+                        created_depth.Shutdown(ctx);
+                    }
+                }
+                impl_->depth_textures.clear();
+                return false;
+            }
+            depth_views.push_back(depth_texture.View());
         }
 
         vkfw::RenderPassAttachment color_attachment{};
@@ -179,12 +134,22 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
         if (!impl_->framegraph_render_pass.Init(ctx, render_pass_info)) {
-            impl_->depth_texture.Shutdown(ctx);
+            for (auto& depth_texture : impl_->depth_textures) {
+                if (depth_texture.IsInitialized()) {
+                    depth_texture.Shutdown(ctx);
+                }
+            }
+            impl_->depth_textures.clear();
             return false;
         }
-        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass, impl_->depth_texture.View())) {
+        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass, depth_views)) {
             impl_->framegraph_render_pass.Shutdown(ctx);
-            impl_->depth_texture.Shutdown(ctx);
+            for (auto& depth_texture : impl_->depth_textures) {
+                if (depth_texture.IsInitialized()) {
+                    depth_texture.Shutdown(ctx);
+                }
+            }
+            impl_->depth_textures.clear();
             return false;
         }
 
@@ -203,14 +168,24 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         if (!impl_->framegraph_load_render_pass.Init(ctx, load_render_pass_info)) {
             impl_->framegraph_framebuffers.Shutdown(ctx);
             impl_->framegraph_render_pass.Shutdown(ctx);
-            impl_->depth_texture.Shutdown(ctx);
+            for (auto& depth_texture : impl_->depth_textures) {
+                if (depth_texture.IsInitialized()) {
+                    depth_texture.Shutdown(ctx);
+                }
+            }
+            impl_->depth_textures.clear();
             return false;
         }
-        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass, impl_->depth_texture.View())) {
+        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass, depth_views)) {
             impl_->framegraph_load_render_pass.Shutdown(ctx);
             impl_->framegraph_framebuffers.Shutdown(ctx);
             impl_->framegraph_render_pass.Shutdown(ctx);
-            impl_->depth_texture.Shutdown(ctx);
+            for (auto& depth_texture : impl_->depth_textures) {
+                if (depth_texture.IsInitialized()) {
+                    depth_texture.Shutdown(ctx);
+                }
+            }
+            impl_->depth_textures.clear();
             return false;
         }
     }
@@ -236,9 +211,13 @@ void Renderer::ShutdownFrameGraphBackend()
         impl_->framegraph_load_render_pass.Shutdown(*vk_context_);
         impl_->framegraph_framebuffers.Shutdown(*vk_context_);
         impl_->framegraph_render_pass.Shutdown(*vk_context_);
-        if (impl_->depth_texture.IsInitialized()) {
-            impl_->depth_texture.Shutdown(*vk_context_);
+        for (auto& depth_texture : impl_->depth_textures) {
+            if (depth_texture.IsInitialized()) {
+                depth_texture.Shutdown(*vk_context_);
+            }
         }
+        impl_->depth_textures.clear();
+        impl_->image_in_flight_fences.clear();
     }
 }
 
@@ -265,6 +244,19 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
         LOGW("RenderFrameGraphFrame acquire skipped result=%d", static_cast<int>(acq_result));
         return FrameGraphRenderResult::Skipped;
     }
+
+    if (impl_->image_in_flight_fences.size() != swapchain.ImageCount()) {
+        impl_->image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
+    }
+    vk::Fence const image_fence = impl_->image_in_flight_fences[image_index];
+    if (image_fence != vk::Fence{}) {
+        auto const wait_result = ctx.Device().waitForFences(image_fence, vk::True, UINT64_MAX);
+        if (wait_result != vk::Result::eSuccess) {
+            LOGW("RenderFrameGraphFrame image fence wait failed result=%d", static_cast<int>(wait_result));
+            return FrameGraphRenderResult::Skipped;
+        }
+    }
+    impl_->image_in_flight_fences[image_index] = sync.InFlightFence(frame_index);
 
     sync.ResetFence(ctx, frame_index);
     impl_->framegraph_command_buffers.Reset(frame_index);
@@ -303,7 +295,9 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
         pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
         pass_ctx.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
         pass_ctx.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
-        pass_ctx.current_depth_texture = &impl_->depth_texture;
+        if (image_index < impl_->depth_textures.size()) {
+            pass_ctx.current_depth_texture = &impl_->depth_textures[image_index];
+        }
     }
     graph_.Execute(pass_ctx);
 

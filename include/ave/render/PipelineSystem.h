@@ -184,7 +184,7 @@ struct PipelineLayoutKeyHash {
 class DescriptorSetLayoutCache {
 public:
     DescriptorSetLayoutCache();
-    ~DescriptorSetLayoutCache() = default;
+    ~DescriptorSetLayoutCache();
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     
@@ -204,7 +204,7 @@ private:
 class PipelineLayoutCache {
 public:
     PipelineLayoutCache();
-    ~PipelineLayoutCache() = default;
+    ~PipelineLayoutCache();
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     void SetDescriptorSetLayoutCache(DescriptorSetLayoutCache* cache) { desc_set_layout_cache_ = cache; }
@@ -226,7 +226,7 @@ private:
 class PipelineCache {
 public:
     PipelineCache();
-    ~PipelineCache() = default;
+    ~PipelineCache();
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     void SetResourceSystem(ave::resource::ResourceSystem* resource_system) { resource_system_ = resource_system; }
@@ -249,7 +249,7 @@ private:
 class DescriptorAllocator {
 public:
     DescriptorAllocator();
-    ~DescriptorAllocator() = default;
+    ~DescriptorAllocator();
     
     void SetContext(vkfw::VkContext* ctx) { ctx_ = ctx; }
     void SetDescriptorSetLayoutCache(DescriptorSetLayoutCache* cache) { desc_set_layout_cache_ = cache; }
@@ -289,7 +289,7 @@ private:
 class PipelineSystem {
 public:
     PipelineSystem();
-    ~PipelineSystem() = default;
+    ~PipelineSystem();
     
     void SetContext(vkfw::VkContext* ctx);
     void SetResourceSystem(ave::resource::ResourceSystem* resource_system);

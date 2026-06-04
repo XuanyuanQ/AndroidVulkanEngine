@@ -6,7 +6,6 @@ namespace ave::render {
 
 void ShadowPass::Reset(vkfw::VkContext* ctx)
 {
-    shadow_map_initialized_ = false;
     shadow_view_projection_ = glm::mat4{1.0f};
     if (ctx != nullptr) {
         for (auto& binding : frame_bindings_) {
@@ -14,11 +13,28 @@ void ShadowPass::Reset(vkfw::VkContext* ctx)
                 binding.ubo.Shutdown(*ctx);
             }
         }
-        if (shadow_map_.IsInitialized()) {
-            shadow_map_.Shutdown(*ctx);
+        for (auto& [material_id, bindings] : material_bindings_) {
+            (void)material_id;
+            for (auto& binding : bindings) {
+                if (binding.ubo.IsInitialized()) {
+                    binding.ubo.Shutdown(*ctx);
+                }
+            }
+        }
+        if (fallback_white_texture_.IsInitialized()) {
+            fallback_white_texture_.Shutdown(*ctx);
+        }
+        for (auto& shadow_map : shadow_maps_) {
+            if (shadow_map.IsInitialized()) {
+                shadow_map.Shutdown(*ctx);
+            }
         }
     }
     frame_bindings_.clear();
+    material_bindings_.clear();
+    fallback_white_texture_ = {};
+    shadow_maps_.clear();
+    shadow_map_initialized_.clear();
 }
 
 void ShadowPass::Preload(RenderPassContext const& context)
@@ -54,7 +70,9 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         context.vk != nullptr && context.command_buffer != vk::CommandBuffer{};
 
     auto& mesh_mgr = context.resources->GetMeshManager();
+    auto& mat_mgr = context.resources->GetMaterialManager();
     auto& shader_mgr = context.resources->GetShaderManager();
+    auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
     uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
@@ -65,7 +83,14 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     if (frame_bindings_.size() != image_count) {
         frame_bindings_.resize(image_count);
     }
+    if (shadow_maps_.size() != image_count) {
+        shadow_maps_.resize(image_count);
+    }
+    if (shadow_map_initialized_.size() != image_count) {
+        shadow_map_initialized_.assign(image_count, 0u);
+    }
     auto& frame_binding = frame_bindings_[image_index];
+    auto& shadow_map = shadow_maps_[image_index];
 
     struct ShadowFrameUbo {
         glm::mat4 shadow_view_projection{1.0f};
@@ -79,6 +104,8 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         return;
     }
 
+    EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
+
     if (shadow_shader_id_ == 0) {
         shadow_shader_id_ = shader_mgr.LoadShader("compiled_shaders/shadow_depth");
         if (shadow_shader_id_ == 0) {
@@ -87,8 +114,8 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         }
     }
 
-    if (!shadow_map_.IsInitialized()) {
-        if (!shadow_map_.Init(*context.vk, vkfw::TextureInfo{
+    if (!shadow_map.IsInitialized()) {
+        if (!shadow_map.Init(*context.vk, vkfw::TextureInfo{
                                                .width = kShadowMapSize,
                                                .height = kShadowMapSize,
                                                .mip_levels = 1,
@@ -101,7 +128,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
             LOGE("ShadowPass failed to create shadow map");
             return;
         }
-        shadow_map_initialized_ = false;
+        shadow_map_initialized_[image_index] = 0u;
     }
 
     shadow_view_projection_ = BuildShadowViewProjection(view, context.frame);
@@ -126,11 +153,11 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         desc_alloc.UpdateUniformBuffer(frame_binding.descriptor_set_id, 0, frame_binding.ubo.Handle(), 0, sizeof(ShadowFrameUbo));
     }
 
-    vk::ImageLayout const old_layout = shadow_map_initialized_
+    vk::ImageLayout const old_layout = shadow_map_initialized_[image_index] != 0u
         ? vk::ImageLayout::eShaderReadOnlyOptimal
         : vk::ImageLayout::eUndefined;
     TransitionImageLayout(context.command_buffer,
-                          shadow_map_.Handle(),
+                          shadow_map.Handle(),
                           vk::ImageAspectFlagBits::eDepth,
                           old_layout,
                           vk::ImageLayout::eDepthAttachmentOptimal,
@@ -142,7 +169,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     vk::ClearDepthStencilValue clear_depth{};
     clear_depth.depth = 1.0f;
     clear_depth.stencil = 0;
-    if (!BeginShadowMapRendering(context, shadow_map_, kShadowMapSize, clear_depth)) {
+    if (!BeginShadowMapRendering(context, shadow_map, kShadowMapSize, clear_depth)) {
         LOGE("ShadowPass failed to begin shadow-map rendering");
         return;
     }
@@ -159,8 +186,15 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
             continue;
         }
 
+        auto const* material = renderable->material_handle != 0
+            ? mat_mgr.GetMaterial(renderable->material_handle)
+            : mat_mgr.GetMaterialByName(renderable->material_id);
+        if (!material) {
+            continue;
+        }
+
         PipelineKey key = MakePipelineKey(shadow_shader_id_, *mesh);
-        key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
+        key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         key.rt_format = 0;
         key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
         key.viewport_width = kShadowMapSize;
@@ -178,6 +212,52 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
         if (!pipeline) {
             continue;
+        }
+
+        auto& material_binding_list = material_bindings_[material->id];
+        if (material_binding_list.size() != image_count) {
+            material_binding_list.resize(image_count);
+        }
+        auto& material_binding = material_binding_list[image_index];
+        if (!material_binding.ubo.IsInitialized()) {
+            material_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
+                                                       .size = static_cast<uint32_t>(sizeof(glm::vec4) * 2u),
+                                                       .usage = vkfw::BufferUsage::Uniform,
+                                                       .mappable = true,
+                                                   });
+        }
+        if (material_binding.descriptor_set_id == 0) {
+            uint32_t const material_layout_id = desc_cache.GetOrCreateLayout(MakeMaterialSetLayoutKey());
+            material_binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(material_layout_id);
+        }
+
+        struct MaterialUbo {
+            glm::vec4 base_color{1.0f};
+            glm::vec4 params{0.0f};
+        } material_ubo{};
+        material_ubo.base_color = renderable->has_color_override ? renderable->color_override : material->base_color;
+        material_ubo.params = glm::vec4(
+            material->metallic,
+            material->roughness,
+            renderable->receives_shadow ? 1.0f : 0.0f,
+            material->normal_scale);
+        material_binding.ubo.UpdateData(*context.vk, &material_ubo, static_cast<uint32_t>(sizeof(MaterialUbo)));
+
+        if (material_binding.descriptor_set_id != 0) {
+            desc_alloc.UpdateUniformBuffer(material_binding.descriptor_set_id,
+                                           0,
+                                           material_binding.ubo.Handle(),
+                                           0,
+                                           sizeof(MaterialUbo));
+            vk::Sampler const sampler = GetCommonSampler(*context.vk);
+            if (auto const* base_color_texture =
+                    ResolveTextureOrFallback(*context.vk, texture_mgr, material->base_color_texture, fallback_white_texture_)) {
+                desc_alloc.UpdateImageSampler(material_binding.descriptor_set_id,
+                                              1,
+                                              sampler,
+                                              base_color_texture->View(),
+                                              vk::ImageLayout::eShaderReadOnlyOptimal);
+            }
         }
 
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
@@ -202,6 +282,18 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                                                           nullptr);
             }
         }
+        if (material_binding.descriptor_set_id != 0) {
+            vk::DescriptorSet const material_set = desc_alloc.GetHandle(material_binding.descriptor_set_id);
+            if (material_set) {
+                context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
+                                                          pipeline->Layout(),
+                                                          1,
+                                                          1,
+                                                          &material_set,
+                                                          0,
+                                                          nullptr);
+            }
+        }
 
         vk::DeviceSize offset = 0;
         context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);
@@ -217,7 +309,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
 
     EndShadowMapRendering(context);
     TransitionImageLayout(context.command_buffer,
-                          shadow_map_.Handle(),
+                          shadow_map.Handle(),
                           vk::ImageAspectFlagBits::eDepth,
                           vk::ImageLayout::eDepthAttachmentOptimal,
                           vk::ImageLayout::eShaderReadOnlyOptimal,
@@ -225,9 +317,9 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
-    context.current_shadow_map = &shadow_map_;
+    context.current_shadow_map = &shadow_map;
     context.shadow_view_projection = shadow_view_projection_;
-    shadow_map_initialized_ = true;
+    shadow_map_initialized_[image_index] = 1u;
 }
 
 } // namespace ave::render
