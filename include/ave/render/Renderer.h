@@ -54,8 +54,11 @@ public:
 
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }
+    resource::ResourceSystem const& GetResourceSystem() const { return resource_system_; }
     PipelineSystem& GetPipelineSystem() { return pipeline_system_; }
+    PipelineSystem const& GetPipelineSystem() const { return pipeline_system_; }
     MaterialSystem& GetMaterialSystem() { return material_system_; }
+    MaterialSystem const& GetMaterialSystem() const { return material_system_; }
     void SetVkContext(vkfw::VkContext* ctx);
 
 private:

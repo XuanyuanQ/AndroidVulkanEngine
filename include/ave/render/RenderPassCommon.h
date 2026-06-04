@@ -66,7 +66,6 @@ extern std::unique_ptr<vk::raii::RenderPass> g_compatibility_shadow_render_pass;
 extern std::unique_ptr<vk::raii::Framebuffer> g_compatibility_shadow_framebuffer;
 extern vk::ImageView g_last_shadow_image_view;
 extern SharedEnvironmentMaps g_shared_environment_maps;
-extern CpuCubemapSource g_maskonaive_source;
 
 vk::Sampler GetCommonSampler(vkfw::VkContext& ctx);
 vk::Sampler GetShadowSampler(vkfw::VkContext& ctx);

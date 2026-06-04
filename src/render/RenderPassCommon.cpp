@@ -11,7 +11,6 @@ std::unique_ptr<vk::raii::RenderPass> g_compatibility_shadow_render_pass;
 std::unique_ptr<vk::raii::Framebuffer> g_compatibility_shadow_framebuffer;
 vk::ImageView g_last_shadow_image_view = {};
 SharedEnvironmentMaps g_shared_environment_maps;
-CpuCubemapSource g_maskonaive_source;
 
 namespace {
 
@@ -1024,15 +1023,8 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
                                  glm::vec4 const& clear_color,
                                  glm::vec3 const& ambient_color)
 {
-    if (resources != nullptr && !g_maskonaive_source.ready) {
-        auto& texture_mgr = resources->GetTextureManager();
-        if (LoadMaskonaiveCubemapSource(texture_mgr, g_maskonaive_source)) {
-        } else {
-            LOGW("Falling back to procedural skybox/environment");
-        }
-    }
-
-    bool const has_cubemap_source = g_maskonaive_source.ready;
+    (void)resources;
+    bool const has_cubemap_source = false;
     bool const needs_rebuild =
         !g_shared_environment_maps.ready ||
         g_shared_environment_maps.last_clear_color != clear_color ||
@@ -1044,6 +1036,16 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
         g_shared_environment_maps.brdf_lut.IsInitialized()) {
         return;
     }
+
+    LOGI("EnsureSharedEnvironmentMaps rebuild: source=%d clear=(%.3f, %.3f, %.3f, %.3f) ambient=(%.3f, %.3f, %.3f)",
+         has_cubemap_source ? 1 : 0,
+         clear_color.x,
+         clear_color.y,
+         clear_color.z,
+         clear_color.w,
+         ambient_color.x,
+         ambient_color.y,
+         ambient_color.z);
 
     if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
         g_shared_environment_maps.environment_cubemap.Shutdown(ctx);
@@ -1063,7 +1065,7 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
     constexpr uint32_t kBrdfLutSize = 128;
     constexpr uint32_t kPrefilterMipLevels = 7;
 
-    uint32_t const kEnvironmentSize = has_cubemap_source ? g_maskonaive_source.faces[0].width : 64u;
+    uint32_t const kEnvironmentSize = 64u;
 
     vkfw::TextureInfo env_info{};
     env_info.width = kEnvironmentSize;
@@ -1113,15 +1115,11 @@ void EnsureSharedEnvironmentMaps(vkfw::VkContext& ctx,
     }
 
     glm::vec3 const clear_rgb{clear_color.x, clear_color.y, clear_color.z};
-    CpuCubemapSource const* const source = has_cubemap_source ? &g_maskonaive_source : nullptr;
+    CpuCubemapSource const* const source = nullptr;
 
     for (uint32_t face = 0; face < 6; ++face) {
         std::vector<glm::vec4> env_pixels;
-        if (has_cubemap_source) {
-            env_pixels = g_maskonaive_source.faces[face].pixels;
-        } else {
-            GenerateProceduralCubemapFace(env_pixels, kEnvironmentSize, face, clear_rgb, ambient_color);
-        }
+        GenerateProceduralCubemapFace(env_pixels, kEnvironmentSize, face, clear_rgb, ambient_color);
         UploadCubemapFace(ctx, g_shared_environment_maps.environment_cubemap, env_pixels, 0, face);
     }
 

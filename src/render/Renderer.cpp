@@ -38,6 +38,22 @@ bool Renderer::Initialize(RendererConfig const& config)
 
 void Renderer::Shutdown()
 {
+    if (vk_context_ != nullptr) {
+        try {
+            graph_.ResetRuntimeState(vk_context_);
+        } catch (...) {
+        }
+    }
+
+    try {
+        ShutdownFrameGraphBackend();
+    } catch (...) {
+    }
+
+    try {
+        pipeline_system_.Clear();
+    } catch (...) {
+    }
 }
 
 void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)

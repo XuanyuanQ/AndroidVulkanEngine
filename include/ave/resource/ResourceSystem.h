@@ -112,6 +112,7 @@ public:
                               std::vector<uint32_t> const& indices, uint32_t vertex_stride);
     MeshRuntime const* GetMesh(uint32_t id) const;
     MeshRuntime const* GetMeshByPath(std::string const& path) const;
+    size_t MeshCount() const noexcept { return meshes_.size(); }
     void UnloadMesh(uint32_t id);
     void Clear();
     
@@ -143,6 +144,7 @@ public:
                                  void const* data, uint32_t mip_levels = 1);
     TextureRuntime const* GetTexture(uint32_t id) const;
     TextureRuntime const* GetTextureByPath(std::string const& path) const;
+    size_t TextureCount() const noexcept { return textures_.size(); }
     void UnloadTexture(uint32_t id);
     void Clear();
     
@@ -176,6 +178,7 @@ public:
                                      std::string const& entry_point = "main");
     ShaderRuntime const* GetShader(uint32_t id) const;
     ShaderRuntime const* GetShaderByPath(std::string const& path) const;
+    size_t ShaderCount() const noexcept { return shaders_.size(); }
     void UnloadShader(uint32_t id);
     void Clear();
     
@@ -200,6 +203,7 @@ public:
     bool SetBaseColor(uint32_t material_id, glm::vec4 const& color);
     MaterialRuntime const* GetMaterial(uint32_t id) const;
     MaterialRuntime const* GetMaterialByName(std::string const& name) const;
+    size_t MaterialCount() const noexcept { return materials_.size(); }
     void RemoveMaterial(uint32_t id);
     void Clear();
     

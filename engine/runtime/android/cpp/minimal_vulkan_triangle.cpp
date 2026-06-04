@@ -24,6 +24,7 @@ namespace ave::android {
 namespace {
 
 constexpr uint32_t kFramesInFlight = 2;
+constexpr std::chrono::seconds kDebugSnapshotInterval{5};
 
 } // namespace
 
@@ -111,6 +112,26 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
     }
     return true;
+}
+
+void MinimalVulkanTriangle::logRuntimeSnapshot(char const* reason) const
+{
+    auto const& resource_system = renderer_.GetResourceSystem();
+    auto const& pipeline_system = renderer_.GetPipelineSystem();
+    LOGI("RuntimeSnapshot[%s]: meshes=%zu textures=%zu shaders=%zu materials=%zu set_layouts=%zu pipeline_layouts=%zu pipelines=%zu descriptor_sets=%zu free_descriptor_ids=%zu swapchain_images=%u frame_index=%u sync_frame_index=%u",
+         reason != nullptr ? reason : "unknown",
+         resource_system.GetMeshManager().MeshCount(),
+         resource_system.GetTextureManager().TextureCount(),
+         resource_system.GetShaderManager().ShaderCount(),
+         resource_system.GetMaterialManager().MaterialCount(),
+         pipeline_system.DescriptorSetLayoutCount(),
+         pipeline_system.PipelineLayoutCount(),
+         pipeline_system.PipelineCount(),
+         pipeline_system.AllocatedDescriptorSetCount(),
+         pipeline_system.FreeDescriptorSetCount(),
+         swapchainWrap_.ImageCount(),
+         frame_index_,
+         sync_frame_index_);
 }
 
 void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, float x, float y, float z)
@@ -509,6 +530,7 @@ void MinimalVulkanTriangle::drawFrame()
     }
 
     auto last_time = std::chrono::high_resolution_clock::now();
+    auto last_debug_snapshot = std::chrono::steady_clock::now();
     bool logged_background_pause = false;
 
     while (m_running) {
@@ -559,6 +581,12 @@ void MinimalVulkanTriangle::drawFrame()
             }
             frame_index_++;
         }
+
+        auto const now = std::chrono::steady_clock::now();
+        if (now - last_debug_snapshot >= kDebugSnapshotInterval) {
+            last_debug_snapshot = now;
+            logRuntimeSnapshot("periodic");
+        }
     }
 
     if (jvm && attached) {
@@ -575,21 +603,47 @@ void MinimalVulkanTriangle::cleanupSurfaceResources(bool full_cleanup)
         if (ctx_.Device() != nullptr) {
             ctx_.Device().waitIdle();
         }
-        // Surface lifecycle teardown: keep scene/resources alive, but drop all framegraph/runtime caches
-        // so the next surface restore does not reuse stale descriptor/image view state.
-        renderer_.ResetFrameGraphRuntimeState(ctx_);
-        renderer_.ShutdownFrameGraphBackend();
-        swapchainWrap_.Shutdown(ctx_);
-        sync_.Shutdown(ctx_);
-        if (full_cleanup) {
-            ave::render::detail::ResetCommonSampler();
-            ave::render::detail::ResetShadowSampler();
-            renderer_.GetResourceSystem().Clear();
-            ctx_.Shutdown();
-        } else if (ctx_.IsInitialized()) {
-            ctx_.SetWindow(nullptr);
-        }
     } catch (...) {
+    }
+
+    // Surface lifecycle teardown: drop runtime/framegraph caches before touching the Vulkan context.
+    try {
+        renderer_.Shutdown();
+    } catch (...) {
+    }
+
+    try {
+        swapchainWrap_.Shutdown(ctx_);
+    } catch (...) {
+    }
+
+    try {
+        sync_.Shutdown(ctx_);
+    } catch (...) {
+    }
+
+    if (full_cleanup) {
+        try {
+            ave::render::detail::ResetCommonSampler();
+        } catch (...) {
+        }
+        try {
+            ave::render::detail::ResetShadowSampler();
+        } catch (...) {
+        }
+        try {
+            renderer_.GetResourceSystem().Clear();
+        } catch (...) {
+        }
+        try {
+            ctx_.Shutdown();
+        } catch (...) {
+        }
+    } else if (ctx_.IsInitialized()) {
+        try {
+            ctx_.SetWindow(nullptr);
+        } catch (...) {
+        }
     }
 }
 
@@ -660,6 +714,7 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
             return false;
         }
         scene_loaded_ = true;
+        logRuntimeSnapshot("after_loadSceneMesh");
     }
     use_frame_data_path_ = true;
     if (renderer_.Graph().PassCount() == 0) {
@@ -680,6 +735,7 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         &renderer_.GetResourceSystem(),
         frame_data_.environment.clear_color,
         frame_data_.environment.ambient_color);
+    logRuntimeSnapshot("after_ensureSharedEnvironmentMaps");
 
     {
         ave::render::RenderPassContext preload_context{};
@@ -696,6 +752,7 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         Jni_GenerateFontAtlas();
     }
     app_initialized_ = true;
+    logRuntimeSnapshot("after_initializeSurfaceResources");
     return true;
 }
 

@@ -70,6 +70,7 @@ private:
     void stopRenderThread();
     void releaseWindow();
     void drawFrame();
+    void logRuntimeSnapshot(char const* reason) const;
 
     void cleanupSurfaceResources(bool full_cleanup);
     void logProjectAsset() const;

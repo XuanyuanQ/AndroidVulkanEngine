@@ -1,7 +1,10 @@
 package com.ave.engine;
 
 import android.app.Activity;
+import android.os.Debug;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -15,6 +18,17 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private boolean isResumed = false;
     private boolean surfaceAvailable = false;
     private boolean nativeSurfaceAttached = false;
+    private final Handler memoryLogHandler = new Handler(Looper.getMainLooper());
+    private final Runnable memoryLogRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isResumed) {
+                return;
+            }
+            logMemorySnapshot();
+            memoryLogHandler.postDelayed(this, 5000L);
+        }
+    };
 
     static {
         System.loadLibrary("ave_runtime");
@@ -39,6 +53,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     protected void onDestroy() {
+        stopMemoryLogging();
         detachNativeSurfaceIfAttached();
         nativeDestroy();
         super.onDestroy();
@@ -52,12 +67,14 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         nativeSetForeground(true);
         attachNativeSurfaceIfReady();
         pushSurfaceSizeIfReady();
+        startMemoryLogging();
     }
 
     @Override
     protected void onPause() {
         Log.i(TAG, "onPause -> setForeground(false), isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
         nativeSetForeground(false);
+        stopMemoryLogging();
         detachNativeSurfaceIfAttached();
         isResumed = false;
         super.onPause();
@@ -276,6 +293,35 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         if (width > 0 && height > 0) {
             nativeResize(width, height);
         }
+    }
+
+    private void startMemoryLogging() {
+        memoryLogHandler.removeCallbacks(memoryLogRunnable);
+        memoryLogHandler.postDelayed(memoryLogRunnable, 5000L);
+    }
+
+    private void stopMemoryLogging() {
+        memoryLogHandler.removeCallbacks(memoryLogRunnable);
+    }
+
+    private void logMemorySnapshot() {
+        long nativeAllocated = Debug.getNativeHeapAllocatedSize() / 1024L;
+        long nativeFree = Debug.getNativeHeapFreeSize() / 1024L;
+        long nativeSize = Debug.getNativeHeapSize() / 1024L;
+        long javaUsed = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024L;
+        long javaTotal = Runtime.getRuntime().totalMemory() / 1024L;
+        long javaMax = Runtime.getRuntime().maxMemory() / 1024L;
+        long pss = Debug.getPss();
+        Log.i(TAG, "MemorySnapshot -> nativeAllocatedKB=" + nativeAllocated +
+                ", nativeFreeKB=" + nativeFree +
+                ", nativeHeapKB=" + nativeSize +
+                ", javaUsedKB=" + javaUsed +
+                ", javaTotalKB=" + javaTotal +
+                ", javaMaxKB=" + javaMax +
+                ", pssKB=" + pss +
+                ", isResumed=" + isResumed +
+                ", surfaceAvailable=" + surfaceAvailable +
+                ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
     private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);

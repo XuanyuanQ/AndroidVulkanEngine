@@ -191,6 +191,7 @@ public:
     uint32_t GetOrCreateLayout(DescriptorSetLayoutKey const& key);
     vkfw::VkDescriptorSetLayout const* GetLayout(uint32_t id) const;
     vkfw::VkDescriptorSetLayout* GetLayoutMutable(uint32_t id);
+    size_t LayoutCount() const noexcept { return layouts_.size(); }
     void Clear();
     
 private:
@@ -212,6 +213,7 @@ public:
     
     uint32_t GetOrCreateLayout(PipelineLayoutKey const& key, std::vector<vk::PushConstantRange> const& push_constants = {});
     vkfw::VkPipelineLayout const* GetLayout(uint32_t id) const;
+    size_t LayoutCount() const noexcept { return layouts_.size(); }
     void Clear();
     
 private:
@@ -234,6 +236,7 @@ public:
     
     uint32_t GetOrCreatePipeline(PipelineKey const& key, vk::RenderPass compatibility_render_pass = {});
     vkfw::VkPipeline const* GetPipeline(uint32_t id) const;
+    size_t PipelineCount() const noexcept { return pipelines_.size(); }
     void Clear();
     
 private:
@@ -258,6 +261,8 @@ public:
     void FreeDescriptorSet(uint32_t set_id);
 
     vk::DescriptorSet GetHandle(uint32_t set_id) const;
+    size_t AllocatedSetCount() const noexcept { return sets_.size(); }
+    size_t FreeSetCount() const noexcept { return free_sets_.size(); }
     bool UpdateUniformBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
     bool UpdateStorageBuffer(uint32_t set_id, uint32_t binding, vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize range);
 
@@ -299,6 +304,11 @@ public:
     PipelineLayoutCache& GetPipelineLayoutCache() { return pipeline_layout_cache_; }
     PipelineCache& GetPipelineCache() { return pipeline_cache_; }
     DescriptorAllocator& GetDescriptorAllocator() { return descriptor_allocator_; }
+    size_t DescriptorSetLayoutCount() const noexcept { return desc_set_layout_cache_.LayoutCount(); }
+    size_t PipelineLayoutCount() const noexcept { return pipeline_layout_cache_.LayoutCount(); }
+    size_t PipelineCount() const noexcept { return pipeline_cache_.PipelineCount(); }
+    size_t AllocatedDescriptorSetCount() const noexcept { return descriptor_allocator_.AllocatedSetCount(); }
+    size_t FreeDescriptorSetCount() const noexcept { return descriptor_allocator_.FreeSetCount(); }
     
     DescriptorSetLayoutCache const& GetDescriptorSetLayoutCache() const { return desc_set_layout_cache_; }
     PipelineLayoutCache const& GetPipelineLayoutCache() const { return pipeline_layout_cache_; }
