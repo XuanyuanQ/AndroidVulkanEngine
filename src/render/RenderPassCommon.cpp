@@ -822,6 +822,41 @@ void EndShadowMapRendering(RenderPassContext const& context)
     }
 }
 
+void SynchronizeDynamicRenderingAttachmentLoads(RenderPassContext const& context,
+                                                vkfw::VkTexture const* depth_texture,
+                                                bool clear_color,
+                                                bool clear_depth)
+{
+    if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{} ||
+        !context.vk->SupportsDynamicRendering()) {
+        return;
+    }
+
+    if (!clear_color) {
+        TransitionImageLayout(context.command_buffer,
+                              context.swapchain->Image(context.swapchain_image_index),
+                              vk::ImageAspectFlagBits::eColor,
+                              vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::AccessFlagBits::eColorAttachmentWrite,
+                              vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,
+                              vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                              vk::PipelineStageFlagBits::eColorAttachmentOutput);
+    }
+
+    if (depth_texture != nullptr && depth_texture->IsInitialized() && !clear_depth) {
+        TransitionImageLayout(context.command_buffer,
+                              depth_texture->Handle(),
+                              vk::ImageAspectFlagBits::eDepth,
+                              vk::ImageLayout::eDepthAttachmentOptimal,
+                              vk::ImageLayout::eDepthAttachmentOptimal,
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                              vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                              vk::PipelineStageFlagBits::eLateFragmentTests,
+                              vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests);
+    }
+}
+
 bool BeginSwapchainRendering(RenderPassContext const& context,
                              vk::ClearValue const& clear_value,
                              bool clear_color,
@@ -837,6 +872,8 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
     if (context.vk->SupportsDynamicRendering()) {
+        SynchronizeDynamicRenderingAttachmentLoads(context, depth_texture, clear_color, clear_depth);
+
         vk::ClearDepthStencilValue depth_clear_value{1.0f, 0};
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo color_attachment{};

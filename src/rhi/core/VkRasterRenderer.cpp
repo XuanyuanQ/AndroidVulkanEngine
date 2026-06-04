@@ -151,7 +151,7 @@ void VulkanRasterRenderer::RenderFrame(vkfw::VkContext& ctx,
   submit.commandBufferCount = 1;
   submit.pCommandBuffers = &cmd;
   submit.signalSemaphoreCount = 1;
-  auto render_finished = sync.RenderFinished(frame_index);
+  auto render_finished = sync.RenderFinished(image_index);
   submit.pSignalSemaphores = &render_finished;
   ctx.GraphicsQueue().submit(submit, sync.InFlightFence(frame_index));
 

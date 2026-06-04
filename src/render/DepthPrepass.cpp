@@ -6,8 +6,15 @@ namespace ave::render {
 
 void DepthPrepass::Reset(vkfw::VkContext* ctx)
 {
-    frame_set_id_ = 0;
     depth_texture_ready_ = false;
+    if (ctx != nullptr) {
+        for (auto& binding : frame_bindings_) {
+            if (binding.ubo.IsInitialized()) {
+                binding.ubo.Shutdown(*ctx);
+            }
+        }
+    }
+    frame_bindings_.clear();
     if (ctx != nullptr && depth_texture_.IsInitialized()) {
         depth_texture_.Shutdown(*ctx);
     }
@@ -47,6 +54,15 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     auto& shader_mgr = context.resources->GetShaderManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+    uint32_t const image_index = context.swapchain_image_index;
+    uint32_t const image_count = context.swapchain->ImageCount();
+    if (image_count == 0 || image_index >= image_count) {
+        return;
+    }
+    if (frame_bindings_.size() != image_count) {
+        frame_bindings_.resize(image_count);
+    }
+    auto& frame_binding = frame_bindings_[image_index];
 
     struct DepthFrameUbo {
         glm::mat4 view_projection{1.0f};
@@ -118,21 +134,21 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         frame_ubo.view_projection = context.frame->view.view_projection;
     }
 
-    if (!frame_ubo_.IsInitialized()) {
-        frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
-                                         .size = static_cast<uint32_t>(sizeof(DepthFrameUbo)),
-                                         .usage = vkfw::BufferUsage::Uniform,
-                                         .mappable = true,
-                                     });
+    if (!frame_binding.ubo.IsInitialized()) {
+        frame_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
+                                                .size = static_cast<uint32_t>(sizeof(DepthFrameUbo)),
+                                                .usage = vkfw::BufferUsage::Uniform,
+                                                .mappable = true,
+                                            });
     }
-    frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(DepthFrameUbo)));
+    frame_binding.ubo.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(DepthFrameUbo)));
 
-    if (frame_set_id_ == 0) {
+    if (frame_binding.descriptor_set_id == 0) {
         uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
-        frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+        frame_binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(frame_layout_id);
     }
-    if (frame_set_id_ != 0) {
-        desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(DepthFrameUbo));
+    if (frame_binding.descriptor_set_id != 0) {
+        desc_alloc.UpdateUniformBuffer(frame_binding.descriptor_set_id, 0, frame_binding.ubo.Handle(), 0, sizeof(DepthFrameUbo));
     }
 
     auto const* shader = shader_mgr.GetShader(depth_shader_id_);
@@ -188,8 +204,8 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
                                              &object_push);
 
         vk::DescriptorSet frame_set{};
-        if (frame_set_id_ != 0) {
-            frame_set = desc_alloc.GetHandle(frame_set_id_);
+        if (frame_binding.descriptor_set_id != 0) {
+            frame_set = desc_alloc.GetHandle(frame_binding.descriptor_set_id);
         }
         if (frame_set) {
             context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),

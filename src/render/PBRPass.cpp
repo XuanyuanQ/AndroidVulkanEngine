@@ -7,12 +7,20 @@ namespace ave::render {
 
 void PBRPass::Reset(vkfw::VkContext* ctx)
 {
-    frame_set_id_ = 0;
-    material_bindings_.clear();
     fallback_material_id_ = 0;
     if (ctx != nullptr) {
-        if (frame_ubo_.IsInitialized()) {
-            frame_ubo_.Shutdown(*ctx);
+        for (auto& binding : frame_bindings_) {
+            if (binding.ubo.IsInitialized()) {
+                binding.ubo.Shutdown(*ctx);
+            }
+        }
+        for (auto& [material_id, bindings] : material_bindings_) {
+            (void)material_id;
+            for (auto& binding : bindings) {
+                if (binding.ubo.IsInitialized()) {
+                    binding.ubo.Shutdown(*ctx);
+                }
+            }
         }
         if (fallback_white_texture_.IsInitialized()) {
             fallback_white_texture_.Shutdown(*ctx);
@@ -24,6 +32,8 @@ void PBRPass::Reset(vkfw::VkContext* ctx)
             depth_stencil_.Shutdown(*ctx);
         }
     }
+    frame_bindings_.clear();
+    material_bindings_.clear();
 }
 
 void PBRPass::EnsureEnvironmentMaps(vkfw::VkContext& ctx,
@@ -73,6 +83,15 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
+    uint32_t const image_index = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    if (image_count == 0 || image_index >= image_count) {
+        return;
+    }
+    if (frame_bindings_.size() != image_count) {
+        frame_bindings_.resize(image_count);
+    }
+    auto& frame_binding = frame_bindings_[image_index];
 
     struct MaterialUbo {
         glm::vec4 base_color{1.0f};
@@ -149,14 +168,14 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             frame_ubo.light_color_intensity = glm::vec4(light.color, light.intensity);
         }
 
-        if (!frame_ubo_.IsInitialized()) {
-            frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
-                                            .size = static_cast<uint32_t>(sizeof(FrameUbo)),
-                                            .usage = vkfw::BufferUsage::Uniform,
-                                            .mappable = true,
-                                        });
+        if (!frame_binding.ubo.IsInitialized()) {
+            frame_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
+                                                    .size = static_cast<uint32_t>(sizeof(FrameUbo)),
+                                                    .usage = vkfw::BufferUsage::Uniform,
+                                                    .mappable = true,
+                                                });
         }
-        frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
+        frame_binding.ubo.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(FrameUbo)));
 
         glm::vec4 const clear_color = context.frame != nullptr
             ? context.frame->environment.clear_color
@@ -166,28 +185,28 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             : glm::vec3{frame_ubo.ambient_color.x, frame_ubo.ambient_color.y, frame_ubo.ambient_color.z};
         EnsureEnvironmentMaps(*context.vk, context.resources, clear_color, ambient_color);
 
-        if (frame_set_id_ == 0) {
+        if (frame_binding.descriptor_set_id == 0) {
             uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
-            frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+            frame_binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(frame_layout_id);
         }
-        if (frame_set_id_ != 0) {
-            desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(FrameUbo));
+        if (frame_binding.descriptor_set_id != 0) {
+            desc_alloc.UpdateUniformBuffer(frame_binding.descriptor_set_id, 0, frame_binding.ubo.Handle(), 0, sizeof(FrameUbo));
             if (context.current_shadow_map) {
                 vk::Sampler sampler = GetShadowSampler(*context.vk);
-                desc_alloc.UpdateImageSampler(frame_set_id_, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             vk::Sampler const sampler = GetCommonSampler(*context.vk);
             if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {
-                desc_alloc.UpdateImageSampler(frame_set_id_, 2, sampler, g_shared_environment_maps.environment_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 2, sampler, g_shared_environment_maps.environment_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             if (g_shared_environment_maps.irradiance_cubemap.IsInitialized()) {
-                desc_alloc.UpdateImageSampler(frame_set_id_, 3, sampler, g_shared_environment_maps.irradiance_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 3, sampler, g_shared_environment_maps.irradiance_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             if (g_shared_environment_maps.prefilter_cubemap.IsInitialized()) {
-                desc_alloc.UpdateImageSampler(frame_set_id_, 4, sampler, g_shared_environment_maps.prefilter_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 4, sampler, g_shared_environment_maps.prefilter_cubemap.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             if (g_shared_environment_maps.brdf_lut.IsInitialized()) {
-                desc_alloc.UpdateImageSampler(frame_set_id_, 5, sampler, g_shared_environment_maps.brdf_lut.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 5, sampler, g_shared_environment_maps.brdf_lut.View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
         }
     }
@@ -255,7 +274,11 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             continue;
         }
 
-        auto& material_binding = material_bindings_[material->id];
+        auto& material_binding_list = material_bindings_[material->id];
+        if (material_binding_list.size() != image_count) {
+            material_binding_list.resize(image_count);
+        }
+        auto& material_binding = material_binding_list[image_index];
         if (!material_binding.ubo.IsInitialized()) {
             material_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
                                                        .size = static_cast<uint32_t>(sizeof(MaterialUbo)),
@@ -331,8 +354,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
         vk::DescriptorSet sets[2]{};
         uint32_t set_count = 0;
-        if (frame_set_id_ != 0) {
-            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
+        if (frame_binding.descriptor_set_id != 0) {
+            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_binding.descriptor_set_id);
             if (frame_set) {
                 sets[set_count++] = frame_set;
             }

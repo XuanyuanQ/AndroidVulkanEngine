@@ -10,22 +10,22 @@ void UIPass::Reset(vkfw::VkContext* ctx)
     texture_descriptor_sets_.clear();
     ui_shader_id_ = 0;
     if (ctx != nullptr) {
-        if (ui_vertex_buffers_[0].IsInitialized()) {
-            ui_vertex_buffers_[0].Shutdown(*ctx);
+        for (auto& buffer : ui_vertex_buffers_) {
+            if (buffer.IsInitialized()) {
+                buffer.Shutdown(*ctx);
+            }
         }
-        if (ui_vertex_buffers_[1].IsInitialized()) {
-            ui_vertex_buffers_[1].Shutdown(*ctx);
-        }
-        if (ui_index_buffers_[0].IsInitialized()) {
-            ui_index_buffers_[0].Shutdown(*ctx);
-        }
-        if (ui_index_buffers_[1].IsInitialized()) {
-            ui_index_buffers_[1].Shutdown(*ctx);
+        for (auto& buffer : ui_index_buffers_) {
+            if (buffer.IsInitialized()) {
+                buffer.Shutdown(*ctx);
+            }
         }
         if (fallback_white_texture_.IsInitialized()) {
             fallback_white_texture_.Shutdown(*ctx);
         }
     }
+    ui_vertex_buffers_.clear();
+    ui_index_buffers_.clear();
 }
 
 PassDataFilter UIPass::GetDataFilter() const
@@ -51,8 +51,17 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         context.pipelines != nullptr &&
         context.resources != nullptr;
 
-    uint64_t const frame_index = context.frame ? context.frame->frame_index : 0;
-    uint32_t const buf_idx = static_cast<uint32_t>(frame_index % 2);
+    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
+    uint32_t const buf_idx = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    if (image_count == 0 || buf_idx >= image_count) {
+        return;
+    }
+    if (ui_vertex_buffers_.size() != image_count) {
+        ui_vertex_buffers_.resize(image_count);
+    }
+    if (ui_index_buffers_.size() != image_count) {
+        ui_index_buffers_.resize(image_count);
+    }
 
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();

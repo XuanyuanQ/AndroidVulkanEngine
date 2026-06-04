@@ -6,12 +6,19 @@ namespace ave::render {
 
 void ShadowPass::Reset(vkfw::VkContext* ctx)
 {
-    frame_set_id_ = 0;
     shadow_map_initialized_ = false;
     shadow_view_projection_ = glm::mat4{1.0f};
-    if (ctx != nullptr && shadow_map_.IsInitialized()) {
-        shadow_map_.Shutdown(*ctx);
+    if (ctx != nullptr) {
+        for (auto& binding : frame_bindings_) {
+            if (binding.ubo.IsInitialized()) {
+                binding.ubo.Shutdown(*ctx);
+            }
+        }
+        if (shadow_map_.IsInitialized()) {
+            shadow_map_.Shutdown(*ctx);
+        }
     }
+    frame_bindings_.clear();
 }
 
 void ShadowPass::Preload(RenderPassContext const& context)
@@ -50,6 +57,15 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     auto& shader_mgr = context.resources->GetShaderManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
+    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
+    uint32_t const image_index = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    if (image_count == 0 || image_index >= image_count) {
+        return;
+    }
+    if (frame_bindings_.size() != image_count) {
+        frame_bindings_.resize(image_count);
+    }
+    auto& frame_binding = frame_bindings_[image_index];
 
     struct ShadowFrameUbo {
         glm::mat4 shadow_view_projection{1.0f};
@@ -93,21 +109,21 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     ShadowFrameUbo frame_ubo{};
     frame_ubo.shadow_view_projection = shadow_view_projection_;
 
-    if (!frame_ubo_.IsInitialized()) {
-        frame_ubo_.Init(*context.vk, vkfw::BufferInfo{
-                                        .size = static_cast<uint32_t>(sizeof(ShadowFrameUbo)),
-                                        .usage = vkfw::BufferUsage::Uniform,
-                                        .mappable = true,
-                                    });
+    if (!frame_binding.ubo.IsInitialized()) {
+        frame_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
+                                               .size = static_cast<uint32_t>(sizeof(ShadowFrameUbo)),
+                                               .usage = vkfw::BufferUsage::Uniform,
+                                               .mappable = true,
+                                           });
     }
-    frame_ubo_.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(ShadowFrameUbo)));
+    frame_binding.ubo.UpdateData(*context.vk, &frame_ubo, static_cast<uint32_t>(sizeof(ShadowFrameUbo)));
 
-    if (frame_set_id_ == 0) {
+    if (frame_binding.descriptor_set_id == 0) {
         uint32_t const frame_layout_id = desc_cache.GetOrCreateLayout(MakeFrameSetLayoutKey());
-        frame_set_id_ = desc_alloc.AllocateDescriptorSet(frame_layout_id);
+        frame_binding.descriptor_set_id = desc_alloc.AllocateDescriptorSet(frame_layout_id);
     }
-    if (frame_set_id_ != 0) {
-        desc_alloc.UpdateUniformBuffer(frame_set_id_, 0, frame_ubo_.Handle(), 0, sizeof(ShadowFrameUbo));
+    if (frame_binding.descriptor_set_id != 0) {
+        desc_alloc.UpdateUniformBuffer(frame_binding.descriptor_set_id, 0, frame_binding.ubo.Handle(), 0, sizeof(ShadowFrameUbo));
     }
 
     vk::ImageLayout const old_layout = shadow_map_initialized_
@@ -174,8 +190,8 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                                              sizeof(ObjectPushConstants),
                                              &object_push);
 
-        if (frame_set_id_ != 0) {
-            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_set_id_);
+        if (frame_binding.descriptor_set_id != 0) {
+            vk::DescriptorSet const frame_set = desc_alloc.GetHandle(frame_binding.descriptor_set_id);
             if (frame_set) {
                 context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
                                                           pipeline->Layout(),

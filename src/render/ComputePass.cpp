@@ -6,22 +6,21 @@ namespace ave::render {
 
 void ComputePass::Reset(vkfw::VkContext* ctx)
 {
-    descriptor_set_ids_[0] = 0;
-    descriptor_set_ids_[1] = 0;
     if (ctx != nullptr) {
-        if (instances_buffers_[0].IsInitialized()) {
-            instances_buffers_[0].Shutdown(*ctx);
+        for (auto& buffer : instances_buffers_) {
+            if (buffer.IsInitialized()) {
+                buffer.Shutdown(*ctx);
+            }
         }
-        if (instances_buffers_[1].IsInitialized()) {
-            instances_buffers_[1].Shutdown(*ctx);
-        }
-        if (visibility_buffers_[0].IsInitialized()) {
-            visibility_buffers_[0].Shutdown(*ctx);
-        }
-        if (visibility_buffers_[1].IsInitialized()) {
-            visibility_buffers_[1].Shutdown(*ctx);
+        for (auto& buffer : visibility_buffers_) {
+            if (buffer.IsInitialized()) {
+                buffer.Shutdown(*ctx);
+            }
         }
     }
+    instances_buffers_.clear();
+    visibility_buffers_.clear();
+    descriptor_set_ids_.clear();
 }
 
 PassDataFilter ComputePass::GetDataFilter() const
@@ -50,7 +49,20 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
         context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
 
     uint64_t const frame_index = context.frame ? context.frame->frame_index : 0;
-    uint32_t const buf_idx = static_cast<uint32_t>(frame_index % 2);
+    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
+    uint32_t const buf_idx = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    if (image_count == 0 || buf_idx >= image_count) {
+        return;
+    }
+    if (instances_buffers_.size() != image_count) {
+        instances_buffers_.resize(image_count);
+    }
+    if (visibility_buffers_.size() != image_count) {
+        visibility_buffers_.resize(image_count);
+    }
+    if (descriptor_set_ids_.size() != image_count) {
+        descriptor_set_ids_.assign(image_count, 0);
+    }
 
     if (has_vk) {
         if (frame_index >= 2 && visibility_buffers_[buf_idx].IsInitialized()) {

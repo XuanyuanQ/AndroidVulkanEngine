@@ -9,4 +9,6 @@ adb shell am force-stop com.example.trianglegame
 taskkill /F /IM emulator.exe /T 
 adb logcat *:E
 
+adb shell setprop debug.ave.dynamic_rendering 1
+
 distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip

@@ -4,6 +4,7 @@
 
 #include <unordered_map>
 #include <array>
+#include <vector>
 
 #include "VkBuffer.hpp"
 #include "VkTexture.hpp"
@@ -19,8 +20,12 @@ public:
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
 private:
-    vkfw::VkBuffer frame_ubo_{};
-    uint32_t frame_set_id_ = 0;
+    struct FrameBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    std::vector<FrameBinding> frame_bindings_{};
     vkfw::VkTexture depth_texture_{};
     uint32_t depth_shader_id_ = 0;
     bool depth_texture_ready_ = false;
@@ -35,8 +40,12 @@ public:
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
 private:
-    vkfw::VkBuffer frame_ubo_{};
-    uint32_t frame_set_id_ = 0;
+    struct FrameBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    std::vector<FrameBinding> frame_bindings_{};
     vkfw::VkTexture shadow_map_{}; //阴影图只有一张
     uint32_t shadow_shader_id_ = 0;
     bool shadow_map_initialized_ = false;
@@ -52,8 +61,12 @@ public:
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
 private:
-    vkfw::VkBuffer frame_ubo_{};
-    uint32_t frame_set_id_ = 0;
+    struct FrameBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    std::vector<FrameBinding> frame_bindings_{};
     uint32_t skybox_shader_id_ = 0;
     uint32_t skybox_mesh_id_ = 0;
 };
@@ -77,9 +90,13 @@ private:
         uint32_t descriptor_set_id = 0;
     };
 
-    vkfw::VkBuffer frame_ubo_{};
-    uint32_t frame_set_id_ = 0;
-    std::unordered_map<uint32_t, MaterialBinding> material_bindings_{};
+    struct FrameBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    std::vector<FrameBinding> frame_bindings_{};
+    std::unordered_map<uint32_t, std::vector<MaterialBinding>> material_bindings_{};
     vkfw::VkTexture fallback_white_texture_{};
     vkfw::VkTexture fallback_normal_texture_{};
     uint32_t fallback_material_id_ = 0;
@@ -94,9 +111,9 @@ public:
     void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
 
 private:
-    vkfw::VkBuffer instances_buffers_[2]{};
-    vkfw::VkBuffer visibility_buffers_[2]{};
-    uint32_t descriptor_set_ids_[2] = {0, 0};
+    std::vector<vkfw::VkBuffer> instances_buffers_{};
+    std::vector<vkfw::VkBuffer> visibility_buffers_{};
+    std::vector<uint32_t> descriptor_set_ids_{};
 };
 
 class UIPass final : public RenderPass {
@@ -108,8 +125,8 @@ public:
 
 private:
     std::unordered_map<uint32_t, uint32_t> texture_descriptor_sets_{};
-    vkfw::VkBuffer ui_vertex_buffers_[2]{};
-    vkfw::VkBuffer ui_index_buffers_[2]{};
+    std::vector<vkfw::VkBuffer> ui_vertex_buffers_{};
+    std::vector<vkfw::VkBuffer> ui_index_buffers_{};
     vkfw::VkTexture fallback_white_texture_{};
     uint32_t ui_shader_id_ = 0;
 };
