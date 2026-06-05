@@ -319,6 +319,41 @@ std::string MinimalVulkanTriangle::instantiatePrefab(std::string const& prefab_p
     return root_id;
 }
 
+bool MinimalVulkanTriangle::destroyObject(std::string const& object_id)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
+    if (std::find(pending_destructions_.begin(), pending_destructions_.end(), object_id) == pending_destructions_.end()) {
+        pending_destructions_.push_back(object_id);
+    }
+    return true;
+}
+
+void MinimalVulkanTriangle::processPendingDestructions()
+{
+    if (pending_destructions_.empty()) {
+        return;
+    }
+
+    std::vector<std::string> to_destroy = std::move(pending_destructions_);
+    pending_destructions_.clear();
+
+    bool scene_changed = false;
+    for (auto const& object_id : to_destroy) {
+        std::vector<std::string> destroyed_ids = scene_world_.DestroyObject(object_id, renderer_.GetResourceSystem(), renderer_.GetMaterialSystem());
+        if (!destroyed_ids.empty()) {
+            scene_changed = true;
+            for (auto const& id : destroyed_ids) {
+                Jni_DestroyScript(id);
+                instantiated_scripts_.erase(id);
+            }
+        }
+    }
+
+    if (scene_changed) {
+        ui_runtime_.RebuildFromScene(scene_world_.GetSceneData());
+    }
+}
+
 bool MinimalVulkanTriangle::getObjectPosition(std::string const& object_id, glm::vec3& out_position) const
 {
     std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
@@ -568,6 +603,7 @@ void MinimalVulkanTriangle::drawFrame()
             {
                 std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
                 Jni_UpdateScripts(delta_time);
+                processPendingDestructions();
                 scene_world_.BuildFrameData(frame_index_, frame_data_);
                 ui_runtime_.Update(delta_time);
                 ui_runtime_.BuildFrameUi(frame_data_.ui_items);

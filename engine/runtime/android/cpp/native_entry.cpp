@@ -18,6 +18,7 @@ static jmethodID g_trigger_script_mid = nullptr;
 static jmethodID g_trigger_script_value_mid = nullptr;
 static jmethodID g_clear_scripts_mid = nullptr;
 static jmethodID g_generate_font_atlas_mid = nullptr;
+static jmethodID g_destroy_script_mid = nullptr;
 
 namespace {
 
@@ -58,6 +59,16 @@ jfloatArray MakeVec4Array(JNIEnv* env, glm::vec4 const& value)
     return MakeFloatArray(env, values, 4);
 }
 
+bool CheckAndClearException(JNIEnv* env)
+{
+    if (env && env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
@@ -81,6 +92,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;F)V");
         g_clear_scripts_mid = env->GetStaticMethodID(g_ave_activity_class, "jniClearScripts", "()V");
         g_generate_font_atlas_mid = env->GetStaticMethodID(g_ave_activity_class, "jniGenerateFontAtlas", "()V");
+        g_destroy_script_mid = env->GetStaticMethodID(g_ave_activity_class, "jniDestroyScript", "(Ljava/lang/String;)V");
     }
     return JNI_VERSION_1_6;
 }
@@ -142,6 +154,7 @@ void Jni_InstantiateScript(std::string const& object_id,
         j_target_object_id,
         j_keys,
         j_values);
+    CheckAndClearException(env);
 
     env->DeleteLocalRef(j_object_id);
     env->DeleteLocalRef(j_java_class);
@@ -157,7 +170,12 @@ void Jni_UpdateScripts(float dt)
     if (!env || !g_update_scripts_mid) {
         return;
     }
+    if (env->PushLocalFrame(128) < 0) {
+        return;
+    }
     env->CallStaticVoidMethod(g_ave_activity_class, g_update_scripts_mid, static_cast<jfloat>(dt));
+    CheckAndClearException(env);
+    env->PopLocalFrame(nullptr);
 }
 
 void Jni_TriggerScriptMethod(std::string const& target, std::string const& method)
@@ -172,6 +190,7 @@ void Jni_TriggerScriptMethod(std::string const& target, std::string const& metho
     jstring j_target = env->NewStringUTF(target.c_str());
     jstring j_method = env->NewStringUTF(method.c_str());
     env->CallStaticVoidMethod(g_ave_activity_class, g_trigger_script_mid, j_target, j_method);
+    CheckAndClearException(env);
     env->DeleteLocalRef(j_target);
     env->DeleteLocalRef(j_method);
 }
@@ -190,6 +209,7 @@ void Jni_TriggerScriptValueMethod(std::string const& target, std::string const& 
     jstring j_method = env->NewStringUTF(method.c_str());
     jstring j_source = env->NewStringUTF(source_id.c_str());
     env->CallStaticVoidMethod(g_ave_activity_class, g_trigger_script_value_mid, j_target, j_method, j_source, static_cast<jfloat>(value));
+    CheckAndClearException(env);
     env->DeleteLocalRef(j_target);
     env->DeleteLocalRef(j_method);
     env->DeleteLocalRef(j_source);
@@ -202,6 +222,7 @@ void Jni_ClearScripts()
         return;
     }
     env->CallStaticVoidMethod(g_ave_activity_class, g_clear_scripts_mid);
+    CheckAndClearException(env);
 }
 
 void Jni_GenerateFontAtlas()
@@ -211,6 +232,19 @@ void Jni_GenerateFontAtlas()
         return;
     }
     env->CallStaticVoidMethod(g_ave_activity_class, g_generate_font_atlas_mid);
+    CheckAndClearException(env);
+}
+
+void Jni_DestroyScript(std::string const& object_id)
+{
+    JNIEnv* env = GetJniEnv();
+    if (!env || !g_destroy_script_mid) {
+        return;
+    }
+    jstring j_object_id = env->NewStringUTF(object_id.c_str());
+    env->CallStaticVoidMethod(g_ave_activity_class, g_destroy_script_mid, j_object_id);
+    CheckAndClearException(env);
+    env->DeleteLocalRef(j_object_id);
 }
 
 std::unique_ptr<MinimalVulkanTriangle> g_runtime;
@@ -434,4 +468,13 @@ Java_com_ave_engine_AveActivity_nativeInstantiatePrefab(
         return env->NewStringUTF(res.c_str());
     }
     return env->NewStringUTF("");
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ave_engine_AveActivity_nativeDestroyObject(JNIEnv* env, jclass, jstring object_id)
+{
+    if (g_runtime) {
+        return g_runtime->destroyObject(ReadJString(env, object_id)) ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
 }

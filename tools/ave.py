@@ -116,6 +116,8 @@ def write_local_properties(output_dir: Path, sdk_dir: str | None) -> None:
         os.environ.get("ANDROID_SDK_ROOT"),
         r"D:\Setup\android_sdk",
         str(Path.home() / "AppData" / "Local" / "Android" / "Sdk"),
+        str(Path.home() / "Library" / "Android" / "sdk"),
+        str(Path.home() / "Android" / "Sdk"),
     ]
 
     selected = next((Path(path) for path in candidates if path and Path(path).exists()), None)

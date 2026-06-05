@@ -34,6 +34,7 @@ void Jni_TriggerScriptMethod(std::string const& target, std::string const& metho
 void Jni_TriggerScriptValueMethod(std::string const& target, std::string const& method, std::string const& source_id, float value);
 void Jni_ClearScripts();
 void Jni_GenerateFontAtlas();
+void Jni_DestroyScript(std::string const& object_id);
 
 class MinimalVulkanTriangle {
 public:
@@ -54,6 +55,7 @@ public:
     void registerFontAtlas(int width, int height, void const* pixel_data);
     std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id);
     std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id, float x, float y, float z);
+    bool destroyObject(std::string const& object_id);
 
     bool getObjectPosition(std::string const& object_id, glm::vec3& out_position) const;
     bool getObjectRotation(std::string const& object_id, glm::vec3& out_rotation) const;
@@ -113,6 +115,9 @@ private:
     mutable std::recursive_mutex m_scene_mutex;
     std::unordered_set<std::string> instantiated_scripts_;
     bool ui_touch_captured_{false};
+
+    void processPendingDestructions();
+    std::vector<std::string> pending_destructions_;
 };
 
 } // namespace ave::android

@@ -156,6 +156,10 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         scriptManager.clear();
     }
 
+    public static void jniDestroyScript(String objectId) {
+        scriptManager.destroyScript(objectId);
+    }
+
     static void jniSetObjectPosition(String objectId, float x, float y, float z) {
         nativeSetObjectPosition(objectId, x, y, z);
     }
@@ -182,6 +186,10 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     static void jniSetObjectProgress(String objectId, float value) {
         nativeSetObjectProgress(objectId, value);
+    }
+
+    static boolean jniDestroyObject(String objectId) {
+        return nativeDestroyObject(objectId);
     }
 
     static float jniGetObjectProgress(String objectId) {
@@ -353,4 +361,5 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     private static native void nativeRegisterFontAtlas(int width, int height, int[] pixels);
     private static native String nativeInstantiatePrefab(String prefabPath, String parentId, float x, float y, float z);
+    private static native boolean nativeDestroyObject(String objectId);
 }
