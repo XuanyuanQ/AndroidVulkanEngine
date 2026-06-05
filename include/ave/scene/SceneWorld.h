@@ -27,6 +27,9 @@ public:
                                   std::string const& parent_id,
                                   resource::ResourceSystem& resources,
                                   render::MaterialSystem& materials);
+    std::vector<std::string> DestroyObject(std::string const& object_id,
+                                           resource::ResourceSystem& resources,
+                                           render::MaterialSystem& materials);
     uint32_t AddRenderable(std::string object_id, std::string debug_name, std::string mesh_id, std::string material_id);
     uint32_t AddPointLight(float x, float y, float z, float intensity);
     void BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const;

@@ -7,5 +7,8 @@
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
+        <Script java_class="com.example.trianglegame.SelfDestruct">
+            <Parameter key="lifetime" value="3.0" />
+        </Script>
     </GameObject>
 </Prefab>

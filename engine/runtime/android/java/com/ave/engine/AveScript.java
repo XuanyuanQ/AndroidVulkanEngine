@@ -133,4 +133,17 @@ public class AveScript {
     protected final void log(String message) {
         LogUtil.log(message);
     }
+
+    protected final void destroySelf() {
+        String target = getObjectId();
+        if (!target.isEmpty()) {
+            AveObjectController.destroyObject(target);
+        }
+    }
+
+    protected final void destroyObject(String objectId) {
+        if (objectId != null && !objectId.isEmpty()) {
+            AveObjectController.destroyObject(objectId);
+        }
+    }
 }

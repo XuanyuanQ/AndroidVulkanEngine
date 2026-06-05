@@ -67,4 +67,8 @@ public final class AveObjectController {
     public static String instantiatePrefab(String prefabPath, String parentId, float x, float y, float z) {
         return AveActivity.jniInstantiatePrefab(prefabPath, parentId, x, y, z);
     }
+
+    public static boolean destroyObject(String objectId) {
+        return AveActivity.jniDestroyObject(objectId);
+    }
 }

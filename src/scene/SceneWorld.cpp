@@ -889,4 +889,52 @@ std::string SceneWorld::InstantiatePrefab(project::PrefabDocument const& prefab,
     return root_id;
 }
 
+std::vector<std::string> SceneWorld::DestroyObject(std::string const& object_id,
+                                                   resource::ResourceSystem& resources,
+                                                   render::MaterialSystem& materials)
+{
+    std::vector<std::string> to_destroy;
+    std::vector<std::string> pending = { object_id };
+
+    // 1. Collect all children/descendants recursively
+    while (!pending.empty()) {
+        std::string curr = pending.back();
+        pending.pop_back();
+        to_destroy.push_back(curr);
+
+        for (auto const& obj : scene_.objects) {
+            if (obj.hierarchy.parent == curr) {
+                pending.push_back(obj.id);
+            }
+        }
+    }
+
+    // 2. Remove them from parent children lists
+    for (auto& obj : scene_.objects) {
+        auto& children = obj.hierarchy.children;
+        for (auto const& id : to_destroy) {
+            children.erase(std::remove(children.begin(), children.end(), id), children.end());
+        }
+    }
+
+    // 3. Remove from scene objects list in a single pass
+    bool found = false;
+    auto it = std::remove_if(scene_.objects.begin(), scene_.objects.end(),
+                             [&to_destroy](project::GameObjectData const& obj) {
+                                 return std::find(to_destroy.begin(), to_destroy.end(), obj.id) != to_destroy.end();
+                             });
+    if (it != scene_.objects.end()) {
+        scene_.objects.erase(it, scene_.objects.end());
+        found = true;
+    }
+
+    // 4. Rebuild active scene structure
+    if (found) {
+        RebuildFromScene(scene_, resources, materials, aspect_ratio_);
+        return to_destroy;
+    }
+
+    return {};
+}
+
 } // namespace ave::scene

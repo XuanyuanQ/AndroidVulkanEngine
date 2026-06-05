@@ -4,10 +4,11 @@ import android.util.Log;
 import android.view.MotionEvent;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class AveScriptManager {
     private static final String TAG = "AveScriptManager";
-    private final Map<String, AveScript> activeScripts = new HashMap<>(); // objectId -> AveScript instance
+    private final Map<String, AveScript> activeScripts = new ConcurrentHashMap<>(); // objectId -> AveScript instance
 
     // Called via JNI when C++ loads objects with Script components
     public void instantiateScript(String objectId, String className, String targetObjectId, String[] paramKeys, String[] paramValues) {
@@ -23,6 +24,12 @@ public final class AveScriptManager {
             Log.i(TAG, "Successfully loaded script '" + className + "' for GameObject '" + objectId + "'");
         } catch (Exception e) {
             Log.e(TAG, "Failed to instantiate script class: " + className, e);
+        }
+    }
+
+    public void destroyScript(String objectId) {
+        if (activeScripts.remove(objectId) != null) {
+            Log.i(TAG, "Unloaded script instance for GameObject '" + objectId + "'");
         }
     }
 
