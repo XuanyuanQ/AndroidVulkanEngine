@@ -1,5 +1,5 @@
 <Scene name="TriangleScene">
-    <Environment clearColor="0.00,0.00,0.00,0.00" ambientColor="0.00,0.00,0.00,0.00" />
+    <Environment clearColor="0.00,0.00,0.00,0.00" ambientColor="1.00,1.00,1.00,0.00" />
 
     <GameObject id="MainCamera" name="Main Camera">
         <Transform position="0,2,8" rotation="0,-12,0" scale="1,1,1" />

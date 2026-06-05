@@ -543,6 +543,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     
     // Initialize pipeline
     if (!pipeline->Init(*ctx_, pipeline_info)) {
+        LOGE("failed to create pipeline_id in shader");
         return 0;
     }
 
