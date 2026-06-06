@@ -96,6 +96,12 @@
         <Text value="VIKING ROOM" color="1,0.95,0.72,1" size="0.08" />
     </GameObject>
 
+    <GameObject id="render_backend_debug_text" name="Render Backend Debug Text">
+        <Transform position="0.5,0.82,0.00" rotation="0,0,0" scale="1,1,1" />
+        <Text value="RENDER PASS" color="0.65,1.00,0.65,1" size="0.1" />
+        <Script class="com.example.trianglegame.RenderBackendDebugText" />
+    </GameObject>
+
     <GameObject id="KeyLight" name="Key Light">
         <Transform position="0,6,6" rotation="0,0,0" scale="1,1,1" />
         <PointLight color="1,1,1" intensity="15.0" range="20.0" castShadows="true" />

@@ -329,6 +329,14 @@ Java_com_ave_engine_AveActivity_nativeSetObjectTexture(JNIEnv* env, jclass, jstr
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ave_engine_AveActivity_nativeSetObjectText(JNIEnv* env, jclass, jstring object_id, jstring text)
+{
+    if (g_runtime) {
+        g_runtime->setObjectText(ReadJString(env, object_id), ReadJString(env, text));
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ave_engine_AveActivity_nativeSetObjectProgress(JNIEnv* env, jclass, jstring object_id, jfloat value)
 {
     if (g_runtime) {

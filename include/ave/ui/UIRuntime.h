@@ -136,6 +136,7 @@ public:
     bool SetObjectScale(std::string const& object_id, glm::vec3 const& scale);
     bool SetObjectVisible(std::string const& object_id, bool visible);
     bool SetObjectTexture(std::string const& object_id, std::string const& texture_id);
+    bool SetObjectText(std::string const& object_id, std::string const& text);
     bool SetObjectColor(std::string const& object_id, glm::vec4 const& color);
     bool SetObjectProgress(std::string const& object_id, float value);
     bool GetObjectPosition(std::string const& object_id, glm::vec3& out_position) const;

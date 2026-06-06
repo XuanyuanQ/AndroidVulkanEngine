@@ -263,10 +263,22 @@ bool VkContext::Init(ContextCreateInfo const& info)
   bool const device_supports_dynamic_rendering = use_core_dynamic_rendering || has_khr_dynamic_rendering;
 #if defined(__ANDROID__)
   bool const enable_dynamic_rendering = device_supports_dynamic_rendering && AndroidDynamicRenderingEnabled();
+  char dynamic_rendering_property[PROP_VALUE_MAX] = {};
+  int const dynamic_rendering_property_len =
+      __system_property_get("debug.ave.dynamic_rendering", dynamic_rendering_property);
 #else
   bool const enable_dynamic_rendering = device_supports_dynamic_rendering;
 #endif
   impl_->supports_dynamic_rendering = enable_dynamic_rendering;
+#if defined(__ANDROID__)
+  LOGI("Vulkan dynamic rendering selection: property debug.ave.dynamic_rendering='%s' len=%d device_supports=%d core13=%d khr_ext=%d enabled=%d",
+       dynamic_rendering_property,
+       dynamic_rendering_property_len,
+       device_supports_dynamic_rendering ? 1 : 0,
+       use_core_dynamic_rendering ? 1 : 0,
+       has_khr_dynamic_rendering ? 1 : 0,
+       enable_dynamic_rendering ? 1 : 0);
+#endif
   if (!use_core_dynamic_rendering && has_khr_dynamic_rendering) {
     dev_exts.push_back(vk::KHRDynamicRenderingExtensionName);
   }

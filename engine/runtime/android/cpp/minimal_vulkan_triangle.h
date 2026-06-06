@@ -51,6 +51,7 @@ public:
     void setObjectVisible(std::string const& object_id, bool visible);
     void setObjectColor(std::string const& object_id, float r, float g, float b, float a);
     void setObjectTexture(std::string const& object_id, std::string const& texture_id);
+    void setObjectText(std::string const& object_id, std::string const& text);
     void setObjectProgress(std::string const& object_id, float value);
     void registerFontAtlas(int width, int height, void const* pixel_data);
     std::string instantiatePrefab(std::string const& prefab_path, std::string const& parent_id);

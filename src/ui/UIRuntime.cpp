@@ -755,6 +755,27 @@ bool UIRuntime::SetObjectTexture(std::string const& object_id, std::string const
     }, nodes_[index]);
 }
 
+bool UIRuntime::SetObjectText(std::string const& object_id, std::string const& text)
+{
+    size_t const index = FindNodeIndex(object_id);
+    if (index >= nodes_.size()) {
+        return false;
+    }
+
+    return std::visit([&text](auto& node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, UiTextNode>) {
+            node.text = text;
+            return true;
+        } else if constexpr (std::is_same_v<T, UiButtonNode>) {
+            node.label = text;
+            return true;
+        } else {
+            return false;
+        }
+    }, nodes_[index]);
+}
+
 bool UIRuntime::SetObjectColor(std::string const& object_id, glm::vec4 const& color)
 {
     size_t const index = FindNodeIndex(object_id);

@@ -88,6 +88,13 @@ public class AveScript {
         }
     }
 
+    protected final void setText(String text) {
+        String target = getTargetObjectId();
+        if (!target.isEmpty()) {
+            AveObjectController.setText(target, text);
+        }
+    }
+
     protected final void setProgress(float value) {
         String target = getTargetObjectId();
         if (!target.isEmpty()) {

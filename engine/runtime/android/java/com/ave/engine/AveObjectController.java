@@ -28,6 +28,10 @@ public final class AveObjectController {
         AveActivity.jniSetObjectTexture(objectId, texture);
     }
 
+    public static void setText(String objectId, String text) {
+        AveActivity.jniSetObjectText(objectId, text);
+    }
+
     public static void setProgress(String objectId, float value) {
         AveActivity.jniSetObjectProgress(objectId, value);
     }

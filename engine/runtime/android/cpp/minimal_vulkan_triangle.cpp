@@ -200,6 +200,14 @@ void MinimalVulkanTriangle::setObjectTexture(std::string const& object_id, std::
     }
 }
 
+void MinimalVulkanTriangle::setObjectText(std::string const& object_id, std::string const& text)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
+    if (!ui_runtime_.SetObjectText(object_id, text)) {
+        LOGW("setObjectText failed, UI text object not found: %s", object_id.c_str());
+    }
+}
+
 void MinimalVulkanTriangle::setObjectProgress(std::string const& object_id, float value)
 {
     std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
