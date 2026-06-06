@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <glm/glm.hpp>
 
@@ -244,6 +245,7 @@ private:
     ave::resource::ResourceSystem* resource_system_ = nullptr;
     PipelineLayoutCache* pipeline_layout_cache_ = nullptr;
     std::unordered_map<PipelineKey, uint32_t, PipelineKeyHash> cache_;
+    std::unordered_set<PipelineKey, PipelineKeyHash> failed_cache_;
     std::unordered_map<uint32_t, std::unique_ptr<vkfw::VkPipeline>> pipelines_;
     uint32_t next_id_ = 1;
 };

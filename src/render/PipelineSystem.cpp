@@ -138,7 +138,6 @@ uint32_t DescriptorSetLayoutCache::GetOrCreateLayout(DescriptorSetLayoutKey cons
     if (it != cache_.end()) {
         return it->second;
     }
-    
     uint32_t id = next_id_++;
     
     // Convert bindings to vkfw format
@@ -206,7 +205,6 @@ uint32_t PipelineLayoutCache::GetOrCreateLayout(PipelineLayoutKey const& key, st
     if (it != cache_.end()) {
         return it->second;
     }
-    
     uint32_t id = next_id_++;
     
     // Collect descriptor set layouts from cache
@@ -267,6 +265,9 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     auto it = cache_.find(key);
     if (it != cache_.end()) {
         return it->second;
+    }
+    if (failed_cache_.find(key) != failed_cache_.end()) {
+        return 0;
     }
     
     uint32_t id = next_id_++;
@@ -543,7 +544,25 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
     
     // Initialize pipeline
     if (!pipeline->Init(*ctx_, pipeline_info)) {
-        LOGE("failed to create pipeline_id in shader");
+        failed_cache_.insert(key);
+        char const* shader_name = "<unknown>";
+        if (resource_system_ != nullptr) {
+            if (auto const* shader = resource_system_->GetShaderManager().GetShader(key.shader_id)) {
+                shader_name = shader->name.c_str();
+            }
+        }
+        LOGE("Pipeline creation failed once; caching failed key shader=%u name=%s vertex_layout=%u render_state=%u layout_profile=%u rt_format=%u depth_format=%u stencil_format=%u samples=%u viewport=%ux%u",
+             key.shader_id,
+             shader_name,
+             key.vertex_layout_id,
+             key.render_state_id,
+             static_cast<uint32_t>(key.layout_profile),
+             key.rt_format,
+             key.depth_format,
+             key.stencil_format,
+             key.sample_count,
+             key.viewport_width,
+             key.viewport_height);
         return 0;
     }
 
@@ -570,6 +589,7 @@ void PipelineCache::Clear()
     }
     pipelines_.clear();
     cache_.clear();
+    failed_cache_.clear();
     next_id_ = 1;
 }
 
