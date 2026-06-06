@@ -20,6 +20,7 @@ public:
     vkfw::VkRenderPass framegraph_load_render_pass{};
     vkfw::VkFramebufferSet framegraph_load_framebuffers{};
     std::vector<vkfw::VkTexture> depth_textures{};
+    std::vector<uint8_t> depth_texture_ready{};
     std::vector<vk::Fence> image_in_flight_fences{};
 };
 
@@ -90,37 +91,39 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
     SetVkContext(&ctx);
     impl_->image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
 
-    if (!ctx.SupportsDynamicRendering()) {
-        vk::Extent2D const extent = swapchain.Extent();
-        for (auto& depth_texture : impl_->depth_textures) {
-            if (depth_texture.IsInitialized()) {
-                depth_texture.Shutdown(ctx);
-            }
+    vk::Extent2D const extent = swapchain.Extent();
+    for (auto& depth_texture : impl_->depth_textures) {
+        if (depth_texture.IsInitialized()) {
+            depth_texture.Shutdown(ctx);
         }
-        impl_->depth_textures.clear();
-        impl_->depth_textures.resize(swapchain.ImageCount());
-        std::vector<vk::ImageView> depth_views;
-        depth_views.reserve(swapchain.ImageCount());
-        for (auto& depth_texture : impl_->depth_textures) {
-            if (!depth_texture.Init(ctx, vkfw::TextureInfo{
-                                             .width = extent.width,
-                                             .height = extent.height,
-                                             .mip_levels = 1,
-                                             .format = vkfw::TextureFormat::D32_SFLOAT,
-                                             .usage = vkfw::TextureUsage::DepthStencilAttachment,
-                                             .mipmap = false,
-                                         })) {
-                for (auto& created_depth : impl_->depth_textures) {
-                    if (created_depth.IsInitialized()) {
-                        created_depth.Shutdown(ctx);
-                    }
+    }
+    impl_->depth_textures.clear();
+    impl_->depth_textures.resize(swapchain.ImageCount());
+    impl_->depth_texture_ready.assign(swapchain.ImageCount(), 0u);
+    std::vector<vk::ImageView> depth_views;
+    depth_views.reserve(swapchain.ImageCount());
+    for (auto& depth_texture : impl_->depth_textures) {
+        if (!depth_texture.Init(ctx, vkfw::TextureInfo{
+                                         .width = extent.width,
+                                         .height = extent.height,
+                                         .mip_levels = 1,
+                                         .format = vkfw::TextureFormat::D32_SFLOAT,
+                                         .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                         .mipmap = false,
+                                     })) {
+            for (auto& created_depth : impl_->depth_textures) {
+                if (created_depth.IsInitialized()) {
+                    created_depth.Shutdown(ctx);
                 }
-                impl_->depth_textures.clear();
-                return false;
             }
-            depth_views.push_back(depth_texture.View());
+            impl_->depth_textures.clear();
+            impl_->depth_texture_ready.clear();
+            return false;
         }
+        depth_views.push_back(depth_texture.View());
+    }
 
+    if (!ctx.SupportsDynamicRendering()) {
         vkfw::RenderPassAttachment color_attachment{};
         color_attachment.binding = 0;
         color_attachment.type = vkfw::RenderPassAttachmentType::Color;
@@ -156,6 +159,7 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                 }
             }
             impl_->depth_textures.clear();
+            impl_->depth_texture_ready.clear();
             return false;
         }
         if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass, depth_views)) {
@@ -166,6 +170,7 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                 }
             }
             impl_->depth_textures.clear();
+            impl_->depth_texture_ready.clear();
             return false;
         }
 
@@ -190,6 +195,7 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                 }
             }
             impl_->depth_textures.clear();
+            impl_->depth_texture_ready.clear();
             return false;
         }
         if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass, depth_views)) {
@@ -202,6 +208,7 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                 }
             }
             impl_->depth_textures.clear();
+            impl_->depth_texture_ready.clear();
             return false;
         }
     }
@@ -233,6 +240,7 @@ void Renderer::ShutdownFrameGraphBackend()
             }
         }
         impl_->depth_textures.clear();
+        impl_->depth_texture_ready.clear();
         impl_->image_in_flight_fences.clear();
     }
 }
@@ -306,14 +314,17 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
     pass_ctx.swapchain = &swapchain;
     pass_ctx.swapchain_image_index = image_index;
     pass_ctx.command_buffer = cmd;
+    if (image_index < impl_->depth_textures.size()) {
+        pass_ctx.current_depth_texture = &impl_->depth_textures[image_index];
+    }
+    if (image_index < impl_->depth_texture_ready.size()) {
+        pass_ctx.current_depth_texture_ready = &impl_->depth_texture_ready[image_index];
+    }
     if (!ctx.SupportsDynamicRendering()) {
         pass_ctx.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
         pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
         pass_ctx.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
         pass_ctx.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
-        if (image_index < impl_->depth_textures.size()) {
-            pass_ctx.current_depth_texture = &impl_->depth_textures[image_index];
-        }
     }
     graph_.Execute(pass_ctx);
 

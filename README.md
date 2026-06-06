@@ -540,7 +540,309 @@ flowchart TB
 
 Vulkan RHI 完全对用户隐藏。用户只需要创建对象、材质、UI 和脚本，不直接接触 Vulkan API。
 
-## 9. Build 到运行完整流程
+## 9. 普通模式 + VR 模式共存架构
+
+如果引擎要同时支持“普通手机/窗口渲染”和“VR 设备渲染”，核心原则是：
+
+```text
+Renderer 不应该直接依赖 Android Surface / VkSwapchain。
+Renderer 只应该接收“本帧要画到哪里”的 RenderTarget。
+
+Android 普通模式负责提供 swapchain image。
+OpenXR VR 模式负责提供 XR swapchain image。
+Renderer / FrameGraph / RenderPass 只关心 RenderTarget、Camera/View、FrameData。
+```
+
+### 9.1 当前问题
+
+当前渲染链路更接近：
+
+```text
+AveActivity
+  -> minimal_vulkan_triangle
+  -> Android Surface / VkSwapchain
+  -> Renderer::RenderFrameGraphFrame
+  -> FrameGraph
+  -> Shadow / Depth / Skybox / PBR / UI
+  -> Present 到 Android Surface
+```
+
+这条链路能跑普通 Android，但它把“获取 swapchain image、渲染、present”绑在同一条路径里。VR 接入后会遇到几个结构性问题：
+
+| 问题 | 普通模式 | VR 模式 |
+|---|---|---|
+| 输出目标 | Android `VkSwapchainKHR` image | OpenXR `XrSwapchain` image |
+| 相机数量 | 1 个 view | 左眼/右眼 2 个 view |
+| Present | Vulkan present queue | `xrEndFrame` 提交 composition layer |
+| 帧时间 | App 自己算 delta time | 使用 OpenXR predicted display time |
+| 输入 | Android touch | XR controller / hand / head pose |
+
+所以不要把 VR 硬塞进 `minimal_vulkan_triangle.cpp` 里，而是先把平台输出目标抽象出来。
+
+### 9.2 推荐目标架构
+
+```mermaid
+flowchart TB
+    Activity["AveActivity / Desktop Window"]
+    XRApp["OpenXR Runtime"]
+
+    SurfaceBackend["SurfaceRenderBackend<br/>Android/Window Swapchain"]
+    XRBackend["XRRenderBackend<br/>OpenXR Session + XR Swapchain"]
+
+    FrameRequest["RenderFrameRequest<br/>targets + views + timing"]
+    Renderer["Renderer<br/>RenderFrameGraphToTarget"]
+    FrameGraph["FrameGraph"]
+    Passes["Render Passes<br/>Shadow / Depth / Skybox / PBR / UI"]
+
+    SceneWorld["SceneWorld / FrameData"]
+    ResourceSystem["ResourceSystem"]
+    PipelineSystem["PipelineSystem"]
+
+    Activity --> SurfaceBackend
+    XRApp --> XRBackend
+
+    SurfaceBackend --> FrameRequest
+    XRBackend --> FrameRequest
+
+    SceneWorld --> Renderer
+    ResourceSystem --> Renderer
+    PipelineSystem --> Renderer
+
+    FrameRequest --> Renderer
+    Renderer --> FrameGraph
+    FrameGraph --> Passes
+```
+
+普通模式和 VR 模式的区别应该只发生在“帧来源”和“最终提交”：
+
+| 层级 | 普通模式 | VR 模式 | 是否复用 |
+|---|---|---|---|
+| SceneWorld | 同一套场景 | 同一套场景 | 复用 |
+| ResourceSystem | 同一套 mesh/texture/material | 同一套 mesh/texture/material | 复用 |
+| PipelineSystem | 复用大部分 pipeline cache | pipeline key 需要增加 view/format 信息 | 大部分复用 |
+| FrameGraph | 同一套 pass 编排 | 同一套 pass 编排，可按 eye 执行 | 复用 |
+| RenderPass | 画到普通 target | 画到 XR eye target | 复用但要去 swapchain 化 |
+| UI Runtime | 2D 屏幕 UI | 初期可禁用，后续做 world-space UI | 部分修改 |
+| Android lifecycle | Surface 创建/销毁 | XR session start/stop/focus | 分离 |
+
+### 9.3 新增核心抽象
+
+建议新增 `RenderTarget`，把 Android swapchain image 和 XR swapchain image 统一成同一种输入：
+
+```cpp
+struct RenderTarget {
+    vk::Image image;
+    vk::ImageView view;
+    vk::Format format;
+    vk::Extent2D extent;
+    vk::ImageLayout layout;
+    uint32_t image_index = 0;
+};
+```
+
+再新增 `FrameViewData` / `RenderFrameRequest`，让 Renderer 不关心本帧来自普通屏幕还是 VR：
+
+```cpp
+struct FrameViewData {
+    glm::mat4 view;
+    glm::mat4 projection;
+    glm::mat4 view_projection;
+    glm::vec3 camera_position;
+};
+
+struct RenderFrameRequest {
+    std::span<RenderTarget const> color_targets;
+    std::span<RenderTarget const> depth_targets;
+    std::span<FrameViewData const> views;
+    uint32_t frame_index = 0;
+    float delta_time = 0.0f;
+};
+```
+
+普通模式：
+
+```text
+color_targets.size = 1
+views.size = 1
+target = Android swapchain image
+```
+
+VR 模式第一阶段可以先做最稳的双 eye 顺序渲染：
+
+```text
+color_targets.size = 2
+views.size = 2
+target[0] = left eye XR swapchain image
+target[1] = right eye XR swapchain image
+```
+
+后续再优化成 Vulkan multiview，不建议第一版直接上 multiview，因为调试成本会明显变高。
+
+### 9.4 需要修改的模块
+
+**Renderer**
+
+当前 `Renderer::RenderFrameGraphFrame(...)` 建议拆成两层：
+
+```text
+RenderFrameGraphFrame(...)
+  只保留普通 Android 兼容入口
+  内部把 swapchain image 包装成 RenderTarget
+
+RenderFrameGraphToTarget(RenderFrameRequest const& request)
+  真正执行 FrameGraph
+  普通模式和 VR 模式都走它
+```
+
+这样第一步不会破坏现有 Android 路径，同时可以给 OpenXR 留入口。
+
+**RenderPassContext / RenderPassCommon**
+
+RenderPass 不应该直接问 `swapchain->Extent()` 或 `swapchain->ImageView()`。建议改成：
+
+```text
+context.color_target
+context.depth_target
+context.view
+context.view_index
+context.view_count
+```
+
+对应地，`BeginSwapchainRendering(...)` 应该逐步改名/改造成：
+
+```text
+BeginTargetRendering(...)
+BeginDepthOnlyRendering(...)
+BeginShadowRendering(...)
+```
+
+普通模式和 VR 模式都从 `RenderTarget` 拿 format、extent、image view。
+
+**FrameData**
+
+目前普通模式只需要一个 camera。VR 需要双 eye view，所以 `FrameData` 应该从单 view 扩展到：
+
+```text
+FrameData.views[0] = mono 或 left eye
+FrameData.views[1] = right eye
+FrameData.view_count = 1 或 2
+```
+
+场景对象、材质、灯光仍然是一份，不需要为左右眼复制。
+
+**PipelineSystem**
+
+Pipeline key 需要包含目标格式和 view 模式：
+
+```text
+color_format
+depth_format
+sample_count
+view_count
+enable_multiview
+```
+
+否则普通 surface 和 XR swapchain 的格式不一样时，可能复用到错误 pipeline。
+
+**ResourceSystem**
+
+大部分可以复用。需要注意的是：
+
+```text
+per-frame uniform / material buffer
+descriptor set
+command buffer
+fence / semaphore
+```
+
+这些资源要按实际 inflight frame / swapchain image / XR swapchain image 做生命周期管理，不能默认只有 Android swapchain 一种数量模型。
+
+**UI Runtime**
+
+建议分两阶段：
+
+1. 第一阶段：VR 模式先禁用屏幕空间 UI，保证 3D 场景进 VR。
+2. 第二阶段：新增 world-space UI，把 UI 当成场景里的 mesh quad 渲染，并用 controller ray 做 hit-test。
+
+不要直接把 Android 像素 UI 投到 VR 眼图里，否则坐标、深度、交互都会变得很乱。
+
+### 9.5 新增 OpenXR 模块建议
+
+建议新建独立模块，不要放进 `minimal_vulkan_triangle.cpp`：
+
+```text
+include/ave/xr/OpenXRRuntime.h
+include/ave/xr/XRFrameData.h
+include/ave/xr/XRSwapchain.h
+
+src/xr/OpenXRRuntime.cpp
+src/xr/XRSwapchain.cpp
+```
+
+职责划分：
+
+| 模块 | 职责 |
+|---|---|
+| `OpenXRRuntime` | 创建 instance/session/reference space，处理 session state |
+| `XRSwapchain` | 创建 color/depth swapchain，acquire/wait/release image |
+| `XRFrameData` | 保存 predicted display time、左右眼 pose/projection |
+| `XRInputSystem` | 后续处理 controller、hand tracking、ray hit |
+
+OpenXR 后端每帧大致流程：
+
+```text
+xrWaitFrame
+xrBeginFrame
+xrLocateViews
+for each eye:
+  xrAcquireSwapchainImage
+  xrWaitSwapchainImage
+  build RenderTarget + FrameViewData
+  Renderer::RenderFrameGraphToTarget(request)
+  xrReleaseSwapchainImage
+xrEndFrame
+```
+
+### 9.6 推荐迁移顺序
+
+不要一口气把 OpenXR 接进来。建议按下面顺序做，风险最低：
+
+1. 新增 `RenderTarget` / `RenderFrameRequest`，但普通 Android 仍然只传 1 个 target。
+2. 把 `Renderer::RenderFrameGraphFrame` 拆成 “acquire/present” 和 “render to target” 两层。
+3. 把 RenderPass 里的 swapchain 依赖替换成 `RenderTarget`。
+4. 把 `FrameData` 扩展成支持 `view_count = 1/2`，普通模式仍然填 1。
+5. 新增 OpenXRRuntime，只完成 session + swapchain 创建，不渲染。
+6. 用 OpenXR 的左右眼 image 调 `RenderFrameGraphToTarget`，先顺序渲染左右眼。
+7. 跑通后再考虑 multiview、foveated rendering、controller input、world-space UI。
+
+### 9.7 架构边界规则
+
+为了让普通模式和 VR 模式长期共存，建议定下几条硬规则：
+
+```text
+Renderer 不包含 ANativeWindow / XrSession。
+RenderPass 不直接访问 VkSwapchainKHR。
+OpenXRRuntime 不直接读取 SceneWorld。
+Android Activity 不直接创建 GPU 资源。
+FrameGraph 只消费 RenderFrameRequest + FrameData。
+ResourceSystem 只管理资源，不负责 present。
+```
+
+最终目标是：
+
+```text
+同一个 SceneWorld
+同一个 ResourceSystem
+同一个 FrameGraph
+同一批 RenderPass
+
+可以输出到：
+  1. Android Surface
+  2. Desktop Window
+  3. OpenXR headset
+```
+
+## 10. Build 到运行完整流程
 
 ```mermaid
 sequenceDiagram

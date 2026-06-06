@@ -65,6 +65,7 @@ struct RenderPassContext {
 
     mutable vkfw::VkTexture* current_shadow_map = nullptr;
     mutable vkfw::VkTexture* current_depth_texture = nullptr;
+    mutable uint8_t* current_depth_texture_ready = nullptr;
     mutable glm::mat4 shadow_view_projection{1.0f};//测试用
 
     // Optional: capture debug strings per pass for early bring-up.

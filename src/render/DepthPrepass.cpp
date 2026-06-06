@@ -85,14 +85,21 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     if (material_bindings_.size() == 0) {
         material_bindings_.reserve(64);
     }
-    if (depth_textures_.size() != image_count) {
-        depth_textures_.resize(image_count);
-    }
     if (depth_texture_ready_.size() != image_count) {
         depth_texture_ready_.assign(image_count, 0u);
     }
     auto& frame_binding = frame_bindings_[image_index];
-    auto& depth_texture = depth_textures_[image_index];
+    if (context.current_depth_texture == nullptr) {
+        if (depth_textures_.size() != image_count) {
+            depth_textures_.resize(image_count);
+        }
+        context.current_depth_texture = &depth_textures_[image_index];
+    }
+    if (context.current_depth_texture_ready == nullptr) {
+        context.current_depth_texture_ready = &depth_texture_ready_[image_index];
+    }
+    auto& depth_texture = *context.current_depth_texture;
+    auto& depth_texture_ready = *context.current_depth_texture_ready;
 
     struct DepthFrameUbo {
         glm::mat4 view_projection{1.0f};
@@ -123,7 +130,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         auto const extent = depth_texture.Extent();
         if (extent.width != width || extent.height != height) {
             depth_texture.Shutdown(*context.vk);
-            depth_texture_ready_[image_index] = 0u;
+            depth_texture_ready = 0u;
         }
     }
 
@@ -139,10 +146,10 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
             LOGE("DepthPrepass failed to create depth texture");
             return;
         }
-        depth_texture_ready_[image_index] = 0u;
+        depth_texture_ready = 0u;
     }
 
-    if (depth_texture_ready_[image_index] == 0u) {
+    if (depth_texture_ready == 0u) {
         TransitionImageLayout(context.command_buffer,
                               depth_texture.Handle(),
                               vk::ImageAspectFlagBits::eDepth,
@@ -355,7 +362,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     }
 
     EndSwapchainRendering(context);
-    depth_texture_ready_[image_index] = 1u;
+    depth_texture_ready = 1u;
 }
 
 } // namespace ave::render
