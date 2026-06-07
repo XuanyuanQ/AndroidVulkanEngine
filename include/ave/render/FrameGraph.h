@@ -24,6 +24,7 @@ private:
     };
 
     std::vector<PassNode> passes_;
+    mutable FrameGraphResourceRegistry resources_{};
 };
 
 } // namespace ave::render

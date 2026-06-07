@@ -160,7 +160,11 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         FrameUbo frame_ubo{};
         if (context.frame != nullptr) {
             frame_ubo.view_projection = context.frame->view.view_projection;
-            frame_ubo.shadow_view_projection = context.shadow_view_projection;
+            if (context.frame_graph_resources != nullptr) {
+                frame_ubo.shadow_view_projection = context.frame_graph_resources->GetMatrix(
+                    FrameGraphResourceRegistry::ShadowViewProjection,
+                    frame_ubo.shadow_view_projection);
+            }
             frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
             frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
             frame_ubo.clear_color = context.frame->environment.clear_color;
@@ -198,9 +202,12 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         }
         if (frame_binding.descriptor_set_id != 0) {
             desc_alloc.UpdateUniformBuffer(frame_binding.descriptor_set_id, 0, frame_binding.ubo.Handle(), 0, sizeof(FrameUbo));
-            if (context.current_shadow_map) {
+            vkfw::VkTexture* shadow_map = context.frame_graph_resources != nullptr
+                ? context.frame_graph_resources->GetTexture(FrameGraphResourceRegistry::ShadowMap)
+                : nullptr;
+            if (shadow_map) {
                 vk::Sampler sampler = GetShadowSampler(*context.vk);
-                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 1, sampler, context.current_shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
+                desc_alloc.UpdateImageSampler(frame_binding.descriptor_set_id, 1, sampler, shadow_map->View(), vk::ImageLayout::eShaderReadOnlyOptimal);
             }
             vk::Sampler const sampler = GetCommonSampler(*context.vk);
             if (g_shared_environment_maps.environment_cubemap.IsInitialized()) {

@@ -317,8 +317,10 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
                           vk::AccessFlagBits::eShaderRead,
                           vk::PipelineStageFlagBits::eLateFragmentTests,
                           vk::PipelineStageFlagBits::eFragmentShader);
-    context.current_shadow_map = &shadow_map;
-    context.shadow_view_projection = shadow_view_projection_;
+    if (context.frame_graph_resources != nullptr) {
+        context.frame_graph_resources->SetTexture(FrameGraphResourceRegistry::ShadowMap, &shadow_map);
+        context.frame_graph_resources->SetMatrix(FrameGraphResourceRegistry::ShadowViewProjection, shadow_view_projection_);
+    }
     shadow_map_initialized_[image_index] = 1u;
 }
 

@@ -41,6 +41,10 @@ void FrameGraph::Execute(RenderPassContext const& context)
         return;
     }
 
+    resources_.Clear();
+    RenderPassContext frame_context = context;
+    frame_context.frame_graph_resources = &resources_;
+
     for (size_t pass_index = 0; pass_index < passes_.size(); ++pass_index) {
         auto& node = passes_[pass_index];
         if (!node.pass) {
@@ -49,8 +53,8 @@ void FrameGraph::Execute(RenderPassContext const& context)
 
         PassDataFilter const filter = node.has_filter_override ? node.filter_override
                                                                : node.pass->GetDataFilter();
-        PassExecutionView const view = BuildPassView(*context.frame, filter);
-        node.pass->Execute(context, view);
+        PassExecutionView const view = BuildPassView(*frame_context.frame, filter);
+        node.pass->Execute(frame_context, view);
     }
 }
 

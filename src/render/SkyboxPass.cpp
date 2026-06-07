@@ -119,7 +119,11 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     FrameUbo frame_ubo{};
     if (context.frame != nullptr) {
         frame_ubo.view_projection = context.frame->view.view_projection;
-        frame_ubo.shadow_view_projection = context.shadow_view_projection;
+        if (context.frame_graph_resources != nullptr) {
+            frame_ubo.shadow_view_projection = context.frame_graph_resources->GetMatrix(
+                FrameGraphResourceRegistry::ShadowViewProjection,
+                frame_ubo.shadow_view_projection);
+        }
         frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
         frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
         frame_ubo.clear_color = context.frame->environment.clear_color;

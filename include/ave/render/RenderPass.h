@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
@@ -81,6 +82,43 @@ struct DepthTargetView {
     }
 };
 
+struct FrameGraphResourceRegistry {
+    static constexpr std::string_view ShadowMap = "shadow_map";
+    static constexpr std::string_view ShadowViewProjection = "shadow_view_projection";
+
+    void Clear() const
+    {
+        textures_.clear();
+        matrices_.clear();
+    }
+
+    void SetTexture(std::string_view name, vkfw::VkTexture* texture) const
+    {
+        textures_[std::string{name}] = texture;
+    }
+
+    vkfw::VkTexture* GetTexture(std::string_view name) const
+    {
+        auto const it = textures_.find(std::string{name});
+        return it != textures_.end() ? it->second : nullptr;
+    }
+
+    void SetMatrix(std::string_view name, glm::mat4 const& matrix) const
+    {
+        matrices_[std::string{name}] = matrix;
+    }
+
+    glm::mat4 GetMatrix(std::string_view name, glm::mat4 const& fallback = glm::mat4{1.0f}) const
+    {
+        auto const it = matrices_.find(std::string{name});
+        return it != matrices_.end() ? it->second : fallback;
+    }
+
+private:
+    mutable std::unordered_map<std::string, vkfw::VkTexture*> textures_{};
+    mutable std::unordered_map<std::string, glm::mat4> matrices_{};
+};
+
 struct RenderPassContext {
     core::FrameData const* frame = nullptr;
     resource::ResourceSystem* resources = nullptr;
@@ -93,9 +131,8 @@ struct RenderPassContext {
     DepthTargetView depth_target{};
     uint32_t frame_resource_index = 0;
     uint32_t frame_resource_count = 1;
+    FrameGraphResourceRegistry* frame_graph_resources = nullptr;
 
-    mutable vkfw::VkTexture* current_shadow_map = nullptr;
-    mutable glm::mat4 shadow_view_projection{1.0f};//测试用
 
     // Optional: capture debug strings per pass for early bring-up.
     std::vector<std::string>* debug_output = nullptr;
