@@ -18,6 +18,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     private boolean isResumed = false;
     private boolean surfaceAvailable = false;
     private boolean nativeSurfaceAttached = false;
+    private int nativeSurfaceWidth = 0;
+    private int nativeSurfaceHeight = 0;
     private final Handler memoryLogHandler = new Handler(Looper.getMainLooper());
     private final Runnable memoryLogRunnable = new Runnable() {
         @Override
@@ -91,7 +93,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.i(TAG, "surfaceChanged -> " + width + "x" + height + ", isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
         attachNativeSurfaceIfReady();
-        nativeResize(width, height);
+        pushSurfaceSizeIfReady(width, height);
     }
 
     @Override
@@ -284,6 +286,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
         nativeSetSurface(surface);
         nativeSurfaceAttached = true;
+        nativeSurfaceWidth = surfaceView.getWidth();
+        nativeSurfaceHeight = surfaceView.getHeight();
         Log.i(TAG, "nativeSetSurface attached, isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
@@ -293,6 +297,8 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         }
         nativeClearSurface();
         nativeSurfaceAttached = false;
+        nativeSurfaceWidth = 0;
+        nativeSurfaceHeight = 0;
         Log.i(TAG, "nativeClearSurface detached, isResumed=" + isResumed + ", surfaceAvailable=" + surfaceAvailable + ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
@@ -302,8 +308,20 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         }
         int width = surfaceView.getWidth();
         int height = surfaceView.getHeight();
+        pushSurfaceSizeIfReady(width, height);
+    }
+
+    private void pushSurfaceSizeIfReady(int width, int height) {
+        if (!nativeSurfaceAttached) {
+            return;
+        }
         if (width > 0 && height > 0) {
+            if (width == nativeSurfaceWidth && height == nativeSurfaceHeight) {
+                return;
+            }
             nativeResize(width, height);
+            nativeSurfaceWidth = width;
+            nativeSurfaceHeight = height;
         }
     }
 

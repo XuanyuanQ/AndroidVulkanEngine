@@ -478,6 +478,10 @@ void MinimalVulkanTriangle::resize(int width, int height)
         return;
     }
 
+    if (width_ == width && height_ == height) {
+        return;
+    }
+
     width_ = width;
     height_ = height;
     std::lock_guard<std::mutex> lock(m_surface_mutex);
