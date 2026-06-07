@@ -17,7 +17,6 @@ import vulkan_hpp;
 
 namespace vkfw {
 class VkContext;
-class VkSwapchain;
 class VkTexture;
 }
 
@@ -48,6 +47,40 @@ struct PassExecutionView {
 // Build a filtered view of FrameData for a specific pass invocation.
 PassExecutionView BuildPassView(core::FrameData const& frame, PassDataFilter const& filter);
 
+struct RenderTargetView {
+    vk::Image image = {};
+    vk::ImageView image_view = {};
+    vk::Format format = vk::Format::eUndefined;
+    vk::Extent2D extent{};
+    vk::ImageLayout attachment_layout = vk::ImageLayout::eColorAttachmentOptimal;
+    vk::RenderPass compatibility_render_pass = {};
+    vk::Framebuffer compatibility_framebuffer = {};
+    vk::RenderPass compatibility_load_render_pass = {};
+    vk::Framebuffer compatibility_load_framebuffer = {};
+
+    bool IsValid() const noexcept
+    {
+        return image != vk::Image{} &&
+               image_view != vk::ImageView{} &&
+               format != vk::Format::eUndefined &&
+               extent.width > 0 &&
+               extent.height > 0;
+    }
+};
+
+struct DepthTargetView {
+    mutable vkfw::VkTexture* texture = nullptr;
+    mutable uint8_t* ready = nullptr;
+    vk::Format format = vk::Format::eD32Sfloat;
+    vk::Extent2D extent{};
+    vk::ImageLayout attachment_layout = vk::ImageLayout::eDepthAttachmentOptimal;
+
+    bool IsValid() const noexcept
+    {
+        return texture != nullptr && extent.width > 0 && extent.height > 0;
+    }
+};
+
 struct RenderPassContext {
     core::FrameData const* frame = nullptr;
     resource::ResourceSystem* resources = nullptr;
@@ -55,17 +88,13 @@ struct RenderPassContext {
 
     // Optional Vulkan execution context (when running on the GPU backend).
     vkfw::VkContext* vk = nullptr;
-    vkfw::VkSwapchain* swapchain = nullptr;
-    uint32_t swapchain_image_index = 0;
     vk::CommandBuffer command_buffer = {};
-    vk::RenderPass compatibility_render_pass = {};
-    vk::Framebuffer compatibility_framebuffer = {};
-    vk::RenderPass compatibility_load_render_pass = {};
-    vk::Framebuffer compatibility_load_framebuffer = {};
+    RenderTargetView color_target{};
+    DepthTargetView depth_target{};
+    uint32_t frame_resource_index = 0;
+    uint32_t frame_resource_count = 1;
 
     mutable vkfw::VkTexture* current_shadow_map = nullptr;
-    mutable vkfw::VkTexture* current_depth_texture = nullptr;
-    mutable uint8_t* current_depth_texture_ready = nullptr;
     mutable glm::mat4 shadow_view_projection{1.0f};//测试用
 
     // Optional: capture debug strings per pass for early bring-up.

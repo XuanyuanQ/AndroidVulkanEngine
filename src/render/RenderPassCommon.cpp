@@ -826,17 +826,18 @@ void SynchronizeDynamicRenderingAttachmentLoads(RenderPassContext const& context
                                                 bool clear_color,
                                                 bool clear_depth)
 {
-    if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{} ||
+    if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} ||
+        !context.color_target.IsValid() ||
         !context.vk->SupportsDynamicRendering()) {
         return;
     }
 
     if (!clear_color) {
         TransitionImageLayout(context.command_buffer,
-                              context.swapchain->Image(context.swapchain_image_index),
+                              context.color_target.image,
                               vk::ImageAspectFlagBits::eColor,
-                              vk::ImageLayout::eColorAttachmentOptimal,
-                              vk::ImageLayout::eColorAttachmentOptimal,
+                              context.color_target.attachment_layout,
+                              context.color_target.attachment_layout,
                               vk::AccessFlagBits::eColorAttachmentWrite,
                               vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,
                               vk::PipelineStageFlagBits::eColorAttachmentOutput,
@@ -856,17 +857,18 @@ void SynchronizeDynamicRenderingAttachmentLoads(RenderPassContext const& context
     }
 }
 
-bool BeginSwapchainRendering(RenderPassContext const& context,
-                             vk::ClearValue const& clear_value,
-                             bool clear_color,
-                             vkfw::VkTexture const* depth_texture,
-                             bool clear_depth)
+bool BeginRenderTargetRendering(RenderPassContext const& context,
+                                vk::ClearValue const& clear_value,
+                                bool clear_color,
+                                vkfw::VkTexture const* depth_texture,
+                                bool clear_depth)
 {
-    if (context.vk == nullptr || context.swapchain == nullptr || context.command_buffer == vk::CommandBuffer{}) {
+    if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} ||
+        !context.color_target.IsValid()) {
         return false;
     }
 
-    auto const extent = context.swapchain->Extent();
+    auto const extent = context.color_target.extent;
     bool const core_dynamic_rendering =
         context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
 
@@ -876,8 +878,8 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
         vk::ClearDepthStencilValue depth_clear_value{1.0f, 0};
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo color_attachment{};
-            color_attachment.imageView = context.swapchain->ImageView(context.swapchain_image_index);
-            color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+            color_attachment.imageView = context.color_target.image_view;
+            color_attachment.imageLayout = context.color_target.attachment_layout;
             color_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
             color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             color_attachment.clearValue = clear_value;
@@ -885,7 +887,7 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
             vk::RenderingAttachmentInfo depth_attachment{};
             if (depth_texture && depth_texture->IsInitialized()) {
                 depth_attachment.imageView = depth_texture->View();
-                depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+                depth_attachment.imageLayout = context.depth_target.attachment_layout;
                 depth_attachment.loadOp = clear_depth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
                 depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
                 depth_attachment.clearValue.depthStencil = depth_clear_value;
@@ -903,8 +905,8 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
             context.command_buffer.beginRendering(rendering_info);
         } else {
             vk::RenderingAttachmentInfoKHR color_attachment{};
-            color_attachment.imageView = context.swapchain->ImageView(context.swapchain_image_index);
-            color_attachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+            color_attachment.imageView = context.color_target.image_view;
+            color_attachment.imageLayout = context.color_target.attachment_layout;
             color_attachment.loadOp = clear_color ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
             color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
             color_attachment.clearValue = clear_value;
@@ -912,7 +914,7 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
             vk::RenderingAttachmentInfoKHR depth_attachment{};
             if (depth_texture && depth_texture->IsInitialized()) {
                 depth_attachment.imageView = depth_texture->View();
-                depth_attachment.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
+                depth_attachment.imageLayout = context.depth_target.attachment_layout;
                 depth_attachment.loadOp = clear_depth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
                 depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
                 depth_attachment.clearValue.depthStencil = depth_clear_value;
@@ -933,11 +935,11 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
     }
 
     vk::RenderPass compatibility_render_pass = clear_color
-        ? context.compatibility_render_pass
-        : context.compatibility_load_render_pass;
+        ? context.color_target.compatibility_render_pass
+        : context.color_target.compatibility_load_render_pass;
     vk::Framebuffer compatibility_framebuffer = clear_color
-        ? context.compatibility_framebuffer
-        : context.compatibility_load_framebuffer;
+        ? context.color_target.compatibility_framebuffer
+        : context.color_target.compatibility_load_framebuffer;
 
     if (compatibility_render_pass == vk::RenderPass{} ||
         compatibility_framebuffer == vk::Framebuffer{}) {
@@ -956,6 +958,15 @@ bool BeginSwapchainRendering(RenderPassContext const& context,
     render_pass_begin.pClearValues = clear_values.data();
     context.command_buffer.beginRenderPass(render_pass_begin, vk::SubpassContents::eInline);
     return true;
+}
+
+bool BeginSwapchainRendering(RenderPassContext const& context,
+                             vk::ClearValue const& clear_value,
+                             bool clear_color,
+                             vkfw::VkTexture const* depth_texture,
+                             bool clear_depth)
+{
+    return BeginRenderTargetRendering(context, clear_value, clear_color, depth_texture, clear_depth);
 }
 
 void EndSwapchainRendering(RenderPassContext const& context)

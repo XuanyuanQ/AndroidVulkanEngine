@@ -46,13 +46,13 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
 
     bool const has_vk =
         context.vk != nullptr &&
-        context.swapchain != nullptr &&
+        context.color_target.IsValid() &&
         context.command_buffer != vk::CommandBuffer{} &&
         context.pipelines != nullptr &&
         context.resources != nullptr;
 
-    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
-    uint32_t const buf_idx = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
+    uint32_t const buf_idx = context.frame_resource_index;
     if (image_count == 0 || buf_idx >= image_count) {
         return;
     }
@@ -71,8 +71,8 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     vertices.reserve(view.ui_items.size() * 4);
     indices.reserve(view.ui_items.size() * 6);
 
-    float const width = has_vk ? static_cast<float>(context.swapchain->Extent().width) : 1080.0f;
-    float const height = has_vk ? static_cast<float>(context.swapchain->Extent().height) : 1920.0f;
+    float const width = has_vk ? static_cast<float>(context.color_target.extent.width) : 1080.0f;
+    float const height = has_vk ? static_cast<float>(context.color_target.extent.height) : 1920.0f;
     float const aspect_ratio = (width > 0.0f) ? (height / width) : (9.0f / 16.0f);
 
     std::vector<std::string> unique_texture_paths;
@@ -168,7 +168,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     clear.color.float32[1] = 0.0f;
     clear.color.float32[2] = 0.0f;
     clear.color.float32[3] = 0.0f;
-    if (!BeginSwapchainRendering(context, clear, false)) {
+    if (!BeginRenderTargetRendering(context, clear, false)) {
         LOGE("UIPass failed to begin rendering");
         return;
     }
@@ -180,14 +180,14 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     key.vertex_layout_id = 2;
     key.layout_profile = PipelineLayoutProfile::Texture_Set0_Only;
     key.render_state_id = 2;
-    key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
-    key.viewport_width = context.swapchain->Extent().width;
-    key.viewport_height = context.swapchain->Extent().height;
+    key.rt_format = static_cast<uint32_t>(context.color_target.format);
+    key.viewport_width = context.color_target.extent.width;
+    key.viewport_height = context.color_target.extent.height;
 
     vk::RenderPass const ui_compatibility_render_pass =
-        context.compatibility_load_render_pass != vk::RenderPass{}
-            ? context.compatibility_load_render_pass
-            : context.compatibility_render_pass;
+        context.color_target.compatibility_load_render_pass != vk::RenderPass{}
+            ? context.color_target.compatibility_load_render_pass
+            : context.color_target.compatibility_render_pass;
     uint32_t const pipeline_id =
         context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, ui_compatibility_render_pass);
     auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);

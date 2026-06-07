@@ -46,11 +46,11 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
     }
 
     bool const has_vk =
-        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+        context.vk != nullptr && context.command_buffer != vk::CommandBuffer{};
 
     uint64_t const frame_index = context.frame ? context.frame->frame_index : 0;
-    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
-    uint32_t const buf_idx = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
+    uint32_t const buf_idx = context.frame_resource_index;
     if (image_count == 0 || buf_idx >= image_count) {
         return;
     }
@@ -192,7 +192,9 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
         pipe_key.shader_id = g_culling_shader_id;
         pipe_key.layout_profile = PipelineLayoutProfile::ComputeCulling_Set0_Only;
 
-        uint32_t const pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(pipe_key, context.compatibility_render_pass);
+        uint32_t const pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(
+            pipe_key,
+            context.color_target.compatibility_render_pass);
         auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
         if (pipeline) {
             vk::CommandBuffer cmd = context.command_buffer;

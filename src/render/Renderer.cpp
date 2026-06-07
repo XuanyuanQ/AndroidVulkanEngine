@@ -311,20 +311,26 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
     pass_ctx.resources = &resource_system_;
     pass_ctx.pipelines = &pipeline_system_;
     pass_ctx.vk = &ctx;
-    pass_ctx.swapchain = &swapchain;
-    pass_ctx.swapchain_image_index = image_index;
+    pass_ctx.frame_resource_index = image_index;
+    pass_ctx.frame_resource_count = swapchain.ImageCount();
     pass_ctx.command_buffer = cmd;
+    pass_ctx.color_target.image = swapchain.Image(image_index);
+    pass_ctx.color_target.image_view = swapchain.ImageView(image_index);
+    pass_ctx.color_target.format = swapchain.Format();
+    pass_ctx.color_target.extent = swapchain.Extent();
     if (image_index < impl_->depth_textures.size()) {
-        pass_ctx.current_depth_texture = &impl_->depth_textures[image_index];
+        pass_ctx.depth_target.texture = &impl_->depth_textures[image_index];
+        pass_ctx.depth_target.extent = swapchain.Extent();
+        pass_ctx.depth_target.format = vk::Format::eD32Sfloat;
     }
     if (image_index < impl_->depth_texture_ready.size()) {
-        pass_ctx.current_depth_texture_ready = &impl_->depth_texture_ready[image_index];
+        pass_ctx.depth_target.ready = &impl_->depth_texture_ready[image_index];
     }
     if (!ctx.SupportsDynamicRendering()) {
-        pass_ctx.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
-        pass_ctx.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
-        pass_ctx.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
-        pass_ctx.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
+        pass_ctx.color_target.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
+        pass_ctx.color_target.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
+        pass_ctx.color_target.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
+        pass_ctx.color_target.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
     }
     graph_.Execute(pass_ctx);
 

@@ -75,8 +75,8 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
-    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
-    uint32_t const image_index = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
+    uint32_t const image_index = context.frame_resource_index;
     if (image_count == 0 || image_index >= image_count) {
         return;
     }

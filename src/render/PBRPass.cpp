@@ -78,7 +78,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     }
 
     bool const has_vk =
-        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+        context.vk != nullptr && context.color_target.IsValid() && context.command_buffer != vk::CommandBuffer{};
 
     auto& mesh_mgr = context.resources->GetMeshManager();
     auto& mat_mgr = context.resources->GetMaterialManager();
@@ -86,8 +86,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
-    uint32_t const image_count = context.swapchain != nullptr ? context.swapchain->ImageCount() : 1u;
-    uint32_t const image_index = context.swapchain != nullptr ? context.swapchain_image_index : 0u;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
+    uint32_t const image_index = context.frame_resource_index;
     if (image_count == 0 || image_index >= image_count) {
         return;
     }
@@ -113,10 +113,10 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
     if (has_vk) {
         EnsureFallbackNormalTexture(*context.vk, fallback_normal_texture_);
         EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
-        uint32_t const width = context.swapchain->Extent().width;
-        uint32_t const height = context.swapchain->Extent().height;
+        uint32_t const width = context.color_target.extent.width;
+        uint32_t const height = context.color_target.extent.height;
 
-        vkfw::VkTexture* depth_target = context.current_depth_texture;
+        vkfw::VkTexture* depth_target = context.depth_target.texture;
         if (depth_target == nullptr || !depth_target->IsInitialized()) {
             if (fallback_depth_stencil.IsInitialized()) {
                 auto const extent = fallback_depth_stencil.Extent();
@@ -140,7 +140,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             }
 
             depth_target = &fallback_depth_stencil;
-            context.current_depth_texture = depth_target;
+            context.depth_target.texture = depth_target;
         }
 
         vk::ClearValue clear{};
@@ -149,7 +149,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
         clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
         bool const clear_depth = depth_target == &fallback_depth_stencil;
-        began_rendering = BeginSwapchainRendering(context, clear, false, depth_target, clear_depth);
+        began_rendering = BeginRenderTargetRendering(context, clear, false, depth_target, clear_depth);
         if (!began_rendering) {
             LOGE("PBRPass failed to begin rendering");
             return;
@@ -264,14 +264,16 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         PipelineKey key = MakePipelineKey(shader->id, *mesh);
         key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         if (has_vk) {
-            key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
-            key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
-            key.viewport_width = context.swapchain->Extent().width;
-            key.viewport_height = context.swapchain->Extent().height;
+            key.rt_format = static_cast<uint32_t>(context.color_target.format);
+            key.depth_format = static_cast<uint32_t>(context.depth_target.format);
+            key.viewport_width = context.color_target.extent.width;
+            key.viewport_height = context.color_target.extent.height;
         }
 
         uint32_t const pipeline_id =
-            context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+            context.pipelines->GetPipelineCache().GetOrCreatePipeline(
+                key,
+                context.color_target.compatibility_render_pass);
         if (pipeline_id == 0) {
             continue;
         }

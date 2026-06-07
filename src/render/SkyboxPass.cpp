@@ -55,7 +55,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     }
 
     bool const has_vk =
-        context.vk != nullptr && context.swapchain != nullptr && context.command_buffer != vk::CommandBuffer{};
+        context.vk != nullptr && context.color_target.IsValid() && context.command_buffer != vk::CommandBuffer{};
     if (!has_vk) {
         LOGW("SkyboxPass missing Vulkan context");
         return;
@@ -65,8 +65,8 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     auto& shader_mgr = context.resources->GetShaderManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
-    uint32_t const image_count = context.swapchain->ImageCount();
-    uint32_t const image_index = context.swapchain_image_index;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
+    uint32_t const image_index = context.frame_resource_index;
     if (image_count == 0 || image_index >= image_count) {
         return;
     }
@@ -110,7 +110,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     clear.color.float32[2] = context.frame != nullptr ? context.frame->environment.clear_color.z : 0.06f;
     clear.color.float32[3] = context.frame != nullptr ? context.frame->environment.clear_color.w : 1.0f;
 
-    if (!BeginSwapchainRendering(context, clear, true, nullptr, false)) {
+    if (!BeginRenderTargetRendering(context, clear, true, nullptr, false)) {
         LOGE("SkyboxPass failed to begin rendering");
         return;
     }
@@ -156,13 +156,13 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     key.layout_profile = PipelineLayoutProfile::Global_Set0_Only;
     key.render_state_id = 3;
     key.depth_format = 0;
-    key.rt_format = static_cast<uint32_t>(context.swapchain->Format());
-    key.viewport_width = context.swapchain->Extent().width;
-    key.viewport_height = context.swapchain->Extent().height;
+    key.rt_format = static_cast<uint32_t>(context.color_target.format);
+    key.viewport_width = context.color_target.extent.width;
+    key.viewport_height = context.color_target.extent.height;
 
-    vk::RenderPass const compatibility_render_pass = context.compatibility_load_render_pass != vk::RenderPass{}
-        ? context.compatibility_load_render_pass
-        : context.compatibility_render_pass;
+    vk::RenderPass const compatibility_render_pass = context.color_target.compatibility_load_render_pass != vk::RenderPass{}
+        ? context.color_target.compatibility_load_render_pass
+        : context.color_target.compatibility_render_pass;
     uint32_t const pipeline_id =
         context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, compatibility_render_pass);
     if (pipeline_id == 0) {
@@ -202,7 +202,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
 
     // LOGI("SkyboxPass drawing: env=%s depth=%s",
     //      g_shared_environment_maps.environment_cubemap.IsInitialized() ? "bound" : "missing",
-    //      context.current_depth_texture != nullptr && context.current_depth_texture->IsInitialized() ? "present" : "missing");
+    //      context.depth_target.texture != nullptr && context.depth_target.texture->IsInitialized() ? "present" : "missing");
 
     vk::DeviceSize offset = 0;
     context.command_buffer.bindVertexBuffers(0, mesh->vertex_buffer->Handle(), offset);

@@ -105,6 +105,11 @@ bool BeginDepthOnlyRendering(RenderPassContext const& context,
                              vk::Extent2D extent,
                              vk::ClearDepthStencilValue const& clear_depth);
 void EndShadowMapRendering(RenderPassContext const& context);
+bool BeginRenderTargetRendering(RenderPassContext const& context,
+                                vk::ClearValue const& clear_value,
+                                bool clear_color,
+                                vkfw::VkTexture const* depth_texture = nullptr,
+                                bool clear_depth = true);
 bool BeginSwapchainRendering(RenderPassContext const& context,
                              vk::ClearValue const& clear_value,
                              bool clear_color,

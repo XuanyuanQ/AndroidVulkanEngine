@@ -64,7 +64,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     using namespace detail;
 
     if (context.resources == nullptr || context.pipelines == nullptr || context.vk == nullptr ||
-        context.command_buffer == vk::CommandBuffer{} || context.swapchain == nullptr) {
+        context.command_buffer == vk::CommandBuffer{} || !context.color_target.IsValid()) {
         return;
     }
 
@@ -74,8 +74,8 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
-    uint32_t const image_index = context.swapchain_image_index;
-    uint32_t const image_count = context.swapchain->ImageCount();
+    uint32_t const image_index = context.frame_resource_index;
+    uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
     if (image_count == 0 || image_index >= image_count) {
         return;
     }
@@ -89,17 +89,17 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         depth_texture_ready_.assign(image_count, 0u);
     }
     auto& frame_binding = frame_bindings_[image_index];
-    if (context.current_depth_texture == nullptr) {
+    if (context.depth_target.texture == nullptr) {
         if (depth_textures_.size() != image_count) {
             depth_textures_.resize(image_count);
         }
-        context.current_depth_texture = &depth_textures_[image_index];
+        context.depth_target.texture = &depth_textures_[image_index];
     }
-    if (context.current_depth_texture_ready == nullptr) {
-        context.current_depth_texture_ready = &depth_texture_ready_[image_index];
+    if (context.depth_target.ready == nullptr) {
+        context.depth_target.ready = &depth_texture_ready_[image_index];
     }
-    auto& depth_texture = *context.current_depth_texture;
-    auto& depth_texture_ready = *context.current_depth_texture_ready;
+    auto& depth_texture = *context.depth_target.texture;
+    auto& depth_texture_ready = *context.depth_target.ready;
 
     struct DepthFrameUbo {
         glm::mat4 view_projection{1.0f};
@@ -124,8 +124,12 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
             return;
         }
     }
-    uint32_t const width = context.swapchain->Extent().width;
-    uint32_t const height = context.swapchain->Extent().height;
+    uint32_t const width = context.depth_target.extent.width != 0
+        ? context.depth_target.extent.width
+        : context.color_target.extent.width;
+    uint32_t const height = context.depth_target.extent.height != 0
+        ? context.depth_target.extent.height
+        : context.color_target.extent.height;
     if (depth_texture.IsInitialized()) {
         auto const extent = depth_texture.Extent();
         if (extent.width != width || extent.height != height) {
@@ -164,7 +168,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     vk::ClearDepthStencilValue clear_depth{};
     clear_depth.depth = 1.0f;
     clear_depth.stencil = 0;
-    if (!BeginDepthOnlyRendering(context, depth_texture, context.swapchain->Extent(), clear_depth)) {
+    if (!BeginDepthOnlyRendering(context, depth_texture, vk::Extent2D{width, height}, clear_depth)) {
         static bool logged_error = false;
         if (!logged_error) {
             LOGE("DepthPrepass failed to begin depth-only rendering");
@@ -172,8 +176,6 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         }
         return;
     }
-    context.current_depth_texture = &depth_texture;
-
     DepthFrameUbo frame_ubo{};
     if (context.frame != nullptr) {
         frame_ubo.view_projection = context.frame->view.view_projection;
@@ -227,14 +229,16 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         PipelineKey key = MakePipelineKey(shader->id, *mesh);
         key.layout_profile = PipelineLayoutProfile::Material_Set0_Set1;
         key.depth_format = static_cast<uint32_t>(vk::Format::eD32Sfloat);
-        key.viewport_width = context.swapchain->Extent().width;
-        key.viewport_height = context.swapchain->Extent().height;
+        key.viewport_width = width;
+        key.viewport_height = height;
 
         if (cached_pipeline_id == 0 || key.shader_id != cached_key.shader_id || key.vertex_layout_id != cached_key.vertex_layout_id ||
             key.depth_format != cached_key.depth_format || key.viewport_width != cached_key.viewport_width ||
             key.viewport_height != cached_key.viewport_height) {
             cached_key = key;
-            cached_pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, context.compatibility_render_pass);
+            cached_pipeline_id = context.pipelines->GetPipelineCache().GetOrCreatePipeline(
+                key,
+                context.color_target.compatibility_render_pass);
         }
 
         if (cached_pipeline_id == 0) {
