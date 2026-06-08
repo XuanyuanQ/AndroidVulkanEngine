@@ -10,6 +10,14 @@
 
 namespace ave::core {
 
+enum class MaterialMode : uint8_t {
+    DefaultPBR,
+    AlphaCutoutPBR,
+    CustomShader,
+    Unlit,
+    UI,
+};
+
 struct FrameViewData {
     std::string camera_object_id;
     glm::mat4 view{1.0f};
@@ -28,6 +36,7 @@ struct FrameRenderableData {
     std::string material_id;
     uint32_t mesh_handle = 0;
     uint32_t material_handle = 0;
+    MaterialMode material_mode = MaterialMode::DefaultPBR;
 
     glm::mat4 world{1.0f};
 

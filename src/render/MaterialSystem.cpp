@@ -2,6 +2,8 @@
 #include "ave/resource/ResourceSystem.h"
 #include "ave/project/XmlSceneLoader.h"
 #include "LogUtil.h"
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 
 namespace ave::render {
@@ -23,6 +25,35 @@ bool LooksLikeProjectAssetRootPath(std::filesystem::path const& path)
         || first == "scenes"
         || first == "assets"
         || first == "compiled_shaders";
+}
+
+core::MaterialMode ParseMaterialMode(std::string mode, std::string const& shader_name, bool has_alpha_mask)
+{
+    bool const has_explicit_mode = !mode.empty();
+    std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    if (mode == "defaultpbr" || mode == "pbr" || mode == "default_pbr") {
+        return core::MaterialMode::DefaultPBR;
+    }
+    if (mode == "alphacutoutpbr" || mode == "alpha_cutout_pbr" || mode == "alpha_cutout" || mode == "cutout") {
+        return core::MaterialMode::AlphaCutoutPBR;
+    }
+    if (mode == "customshader" || mode == "custom_shader" || mode == "custom") {
+        return core::MaterialMode::CustomShader;
+    }
+    if (mode == "unlit") {
+        return core::MaterialMode::Unlit;
+    }
+    if (mode == "ui") {
+        return core::MaterialMode::UI;
+    }
+    bool const is_default_pbr_shader = shader_name == "default_pbr";
+    if (!has_explicit_mode && !shader_name.empty() && !is_default_pbr_shader) {
+        return core::MaterialMode::CustomShader;
+    }
+    return has_alpha_mask ? core::MaterialMode::AlphaCutoutPBR : core::MaterialMode::DefaultPBR;
 }
 
 } // namespace
@@ -73,6 +104,7 @@ uint32_t MaterialSystem::LoadMaterial(std::string const& path)
     logical_mat.normal_texture_path = resolve_texture_path(mat_doc.normal_texture);
     logical_mat.metallic_roughness_texture_path = resolve_texture_path(mat_doc.metallic_roughness_texture);
     logical_mat.alpha_mask_texture_path = resolve_texture_path(mat_doc.alpha_mask_texture);
+    logical_mat.mode = ParseMaterialMode(mat_doc.mode, logical_mat.shader_name, !logical_mat.alpha_mask_texture_path.empty());
     logical_mat.params.metallic = mat_doc.metallic;
     logical_mat.params.roughness = mat_doc.roughness;
     logical_mat.params.normal_scale = mat_doc.normal_scale;
@@ -263,6 +295,7 @@ void MaterialSystem::SyncLogicalToGpu(Material const& logical_mat)
     }
 
     // Sync base color and parameters
+    gpu_mat_mgr.SetMode(gpu_mat_id, logical_mat.mode);
     gpu_mat_mgr.SetBaseColor(gpu_mat_id, logical_mat.params.base_color);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "metallic", logical_mat.params.metallic);
     gpu_mat_mgr.SetParameter(gpu_mat_id, "roughness", logical_mat.params.roughness);

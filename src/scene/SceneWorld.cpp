@@ -130,6 +130,36 @@ std::string Vec3ToString(glm::vec3 const& value)
     return stream.str();
 }
 
+uint32_t PassMaskForMaterialMode(core::MaterialMode mode)
+{
+    switch (mode) {
+    case core::MaterialMode::DefaultPBR:
+    case core::MaterialMode::AlphaCutoutPBR:
+        return core::DefaultWorldPassMask();
+    case core::MaterialMode::CustomShader:
+    case core::MaterialMode::Unlit:
+        return core::ToMask(core::RenderPassBit::ForwardOpaque);
+    case core::MaterialMode::UI:
+        return core::DefaultUiPassMask();
+    }
+    return core::DefaultWorldPassMask();
+}
+
+uint32_t RenderQueueForMaterialMode(core::MaterialMode mode)
+{
+    switch (mode) {
+    case core::MaterialMode::AlphaCutoutPBR:
+        return core::kQueueAlphaTest;
+    case core::MaterialMode::UI:
+        return core::kQueueOverlay;
+    case core::MaterialMode::DefaultPBR:
+    case core::MaterialMode::CustomShader:
+    case core::MaterialMode::Unlit:
+        return core::kQueueOpaque;
+    }
+    return core::kQueueOpaque;
+}
+
 } // namespace
 
 uint32_t SceneWorld::AddRenderable(std::string object_id, std::string debug_name, std::string mesh_id, std::string material_id)
@@ -646,8 +676,10 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                 renderable.material_id = mesh.material;
                 if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(mesh.material)) {
                     renderable.material_handle = gpu_material->id;
+                    renderable.material_mode = gpu_material->mode;
                 } else if (auto const* material = materials.GetMaterial(mesh.material)) {
                     renderable.material_handle = material->id;
+                    renderable.material_mode = material->mode;
                 }
             } else {
                 bool const has_texture_overrides =
@@ -667,7 +699,8 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                 logical_mat.name = (has_texture_overrides || has_param_overrides)
                     ? "__default/pbr/" + object.id
                     : "__default/pbr_material__";
-                logical_mat.shader_name = "solid_triangle";
+                logical_mat.shader_name = "default_pbr";
+                logical_mat.mode = core::MaterialMode::DefaultPBR;
                 logical_mat.params.base_color = mesh.base_color;
                 logical_mat.params.metallic = mesh.metallic;
                 logical_mat.params.roughness = mesh.roughness;
@@ -681,6 +714,7 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                 materials.CreateMaterial(logical_mat);
                 if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(logical_mat.name)) {
                     renderable.material_handle = gpu_material->id;
+                    renderable.material_mode = gpu_material->mode;
                 }
             }
             renderable.index_count = static_cast<uint32_t>(mesh.indices.size());
@@ -689,6 +723,11 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             renderable.visible = ComputeVisibility(view_.world_position, view_.far_plane, glm::vec3(world_matrix[3]));
             renderable.casts_shadow = mesh.casts_shadow;
             renderable.receives_shadow = mesh.receives_shadow;
+            renderable.pass_mask = PassMaskForMaterialMode(renderable.material_mode);
+            renderable.render_queue = RenderQueueForMaterialMode(renderable.material_mode);
+            if (!renderable.casts_shadow) {
+                renderable.pass_mask &= ~core::ToMask(core::RenderPassBit::Shadow);
+            }
             renderable.sort_key =
                 (static_cast<uint64_t>(renderable.material_handle) << 32)
                 ^ static_cast<uint64_t>(renderable.mesh_handle);

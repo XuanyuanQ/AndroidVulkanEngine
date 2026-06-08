@@ -242,7 +242,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             : mat_mgr.GetMaterialByName(renderable->material_id);
         if (!material) {
             if (fallback_material_id_ == 0) {
-                uint32_t fallback_shader_id = shader_mgr.LoadShader("compiled_shaders/solid_triangle");
+                uint32_t fallback_shader_id = shader_mgr.LoadShader("compiled_shaders/default_pbr");
                 if (fallback_shader_id != 0) {
                     fallback_material_id_ = mat_mgr.CreateMaterial("__fallback/default_material__", fallback_shader_id);
                     mat_mgr.SetBaseColor(fallback_material_id_, glm::vec4{0.85f, 0.85f, 0.88f, 1.0f});

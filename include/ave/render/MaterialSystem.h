@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ave/core/FrameData.h"
 #include "ave/render/RenderTypes.h"
 
 #include <string>
@@ -42,6 +43,7 @@ struct Material {
     uint32_t id = 0;
     std::string name;
     std::string shader_name;
+    core::MaterialMode mode = core::MaterialMode::DefaultPBR;
     PBRMaterialParams params;
     MaterialTextures textures;
     std::string base_color_texture_path;

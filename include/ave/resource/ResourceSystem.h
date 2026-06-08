@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ave/core/FrameData.h"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -70,6 +72,7 @@ struct MaterialRuntime {
     uint32_t id = 0;
     std::string name;
     uint32_t shader_id = 0;
+    core::MaterialMode mode = core::MaterialMode::DefaultPBR;
     
     // Texture references
     uint32_t base_color_texture = 0;
@@ -201,6 +204,7 @@ public:
     bool SetTexture(uint32_t material_id, std::string const& slot, uint32_t texture_id);
     bool SetParameter(uint32_t material_id, std::string const& param, float value);
     bool SetBaseColor(uint32_t material_id, glm::vec4 const& color);
+    bool SetMode(uint32_t material_id, core::MaterialMode mode);
     MaterialRuntime const* GetMaterial(uint32_t id) const;
     MaterialRuntime const* GetMaterialByName(std::string const& name) const;
     size_t MaterialCount() const noexcept { return materials_.size(); }

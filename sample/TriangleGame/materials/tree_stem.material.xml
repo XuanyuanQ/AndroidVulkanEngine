@@ -1,4 +1,4 @@
-<Material name="TreeStemMaterial" shader="solid_triangle">
+<Material name="TreeStemMaterial" shader="default_pbr">
     <Color name="baseColor" value="1,1,1,1" />
     <Float name="metallic" value="0.0" />
     <Float name="roughness" value="0.88" />

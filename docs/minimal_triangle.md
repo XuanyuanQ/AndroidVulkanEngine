@@ -10,8 +10,8 @@ TriangleGame/
   scenes/main.scene.xml
   materials/triangle.material.xml
   scripts/PlayerController.java
-  shaders/solid_triangle.vert
-  shaders/solid_triangle.frag
+  shaders/default_pbr.vert
+  shaders/default_pbr.frag
 ```
 
 ## Build

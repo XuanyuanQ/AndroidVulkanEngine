@@ -14,6 +14,7 @@ namespace ave::project {
 struct MaterialDocument {
     std::string name;
     std::string shader;
+    std::string mode;
     glm::vec4 base_color{0.5f, 0.5f, 0.5f, 1.0f};
     std::string base_color_texture;
     std::string normal_texture;

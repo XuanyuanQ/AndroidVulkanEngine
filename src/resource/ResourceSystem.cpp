@@ -1232,6 +1232,16 @@ bool MaterialManager::SetBaseColor(uint32_t material_id, glm::vec4 const& color)
     return true;
 }
 
+bool MaterialManager::SetMode(uint32_t material_id, core::MaterialMode mode)
+{
+    auto it = materials_.find(material_id);
+    if (it == materials_.end()) {
+        return false;
+    }
+    it->second.mode = mode;
+    return true;
+}
+
 MaterialRuntime const* MaterialManager::GetMaterial(uint32_t id) const
 {
     auto it = materials_.find(id);

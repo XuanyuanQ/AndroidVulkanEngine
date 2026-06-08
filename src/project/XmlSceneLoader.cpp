@@ -789,6 +789,7 @@ MaterialDocument XmlSceneLoader::LoadMaterialText(std::string const& text) const
     MaterialDocument doc;
     doc.name = Attribute(tag, "name");
     doc.shader = Attribute(tag, "shader");
+    doc.mode = Attribute(tag, "mode");
 
     auto color_tags = MatchTags(sanitized_text, "Color");
     for (auto const& color_tag : color_tags) {

@@ -1,4 +1,4 @@
-<Material name="TreeLeavesMaterial" shader="tree_cutout">
+<Material name="TreeLeavesMaterial" shader="tree_cutout" mode="AlphaCutoutPBR">
     <Color name="baseColor" value="1,1,1,1" />
     <Float name="metallic" value="0.0" />
     <Float name="roughness" value="0.72" />
