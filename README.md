@@ -11,15 +11,19 @@
 ```mermaid
 flowchart LR
     PC["PC Authoring Side<br/>电脑端开发与构建"]
+    Preview["PC Preview Runtime<br/>实时预览 / 热重载"]
     Contract["Shared Data Contract<br/>统一项目数据协议"]
     APK["Generated APK<br/>打包后的安卓应用"]
     Android["Android Runtime Side<br/>手机端运行时"]
     Vulkan["Vulkan Renderer / RHI<br/>隐藏底层渲染后端"]
 
     PC --> Contract
+    PC --> Preview
+    Contract --> Preview
     PC --> APK
     Contract --> APK
     APK --> Android
+    Preview --> Vulkan
     Android --> Vulkan
 ```
 
@@ -28,6 +32,7 @@ flowchart LR
 ```text
 开发者在 PC 上开发
   -> 生成统一数据
+  -> PC Preview Runtime 可实时预览 XML / 材质 / shader 修改
   -> Build Tool 打包成 APK
   -> Android Runtime 加载数据
   -> Vulkan 后端负责渲染
@@ -85,6 +90,124 @@ flowchart TB
 | `shaders/*` | vertex、fragment、compute shader 源文件 |
 | `Build Tool` | 一键校验项目、编译 shader、打包资源、生成 APK |
 | `Android Template` | 固定 Gradle、CMake、NDK、Activity、native runtime 工程模板 |
+
+### 2.1 PC Preview / Live Reload
+
+PC Preview 的目标是让开发者修改 XML、材质、贴图或 shader 后，不需要每次重新打 APK，就能在 PC 窗口里看到结果。它不是单独做一套渲染器，而是复用 Android Runtime 已经使用的核心模块：
+
+```text
+XmlSceneLoader
+SceneWorld
+UIRuntime
+ResourceSystem
+MaterialSystem
+Renderer / FrameGraph / RenderPass
+Vulkan RHI
+```
+
+Preview 只替换平台相关部分：
+
+| Android Runtime | PC Preview Runtime |
+|---|---|
+| `AAssetManager` | 本地文件系统 AssetProvider |
+| `ANativeWindow / Android Surface` | GLFW window / desktop surface |
+| Android touch | mouse / keyboard input |
+| Android Java script runtime | PC script host / mock script host |
+| APK asset package | 直接读取项目目录 |
+
+推荐架构：
+
+```mermaid
+flowchart TB
+    Project["Game Project Folder<br/>project.xml / scenes / materials / shaders"]
+    Watcher["File Watcher<br/>XML / material / texture / shader"]
+    PreviewApp["Ave Preview App<br/>desktop runtime"]
+
+    FileAssets["LocalFileAssetProvider"]
+    SceneLoader["XmlSceneLoader"]
+    SceneWorld["SceneWorld"]
+    UIRuntime["UIRuntime"]
+    Renderer["Renderer / FrameGraph"]
+    RHI["Vulkan RHI<br/>GLFW Surface"]
+
+    ShaderCompiler["Shader Compiler<br/>glslc -> SPIR-V"]
+    ErrorOverlay["Preview Error Overlay<br/>保留上一版可运行状态"]
+
+    Project --> Watcher
+    Project --> FileAssets
+    Watcher --> PreviewApp
+    FileAssets --> SceneLoader
+    SceneLoader --> SceneWorld
+    SceneWorld --> Renderer
+    UIRuntime --> Renderer
+    Renderer --> RHI
+    Project --> ShaderCompiler
+    ShaderCompiler --> Renderer
+    Watcher --> ErrorOverlay
+```
+
+推荐命令：
+
+```text
+python tools/ave.py preview sample/TriangleGame
+```
+
+第一阶段目标：
+
+```text
+打开 PC 预览窗口
+  -> 加载 project.xml / main.scene.xml
+  -> 复用 Renderer 显示 3D 场景和 UI
+  -> 修改 XML 后自动 reload SceneWorld
+  -> reload 失败时保留上一版画面并显示错误
+```
+
+第二阶段目标：
+
+```text
+修改 material XML
+  -> 重新加载 MaterialSystem
+
+修改 texture
+  -> 重新加载 TextureManager 对应贴图
+
+修改 shader
+  -> glslc 重新编译
+  -> 清理相关 PipelineKey
+  -> 下一帧使用新 shader
+```
+
+第三阶段目标：
+
+```text
+Java 脚本 PC Preview
+  -> javac 编译 scripts/*.java
+  -> 独立 ClassLoader 热重载
+  -> PC 版 AveObjectController bridge 回写 C++ SceneWorld / UIRuntime
+  -> 支持 start / update / onClick
+```
+
+建议分阶段实现，不要第一版就做完整 Java 脚本热重载。XML / material / shader 热重载更容易稳定，能先把“改完马上看”的核心体验做出来。
+
+大致工作量：
+
+| 阶段 | 范围 | 预估 |
+|---|---|---|
+| 阶段 1 | PC 窗口 + XML 场景加载 + 手动重启预览 | 3 到 5 天 |
+| 阶段 2 | XML / material / texture / shader 热重载 | 1 到 2 周 |
+| 阶段 3 | Java 脚本 PC 运行和热重载 | 2 到 4 周 |
+
+推荐 MVP：
+
+```text
+PC Preview window
+  + XML hot reload
+  + material / texture hot reload
+  + shader recompile
+  - 暂不做完整 Java 脚本热重载
+```
+
+这个版本大约 7 到 10 天可以做出明显可用的效果。
 
 ## 3. Shared Data Contract
 
