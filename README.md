@@ -988,7 +988,16 @@ Android 侧可以用下面的属性打开当前 OpenXR 生命周期空壳：
 adb shell setprop debug.ave.openxr 1
 ```
 
-当前实现只会初始化 stub runtime、在渲染线程里空跑 `PollEvents / BeginFrame / EndFrame` 并打印日志；还不会创建真实 `XrInstance / XrSession / XrSwapchain`。
+当前实现会先动态探测 Android 设备上的 OpenXR loader：
+
+```text
+dlopen("libopenxr_loader.so")
+  -> xrGetInstanceProcAddr
+  -> xrCreateInstance
+  -> xrGetSystem(XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY)
+```
+
+如果设备没有可用 OpenXR runtime，会打印明确失败原因并回落到普通 Android Surface 渲染；如果探测成功，会继续在渲染线程里空跑 `PollEvents / BeginFrame / EndFrame`。当前还不会创建真实 `XrSession / XrSwapchain`。
 
 普通 Android 路径现在仍然是：
 

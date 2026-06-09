@@ -39,10 +39,15 @@ public:
     OpenXRRuntimeState State() const noexcept { return state_; }
 
 private:
+    bool ProbeOpenXRLoader();
+
     bool enabled_ = false;
     bool initialized_ = false;
     bool frame_started_ = false;
     bool logged_stub_frame_ = false;
+    void* loader_handle_ = nullptr;
+    void* instance_handle_ = nullptr;
+    uint64_t system_id_ = 0;
     OpenXRRuntimeState state_ = OpenXRRuntimeState::Disabled;
 };
 

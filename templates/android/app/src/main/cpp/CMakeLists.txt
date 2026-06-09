@@ -77,6 +77,7 @@ target_link_libraries(ave_runtime
     PRIVATE
         android
         log
+        dl
         ${VULKAN_LIBRARY}
 )
 
