@@ -11,6 +11,7 @@
 
 #include <android/log.h>
 #include <android/input.h>
+#include <sys/system_properties.h>
 #include "LogUtil.h"
 #include <algorithm>
 #include <array>
@@ -25,6 +26,31 @@ namespace {
 
 constexpr uint32_t kFramesInFlight = 2;
 constexpr std::chrono::seconds kDebugSnapshotInterval{5};
+
+bool ReadBoolSystemProperty(char const* name, bool fallback)
+{
+    char value[PROP_VALUE_MAX] = {};
+    int const len = __system_property_get(name, value);
+    if (len <= 0) {
+        return fallback;
+    }
+
+    if (std::strcmp(value, "1") == 0 ||
+        std::strcmp(value, "true") == 0 ||
+        std::strcmp(value, "TRUE") == 0 ||
+        std::strcmp(value, "on") == 0 ||
+        std::strcmp(value, "ON") == 0) {
+        return true;
+    }
+    if (std::strcmp(value, "0") == 0 ||
+        std::strcmp(value, "false") == 0 ||
+        std::strcmp(value, "FALSE") == 0 ||
+        std::strcmp(value, "off") == 0 ||
+        std::strcmp(value, "OFF") == 0) {
+        return false;
+    }
+    return fallback;
+}
 
 } // namespace
 
@@ -139,19 +165,19 @@ void MinimalVulkanTriangle::setObjectPosition(std::string const& object_id, floa
     std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
     glm::vec3 const position{x, y, z};
     if (scene_world_.SetObjectPosition(object_id, position)) {
-        LOGI("setObjectPosition scene object=%s position=(%.2f, %.2f, %.2f)",
-             object_id.c_str(),
-             x,
-             y,
-             z);
+        // LOGI("setObjectPosition scene object=%s position=(%.2f, %.2f, %.2f)",
+        //      object_id.c_str(),
+        //      x,
+        //      y,
+        //      z);
     } else if (!ui_runtime_.SetObjectPosition(object_id, position)) {
-        LOGW("setObjectPosition failed, object not found: %s", object_id.c_str());
+        // LOGW("setObjectPosition failed, object not found: %s", object_id.c_str());
     } else {
-        LOGI("setObjectPosition ui object=%s position=(%.2f, %.2f, %.2f)",
-             object_id.c_str(),
-             x,
-             y,
-             z);
+        // LOGI("setObjectPosition ui object=%s position=(%.2f, %.2f, %.2f)",
+        //      object_id.c_str(),
+        //      x,
+        //      y,
+        //      z);
     }
 }
 
@@ -621,8 +647,14 @@ void MinimalVulkanTriangle::drawFrame()
                 ui_runtime_.BuildFrameUi(frame_data_.ui_items);
             }
 
+            openxr_runtime_.PollEvents();
+            bool const xr_frame_started = openxr_runtime_.BeginFrame(frame_data_);
+
             auto const render_result =
                 renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
+            if (xr_frame_started) {
+                openxr_runtime_.EndFrame();
+            }
             if (render_result == ave::render::FrameGraphRenderResult::SwapchainOutOfDate) {
                 std::lock_guard<std::mutex> lock(m_surface_mutex);
                 m_surface_changed = true;
@@ -651,6 +683,11 @@ void MinimalVulkanTriangle::cleanupSurfaceResources(bool full_cleanup)
         if (ctx_.Device() != nullptr) {
             ctx_.Device().waitIdle();
         }
+    } catch (...) {
+    }
+
+    try {
+        openxr_runtime_.Shutdown(&ctx_);
     } catch (...) {
     }
 
@@ -716,6 +753,12 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         }
     } else {
         ctx_.SetWindow(window_);
+    }
+
+    bool const enable_openxr = ReadBoolSystemProperty("debug.ave.openxr", false);
+    LOGI("OpenXR optional startup: property debug.ave.openxr enabled=%d", enable_openxr ? 1 : 0);
+    if (!openxr_runtime_.Initialize(ctx_, ave::xr::OpenXRRuntimeConfig{.enabled = enable_openxr})) {
+        LOGW("OpenXRRuntime initialization failed; continuing Android surface rendering");
     }
 
     renderer_.SetVkContext(&ctx_);

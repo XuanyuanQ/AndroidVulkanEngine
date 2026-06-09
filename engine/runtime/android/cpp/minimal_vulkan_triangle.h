@@ -7,6 +7,7 @@
 #include "ave/render/Renderer.h"
 #include "ave/scene/SceneWorld.h"
 #include "ave/ui/UIRuntime.h"
+#include "ave/xr/OpenXRRuntime.h"
 
 #include <android/asset_manager.h>
 #include <android/native_window.h>
@@ -95,6 +96,7 @@ private:
     ave::render::Renderer renderer_{};
     ave::scene::SceneWorld scene_world_{};
     ave::ui::UIRuntime ui_runtime_{};
+    ave::xr::OpenXRRuntime openxr_runtime_{};
     ave::core::FrameData frame_data_{};
     uint32_t model_mesh_id_ = 0;
     bool use_frame_data_path_ = false;

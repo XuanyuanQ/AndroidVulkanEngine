@@ -35,6 +35,7 @@ add_library(ave_engine STATIC
     src/render/PipelineSystem.cpp
     src/render/AndroidSurfaceRenderBackend.cpp
     src/xr/OpenXRRenderBackend.cpp
+    src/xr/OpenXRRuntime.cpp
     # src/rhi/VulkanDevice.cpp
 )
 

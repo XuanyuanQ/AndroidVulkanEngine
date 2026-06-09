@@ -982,6 +982,14 @@ ResourceSystem 只管理资源，不负责 present。
 | `include/ave/core/FrameData.h` | 使用 `views` 统一支持 mono / stereo；普通单相机只填 1 个 `FrameViewData` |
 | `include/ave/xr/OpenXRRenderBackend.h` | OpenXR render backend 空壳，先接收外部准备好的 XR targets 并透传成 `RenderFrameRequest`，后续由 `OpenXRRuntime` 驱动真实 OpenXR session / swapchain |
 
+Android 侧可以用下面的属性打开当前 OpenXR 生命周期空壳：
+
+```bash
+adb shell setprop debug.ave.openxr 1
+```
+
+当前实现只会初始化 stub runtime、在渲染线程里空跑 `PollEvents / BeginFrame / EndFrame` 并打印日志；还不会创建真实 `XrInstance / XrSession / XrSwapchain`。
+
 普通 Android 路径现在仍然是：
 
 ```text

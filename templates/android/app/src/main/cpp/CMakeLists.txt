@@ -51,6 +51,7 @@ add_library(ave_runtime SHARED
     "${AVE_ENGINE_ROOT}/src/render/AndroidSurfaceRenderBackend.cpp"
     "${AVE_ENGINE_ROOT}/src/render/MaterialSystem.cpp"
     "${AVE_ENGINE_ROOT}/src/xr/OpenXRRenderBackend.cpp"
+    "${AVE_ENGINE_ROOT}/src/xr/OpenXRRuntime.cpp"
     "${AVE_ENGINE_ROOT}/external/stb_image/stb_impl.cpp"
     "${RHI_SOURCES}"
 )
