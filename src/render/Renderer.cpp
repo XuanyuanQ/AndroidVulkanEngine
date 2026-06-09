@@ -306,33 +306,37 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
                         vk::PipelineStageFlagBits::eColorAttachmentOutput,
                         {}, {}, {}, to_color);
 
-    RenderPassContext pass_ctx{};
-    pass_ctx.frame = &frame;
-    pass_ctx.resources = &resource_system_;
-    pass_ctx.pipelines = &pipeline_system_;
-    pass_ctx.vk = &ctx;
-    pass_ctx.frame_resource_index = image_index;
-    pass_ctx.frame_resource_count = swapchain.ImageCount();
-    pass_ctx.command_buffer = cmd;
-    pass_ctx.color_target.image = swapchain.Image(image_index);
-    pass_ctx.color_target.image_view = swapchain.ImageView(image_index);
-    pass_ctx.color_target.format = swapchain.Format();
-    pass_ctx.color_target.extent = swapchain.Extent();
+    RenderViewTarget target{};
+    target.color_target.image = swapchain.Image(image_index);
+    target.color_target.image_view = swapchain.ImageView(image_index);
+    target.color_target.format = swapchain.Format();
+    target.color_target.extent = swapchain.Extent();
+    target.view_index = 0;
+    target.frame_resource_index = image_index;
+    target.frame_resource_count = swapchain.ImageCount();
     if (image_index < impl_->depth_textures.size()) {
-        pass_ctx.depth_target.texture = &impl_->depth_textures[image_index];
-        pass_ctx.depth_target.extent = swapchain.Extent();
-        pass_ctx.depth_target.format = vk::Format::eD32Sfloat;
+        target.depth_target.texture = &impl_->depth_textures[image_index];
+        target.depth_target.extent = swapchain.Extent();
+        target.depth_target.format = vk::Format::eD32Sfloat;
     }
     if (image_index < impl_->depth_texture_ready.size()) {
-        pass_ctx.depth_target.ready = &impl_->depth_texture_ready[image_index];
+        target.depth_target.ready = &impl_->depth_texture_ready[image_index];
     }
     if (!ctx.SupportsDynamicRendering()) {
-        pass_ctx.color_target.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
-        pass_ctx.color_target.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
-        pass_ctx.color_target.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
-        pass_ctx.color_target.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
+        target.color_target.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
+        target.color_target.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
+        target.color_target.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
+        target.color_target.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
     }
-    graph_.Execute(pass_ctx);
+
+    RenderFrameRequest request{};
+    request.frame = &frame;
+    request.vk = &ctx;
+    request.command_buffer = cmd;
+    request.views.push_back(target);
+    if (RenderFrameGraphToTargets(request) != FrameGraphRenderResult::Success) {
+        LOGW("RenderFrameGraphFrame graph execution skipped for image_index=%u", image_index);
+    }
 
     vk::ImageMemoryBarrier to_present{};
     to_present.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;
@@ -378,6 +382,43 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
         present_result == vk::Result::eErrorOutOfDateKHR) {
         return FrameGraphRenderResult::SwapchainOutOfDate;
     }
+    return FrameGraphRenderResult::Success;
+}
+
+FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest const& request)
+{
+    if (request.frame == nullptr || request.vk == nullptr ||
+        request.command_buffer == vk::CommandBuffer{} || request.views.empty()) {
+        return FrameGraphRenderResult::Skipped;
+    }
+
+    SetVkContext(request.vk);
+
+    uint32_t const view_count = static_cast<uint32_t>(request.views.size());
+    for (uint32_t view_index = 0; view_index < view_count; ++view_index) {
+        auto const& target = request.views[view_index];
+        if (!target.color_target.IsValid()) {
+            return FrameGraphRenderResult::Skipped;
+        }
+
+        RenderPassContext pass_ctx{};
+        pass_ctx.frame = request.frame;
+        pass_ctx.resources = &resource_system_;
+        pass_ctx.pipelines = &pipeline_system_;
+        pass_ctx.vk = request.vk;
+        pass_ctx.command_buffer = request.command_buffer;
+        pass_ctx.color_target = target.color_target;
+        pass_ctx.depth_target = target.depth_target;
+        pass_ctx.view_index = target.view_index;
+        pass_ctx.view_count = view_count;
+        if (CurrentFrameView(pass_ctx) == nullptr) {
+            return FrameGraphRenderResult::Skipped;
+        }
+        pass_ctx.frame_resource_index = target.frame_resource_index;
+        pass_ctx.frame_resource_count = target.frame_resource_count != 0 ? target.frame_resource_count : 1u;
+        graph_.Execute(pass_ctx);
+    }
+
     return FrameGraphRenderResult::Success;
 }
 

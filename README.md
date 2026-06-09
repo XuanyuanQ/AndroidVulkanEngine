@@ -627,35 +627,33 @@ flowchart TB
 
 ### 9.3 新增核心抽象
 
-建议新增 `RenderTarget`，把 Android swapchain image 和 XR swapchain image 统一成同一种输入：
+当前代码使用 `RenderTargetView`，把 Android swapchain image 和 XR swapchain image 统一成同一种输入：
 
 ```cpp
-struct RenderTarget {
+struct RenderTargetView {
     vk::Image image;
-    vk::ImageView view;
+    vk::ImageView image_view;
     vk::Format format;
     vk::Extent2D extent;
-    vk::ImageLayout layout;
-    uint32_t image_index = 0;
+    vk::ImageLayout attachment_layout;
 };
 ```
 
-再新增 `FrameViewData` / `RenderFrameRequest`，让 Renderer 不关心本帧来自普通屏幕还是 VR：
+再通过 `FrameViewData` / `RenderFrameRequest`，让 Renderer 不关心本帧来自普通屏幕还是 VR：
 
 ```cpp
-struct FrameViewData {
-    glm::mat4 view;
-    glm::mat4 projection;
-    glm::mat4 view_projection;
-    glm::vec3 camera_position;
+struct RenderViewTarget {
+    RenderTargetView color_target;
+    DepthTargetView depth_target;
+    uint32_t view_index;
+    uint32_t frame_resource_index;
+    uint32_t frame_resource_count;
 };
 
 struct RenderFrameRequest {
-    std::span<RenderTarget const> color_targets;
-    std::span<RenderTarget const> depth_targets;
-    std::span<FrameViewData const> views;
-    uint32_t frame_index = 0;
-    float delta_time = 0.0f;
+    FrameData const* frame;
+    vk::CommandBuffer command_buffer;
+    std::vector<RenderViewTarget> views;
 };
 ```
 
@@ -687,9 +685,9 @@ target[1] = right eye XR swapchain image
 ```text
 RenderFrameGraphFrame(...)
   只保留普通 Android 兼容入口
-  内部把 swapchain image 包装成 RenderTarget
+  内部把 swapchain image 包装成 RenderViewTarget
 
-RenderFrameGraphToTarget(RenderFrameRequest const& request)
+RenderFrameGraphToTargets(RenderFrameRequest const& request)
   真正执行 FrameGraph
   普通模式和 VR 模式都走它
 ```
@@ -703,9 +701,14 @@ RenderPass 不应该直接问 `swapchain->Extent()` 或 `swapchain->ImageView()`
 ```text
 context.color_target
 context.depth_target
-context.view
 context.view_index
 context.view_count
+```
+
+Pass 通过 `CurrentFrameView(context)` 获取当前 view，唯一数据源是：
+
+```text
+context.frame->views[context.view_index]
 ```
 
 对应地，`BeginSwapchainRendering(...)` 应该逐步改名/改造成：
@@ -798,7 +801,7 @@ for each eye:
   xrAcquireSwapchainImage
   xrWaitSwapchainImage
   build RenderTarget + FrameViewData
-  Renderer::RenderFrameGraphToTarget(request)
+  Renderer::RenderFrameGraphToTargets(request)
   xrReleaseSwapchainImage
 xrEndFrame
 ```
@@ -841,6 +844,49 @@ ResourceSystem 只管理资源，不负责 present。
   2. Desktop Window
   3. OpenXR headset
 ```
+
+### 9.8 当前代码侧 VR 扩展点
+
+当前代码已经先做了“不绑定具体 XR SDK”的渲染扩展点：
+
+| 代码位置 | 作用 |
+|---|---|
+| `include/ave/render/Renderer.h` | 新增 `RenderViewTarget` / `RenderFrameRequest`，用于描述“本帧画到哪个 target、使用哪个 view” |
+| `Renderer::RenderFrameGraphToTargets` | 真正的通用渲染入口；普通模式和 VR 模式都应该走这里 |
+| `Renderer::RenderFrameGraphFrame` | 保留 Android swapchain 兼容入口，只负责 acquire / layout transition / present，并把 swapchain image 包装成 `RenderViewTarget` |
+| `include/ave/render/RenderPass.h` | `RenderPassContext` 增加 `view_index/view_count`，pass 通过 `CurrentFrameView(context)` 读取 `FrameData.views[view_index]` |
+| `include/ave/core/FrameData.h` | 保留 `view` 作为普通单相机兼容字段，同时新增 `views` 支持 mono / stereo |
+| `include/ave/xr/XRRuntime.h` | 新增 XR 后端接口边界，后续 OpenXR 实现负责把 XR swapchain image 转成 `RenderViewTarget` |
+
+普通 Android 路径现在仍然是：
+
+```text
+VkSwapchain acquire image
+  -> build RenderViewTarget(color/depth + mono view)
+  -> Renderer::RenderFrameGraphToTargets
+  -> present
+```
+
+VR 路径后续目标是：
+
+```text
+XRRuntimeBackend::BeginFrame
+  -> acquire left/right eye images
+  -> build RenderFrameRequest with two RenderViewTarget entries
+  -> Renderer::RenderFrameGraphToTargets
+  -> XRRuntimeBackend::EndFrame
+```
+
+第一版 VR 建议继续使用“双眼顺序渲染”：
+
+```text
+view[0] = left eye
+view[1] = right eye
+for each view:
+  execute same FrameGraph into that eye target
+```
+
+等普通路径和 XR 路径都稳定后，再考虑 Vulkan multiview。multiview 会影响 pipeline key、shader、render target layer 和 depth target layer，建议不要作为第一阶段目标。
 
 ## 10. Build 到运行完整流程
 

@@ -51,7 +51,7 @@ public final class LightControlScript extends AveScript {
 
         applyLightPosition();
         updateSliderViews();
-        updateButtonView();
+        // updateButtonView();
         log("Light control script started");
     }
 

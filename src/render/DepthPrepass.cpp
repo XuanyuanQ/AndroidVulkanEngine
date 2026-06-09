@@ -177,8 +177,8 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         return;
     }
     DepthFrameUbo frame_ubo{};
-    if (context.frame != nullptr) {
-        frame_ubo.view_projection = context.frame->view.view_projection;
+    if (auto const* frame_view = CurrentFrameView(context)) {
+        frame_ubo.view_projection = frame_view->view_projection;
     }
 
     if (!frame_binding.ubo.IsInitialized()) {

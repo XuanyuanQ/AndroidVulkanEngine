@@ -80,8 +80,9 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
     }
 
     if (!has_vk || frame_index < 2) {
-        if (context.frame) {
-            glm::mat4 const view_proj = context.frame->view.view_projection;
+        core::FrameViewData const* frame_view = CurrentFrameView(context);
+        if (frame_view != nullptr) {
+            glm::mat4 const view_proj = frame_view->view_projection;
             glm::vec4 planes[6];
             planes[0] = glm::vec4(view_proj[0][3] + view_proj[0][0], view_proj[1][3] + view_proj[1][0], view_proj[2][3] + view_proj[2][0], view_proj[3][3] + view_proj[3][0]);
             planes[1] = glm::vec4(view_proj[0][3] - view_proj[0][0], view_proj[1][3] - view_proj[1][0], view_proj[2][3] - view_proj[2][0], view_proj[3][3] - view_proj[3][0]);
@@ -215,8 +216,9 @@ void ComputePass::Execute(RenderPassContext const& context, PassExecutionView co
                 uint32_t total_instances;
             } pc{};
 
-            if (context.frame) {
-                glm::mat4 const view_proj = context.frame->view.view_projection;
+            core::FrameViewData const* frame_view = CurrentFrameView(context);
+            if (frame_view != nullptr) {
+                glm::mat4 const view_proj = frame_view->view_projection;
                 pc.planes[0] = glm::vec4(view_proj[0][3] + view_proj[0][0], view_proj[1][3] + view_proj[1][0], view_proj[2][3] + view_proj[2][0], view_proj[3][3] + view_proj[3][0]);
                 pc.planes[1] = glm::vec4(view_proj[0][3] - view_proj[0][0], view_proj[1][3] - view_proj[1][0], view_proj[2][3] - view_proj[2][0], view_proj[3][3] - view_proj[3][0]);
                 pc.planes[2] = glm::vec4(view_proj[0][3] + view_proj[0][1], view_proj[1][3] + view_proj[1][1], view_proj[2][3] + view_proj[2][1], view_proj[3][3] + view_proj[3][1]);

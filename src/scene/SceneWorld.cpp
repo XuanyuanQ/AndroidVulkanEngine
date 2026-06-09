@@ -803,7 +803,8 @@ std::string SceneWorld::DumpTransformHierarchy() const
 void SceneWorld::BuildFrameData(uint64_t frame_index, core::FrameData& out_frame) const
 {
     out_frame.frame_index = frame_index;
-    out_frame.view = view_;
+    out_frame.views.clear();
+    out_frame.views.push_back(view_);
     out_frame.environment.clear_color = scene_.environment.clear_color;
     out_frame.environment.ambient_color = scene_.environment.ambient_color;
 

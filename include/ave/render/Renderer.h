@@ -7,6 +7,7 @@
 #include "ave/render/MaterialSystem.h"
 
 #include <memory>
+#include <vector>
 
 namespace ave::core {
 class JobSystem;
@@ -24,6 +25,21 @@ enum class FrameGraphRenderResult {
     Success,
     Skipped,
     SwapchainOutOfDate,
+};
+
+struct RenderViewTarget {
+    RenderTargetView color_target{};
+    DepthTargetView depth_target{};
+    uint32_t view_index = 0;
+    uint32_t frame_resource_index = 0;
+    uint32_t frame_resource_count = 1;
+};
+
+struct RenderFrameRequest {
+    core::FrameData const* frame = nullptr;
+    vkfw::VkContext* vk = nullptr;
+    vk::CommandBuffer command_buffer = {};
+    std::vector<RenderViewTarget> views{};
 };
 
 struct RendererConfig {
@@ -51,6 +67,7 @@ public:
                                                  vkfw::VkSwapchain& swapchain,
                                                  vkfw::VkFrameSync& sync,
                                                  uint32_t& frame_index);
+    FrameGraphRenderResult RenderFrameGraphToTargets(RenderFrameRequest const& request);
 
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }

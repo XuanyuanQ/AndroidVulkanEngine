@@ -123,7 +123,7 @@
         <UILayout size="0.36,0.12" />
         <Image texture="textures/viking_room.png" />
         <Button target="LightControlScript" onClick="toggleAuto" />
-        <Text value="AUTO ROTATE" color="0,0,1,1" size="0.03" />
+        <Text value="AUTO ROTATE" color="0,0,1,1" size="0.08" />
     </GameObject>
 
     <GameObject id="light_x_slider" name="Light X Slider">

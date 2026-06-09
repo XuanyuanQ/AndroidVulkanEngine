@@ -158,18 +158,25 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
 
     if (has_vk) {
         FrameUbo frame_ubo{};
+        core::FrameViewData const* frame_view = CurrentFrameView(context);
         if (context.frame != nullptr) {
-            frame_ubo.view_projection = context.frame->view.view_projection;
+            if (frame_view != nullptr) {
+                frame_ubo.view_projection = frame_view->view_projection;
+            }
             if (context.frame_graph_resources != nullptr) {
                 frame_ubo.shadow_view_projection = context.frame_graph_resources->GetMatrix(
                     FrameGraphResourceRegistry::ShadowViewProjection,
                     frame_ubo.shadow_view_projection);
             }
-            frame_ubo.camera_position = glm::vec4(context.frame->view.world_position, 1.0f);
+            if (frame_view != nullptr) {
+                frame_ubo.camera_position = glm::vec4(frame_view->world_position, 1.0f);
+            }
             frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
             frame_ubo.clear_color = context.frame->environment.clear_color;
-            frame_ubo.view = context.frame->view.view;
-            frame_ubo.projection = context.frame->view.projection;
+            if (frame_view != nullptr) {
+                frame_ubo.view = frame_view->view;
+                frame_ubo.projection = frame_view->projection;
+            }
         }
 
         if (!view.lights.empty() && view.lights.front() != nullptr) {

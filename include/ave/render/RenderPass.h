@@ -129,6 +129,8 @@ struct RenderPassContext {
     vk::CommandBuffer command_buffer = {};
     RenderTargetView color_target{};
     DepthTargetView depth_target{};
+    uint32_t view_index = 0;
+    uint32_t view_count = 1;
     uint32_t frame_resource_index = 0;
     uint32_t frame_resource_count = 1;
     FrameGraphResourceRegistry* frame_graph_resources = nullptr;
@@ -137,6 +139,14 @@ struct RenderPassContext {
     // Optional: capture debug strings per pass for early bring-up.
     std::vector<std::string>* debug_output = nullptr;
 };
+
+inline core::FrameViewData const* CurrentFrameView(RenderPassContext const& context)
+{
+    if (context.frame == nullptr || context.view_index >= context.frame->views.size()) {
+        return nullptr;
+    }
+    return &context.frame->views[context.view_index];
+}
 
 class RenderPass {
 public:

@@ -124,7 +124,8 @@ struct FrameResourceTable {
 
 struct FrameData {
     uint64_t frame_index = 0;
-    FrameViewData view{};
+    // Normal rendering uses one entry; VR can provide left/right eye views.
+    std::vector<FrameViewData> views{};
     FrameEnvironmentData environment{};
     std::vector<FrameRenderableData> renderables;
     std::vector<FrameLightData> lights;
