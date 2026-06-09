@@ -851,7 +851,7 @@ BeginShadowRendering(...)
 ```text
 FrameData.views[0] = mono 或 left eye
 FrameData.views[1] = right eye
-FrameData.view_count = 1 或 2
+FrameData.views.size() = 1 或 2
 ```
 
 场景对象、材质、灯光仍然是一份，不需要为左右眼复制。
@@ -936,7 +936,7 @@ xrEndFrame
 1. 新增 `RenderTarget` / `RenderFrameRequest`，但普通 Android 仍然只传 1 个 target。
 2. 把 `Renderer::RenderFrameGraphFrame` 拆成 “acquire/present” 和 “render to target” 两层。
 3. 把 RenderPass 里的 swapchain 依赖替换成 `RenderTarget`。
-4. 把 `FrameData` 扩展成支持 `view_count = 1/2`，普通模式仍然填 1。
+4. 把 `FrameData` 扩展成 `views.size() = 1/2`，普通模式仍然填 1。
 5. 新增 OpenXRRuntime，只完成 session + swapchain 创建，不渲染。
 6. 用 OpenXR 的左右眼 image 调 `RenderFrameGraphToTarget`，先顺序渲染左右眼。
 7. 跑通后再考虑 multiview、foveated rendering、controller input、world-space UI。
@@ -974,30 +974,36 @@ ResourceSystem 只管理资源，不负责 present。
 
 | 代码位置 | 作用 |
 |---|---|
-| `include/ave/render/Renderer.h` | 新增 `RenderViewTarget` / `RenderFrameRequest`，用于描述“本帧画到哪个 target、使用哪个 view” |
+| `include/ave/render/RenderBackend.h` | 新增 `RenderBackend` / `RenderViewTarget` / `RenderFrameRequest`，用于描述“本帧从哪个平台 backend 来、画到哪个 target、使用哪个 view” |
+| `include/ave/render/AndroidSurfaceRenderBackend.h` | Android Surface / swapchain backend，负责 acquire、layout transition、submit、present，并产出普通单 view `RenderFrameRequest` |
 | `Renderer::RenderFrameGraphToTargets` | 真正的通用渲染入口；普通模式和 VR 模式都应该走这里 |
-| `Renderer::RenderFrameGraphFrame` | 保留 Android swapchain 兼容入口，只负责 acquire / layout transition / present，并把 swapchain image 包装成 `RenderViewTarget` |
+| `Renderer::RenderFrameGraphFrame` | 保留 Android swapchain 兼容入口，内部委托 `AndroidSurfaceRenderBackend` 执行平台相关流程 |
 | `include/ave/render/RenderPass.h` | `RenderPassContext` 增加 `view_index/view_count`，pass 通过 `CurrentFrameView(context)` 读取 `FrameData.views[view_index]` |
-| `include/ave/core/FrameData.h` | 保留 `view` 作为普通单相机兼容字段，同时新增 `views` 支持 mono / stereo |
-| `include/ave/xr/XRRuntime.h` | 新增 XR 后端接口边界，后续 OpenXR 实现负责把 XR swapchain image 转成 `RenderViewTarget` |
+| `include/ave/core/FrameData.h` | 使用 `views` 统一支持 mono / stereo；普通单相机只填 1 个 `FrameViewData` |
+| `include/ave/xr/OpenXRRenderBackend.h` | OpenXR render backend 空壳，先接收外部准备好的 XR targets 并透传成 `RenderFrameRequest`，后续由 `OpenXRRuntime` 驱动真实 OpenXR session / swapchain |
 
 普通 Android 路径现在仍然是：
 
 ```text
-VkSwapchain acquire image
+AndroidSurfaceRenderBackend::BeginFrame
+  -> VkSwapchain acquire image
   -> build RenderViewTarget(color/depth + mono view)
   -> Renderer::RenderFrameGraphToTargets
-  -> present
+AndroidSurfaceRenderBackend::EndFrame
+  -> submit / present
 ```
 
 VR 路径后续目标是：
 
 ```text
-XRRuntimeBackend::BeginFrame
+OpenXRRuntime::BeginFrame
   -> acquire left/right eye images
+  -> fill OpenXRRenderBackend targets
+OpenXRRenderBackend::BeginFrame
   -> build RenderFrameRequest with two RenderViewTarget entries
   -> Renderer::RenderFrameGraphToTargets
-  -> XRRuntimeBackend::EndFrame
+OpenXRRenderBackend::EndFrame
+OpenXRRuntime::EndFrame
 ```
 
 第一版 VR 建议继续使用“双眼顺序渲染”：

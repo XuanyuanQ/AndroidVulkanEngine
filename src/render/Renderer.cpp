@@ -1,11 +1,7 @@
 #include "ave/render/Renderer.h"
 
 #include "VkContext.hpp"
-#include "VkFrameSync.hpp"
-#include "VkSwapchain.hpp"
-#include "VkCommandBuffer.hpp"
-#include "VkFramebufferSet.hpp"
-#include "VkRenderPass.hpp"
+#include "ave/render/AndroidSurfaceRenderBackend.h"
 #include "ave/render/RenderPasses.h"
 #include "ave/render/RenderPass.h"
 #include "LogUtil.h"
@@ -14,14 +10,7 @@ namespace ave::render {
 
 class Renderer::Impl {
 public:
-    vkfw::VkCommandBuffer framegraph_command_buffers{};
-    vkfw::VkRenderPass framegraph_render_pass{};
-    vkfw::VkFramebufferSet framegraph_framebuffers{};
-    vkfw::VkRenderPass framegraph_load_render_pass{};
-    vkfw::VkFramebufferSet framegraph_load_framebuffers{};
-    std::vector<vkfw::VkTexture> depth_textures{};
-    std::vector<uint8_t> depth_texture_ready{};
-    std::vector<vk::Fence> image_in_flight_fences{};
+    AndroidSurfaceRenderResources surface_resources{};
 };
 
 Renderer::Renderer()
@@ -89,20 +78,21 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         impl_ = std::make_unique<Impl>();
     }
     SetVkContext(&ctx);
-    impl_->image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
+    auto& surface = impl_->surface_resources;
+    surface.image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
 
     vk::Extent2D const extent = swapchain.Extent();
-    for (auto& depth_texture : impl_->depth_textures) {
+    for (auto& depth_texture : surface.depth_textures) {
         if (depth_texture.IsInitialized()) {
             depth_texture.Shutdown(ctx);
         }
     }
-    impl_->depth_textures.clear();
-    impl_->depth_textures.resize(swapchain.ImageCount());
-    impl_->depth_texture_ready.assign(swapchain.ImageCount(), 0u);
+    surface.depth_textures.clear();
+    surface.depth_textures.resize(swapchain.ImageCount());
+    surface.depth_texture_ready.assign(swapchain.ImageCount(), 0u);
     std::vector<vk::ImageView> depth_views;
     depth_views.reserve(swapchain.ImageCount());
-    for (auto& depth_texture : impl_->depth_textures) {
+    for (auto& depth_texture : surface.depth_textures) {
         if (!depth_texture.Init(ctx, vkfw::TextureInfo{
                                          .width = extent.width,
                                          .height = extent.height,
@@ -111,13 +101,13 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                          .usage = vkfw::TextureUsage::DepthStencilAttachment,
                                          .mipmap = false,
                                      })) {
-            for (auto& created_depth : impl_->depth_textures) {
+            for (auto& created_depth : surface.depth_textures) {
                 if (created_depth.IsInitialized()) {
                     created_depth.Shutdown(ctx);
                 }
             }
-            impl_->depth_textures.clear();
-            impl_->depth_texture_ready.clear();
+            surface.depth_textures.clear();
+            surface.depth_texture_ready.clear();
             return false;
         }
         depth_views.push_back(depth_texture.View());
@@ -152,25 +142,25 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         render_pass_info.subpasses.push_back(subpass);
         render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
-        if (!impl_->framegraph_render_pass.Init(ctx, render_pass_info)) {
-            for (auto& depth_texture : impl_->depth_textures) {
+        if (!surface.framegraph_render_pass.Init(ctx, render_pass_info)) {
+            for (auto& depth_texture : surface.depth_textures) {
                 if (depth_texture.IsInitialized()) {
                     depth_texture.Shutdown(ctx);
                 }
             }
-            impl_->depth_textures.clear();
-            impl_->depth_texture_ready.clear();
+            surface.depth_textures.clear();
+            surface.depth_texture_ready.clear();
             return false;
         }
-        if (!impl_->framegraph_framebuffers.Init(ctx, swapchain, impl_->framegraph_render_pass, depth_views)) {
-            impl_->framegraph_render_pass.Shutdown(ctx);
-            for (auto& depth_texture : impl_->depth_textures) {
+        if (!surface.framegraph_framebuffers.Init(ctx, swapchain, surface.framegraph_render_pass, depth_views)) {
+            surface.framegraph_render_pass.Shutdown(ctx);
+            for (auto& depth_texture : surface.depth_textures) {
                 if (depth_texture.IsInitialized()) {
                     depth_texture.Shutdown(ctx);
                 }
             }
-            impl_->depth_textures.clear();
-            impl_->depth_texture_ready.clear();
+            surface.depth_textures.clear();
+            surface.depth_texture_ready.clear();
             return false;
         }
 
@@ -186,38 +176,38 @@ bool Renderer::InitializeFrameGraphBackend(vkfw::VkContext& ctx,
         load_render_pass_info.subpasses.push_back(load_subpass);
         load_render_pass_info.final_layout = vk::ImageLayout::eColorAttachmentOptimal;
 
-        if (!impl_->framegraph_load_render_pass.Init(ctx, load_render_pass_info)) {
-            impl_->framegraph_framebuffers.Shutdown(ctx);
-            impl_->framegraph_render_pass.Shutdown(ctx);
-            for (auto& depth_texture : impl_->depth_textures) {
+        if (!surface.framegraph_load_render_pass.Init(ctx, load_render_pass_info)) {
+            surface.framegraph_framebuffers.Shutdown(ctx);
+            surface.framegraph_render_pass.Shutdown(ctx);
+            for (auto& depth_texture : surface.depth_textures) {
                 if (depth_texture.IsInitialized()) {
                     depth_texture.Shutdown(ctx);
                 }
             }
-            impl_->depth_textures.clear();
-            impl_->depth_texture_ready.clear();
+            surface.depth_textures.clear();
+            surface.depth_texture_ready.clear();
             return false;
         }
-        if (!impl_->framegraph_load_framebuffers.Init(ctx, swapchain, impl_->framegraph_load_render_pass, depth_views)) {
-            impl_->framegraph_load_render_pass.Shutdown(ctx);
-            impl_->framegraph_framebuffers.Shutdown(ctx);
-            impl_->framegraph_render_pass.Shutdown(ctx);
-            for (auto& depth_texture : impl_->depth_textures) {
+        if (!surface.framegraph_load_framebuffers.Init(ctx, swapchain, surface.framegraph_load_render_pass, depth_views)) {
+            surface.framegraph_load_render_pass.Shutdown(ctx);
+            surface.framegraph_framebuffers.Shutdown(ctx);
+            surface.framegraph_render_pass.Shutdown(ctx);
+            for (auto& depth_texture : surface.depth_textures) {
                 if (depth_texture.IsInitialized()) {
                     depth_texture.Shutdown(ctx);
                 }
             }
-            impl_->depth_textures.clear();
-            impl_->depth_texture_ready.clear();
+            surface.depth_textures.clear();
+            surface.depth_texture_ready.clear();
             return false;
         }
     }
 
-    return impl_->framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
-                                                          .level = vkfw::CommandBufferLevel::Primary,
-                                                          .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
-                                                          .count = sync.FramesInFlight(),
-                                                      });
+    return surface.framegraph_command_buffers.Init(ctx, vkfw::CommandBufferInfo{
+                                                            .level = vkfw::CommandBufferLevel::Primary,
+                                                            .usage = vkfw::CommandBufferUsage::OneTimeSubmit,
+                                                            .count = sync.FramesInFlight(),
+                                                        });
 }
 
 void Renderer::ResetFrameGraphRuntimeState(vkfw::VkContext& ctx)
@@ -229,19 +219,20 @@ void Renderer::ResetFrameGraphRuntimeState(vkfw::VkContext& ctx)
 void Renderer::ShutdownFrameGraphBackend()
 {
     if (impl_ != nullptr && vk_context_ != nullptr) {
-        impl_->framegraph_command_buffers.Shutdown(*vk_context_);
-        impl_->framegraph_load_framebuffers.Shutdown(*vk_context_);
-        impl_->framegraph_load_render_pass.Shutdown(*vk_context_);
-        impl_->framegraph_framebuffers.Shutdown(*vk_context_);
-        impl_->framegraph_render_pass.Shutdown(*vk_context_);
-        for (auto& depth_texture : impl_->depth_textures) {
+        auto& surface = impl_->surface_resources;
+        surface.framegraph_command_buffers.Shutdown(*vk_context_);
+        surface.framegraph_load_framebuffers.Shutdown(*vk_context_);
+        surface.framegraph_load_render_pass.Shutdown(*vk_context_);
+        surface.framegraph_framebuffers.Shutdown(*vk_context_);
+        surface.framegraph_render_pass.Shutdown(*vk_context_);
+        for (auto& depth_texture : surface.depth_textures) {
             if (depth_texture.IsInitialized()) {
                 depth_texture.Shutdown(*vk_context_);
             }
         }
-        impl_->depth_textures.clear();
-        impl_->depth_texture_ready.clear();
-        impl_->image_in_flight_fences.clear();
+        surface.depth_textures.clear();
+        surface.depth_texture_ready.clear();
+        surface.image_in_flight_fences.clear();
     }
 }
 
@@ -251,138 +242,25 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
                                                        vkfw::VkFrameSync& sync,
                                                        uint32_t& frame_index)
 {
-    if (impl_ == nullptr || !impl_->framegraph_command_buffers.IsInitialized()) {
+    if (impl_ == nullptr || !impl_->surface_resources.framegraph_command_buffers.IsInitialized()) {
         return FrameGraphRenderResult::Skipped;
     }
 
     // Ensure context is wired (PipelineSystem/ResourceSystem need this for Vk handles).
     SetVkContext(&ctx);
 
-    sync.WaitForFrame(ctx, frame_index);
-    auto [acq_result, image_index] = swapchain.AcquireNextImage(UINT64_MAX, sync.ImageAvailable(frame_index), vk::Fence{});
-    if (acq_result == vk::Result::eErrorOutOfDateKHR) {
-        LOGW("RenderFrameGraphFrame acquire out-of-date");
-        return FrameGraphRenderResult::SwapchainOutOfDate;
-    }
-    if (acq_result != vk::Result::eSuccess && acq_result != vk::Result::eSuboptimalKHR) {
-        LOGW("RenderFrameGraphFrame acquire skipped result=%d", static_cast<int>(acq_result));
-        return FrameGraphRenderResult::Skipped;
-    }
-
-    if (impl_->image_in_flight_fences.size() != swapchain.ImageCount()) {
-        impl_->image_in_flight_fences.assign(swapchain.ImageCount(), vk::Fence{});
-    }
-    vk::Fence const image_fence = impl_->image_in_flight_fences[image_index];
-    if (image_fence != vk::Fence{}) {
-        auto const wait_result = ctx.Device().waitForFences(image_fence, vk::True, UINT64_MAX);
-        if (wait_result != vk::Result::eSuccess) {
-            LOGW("RenderFrameGraphFrame image fence wait failed result=%d", static_cast<int>(wait_result));
-            return FrameGraphRenderResult::Skipped;
-        }
-    }
-    impl_->image_in_flight_fences[image_index] = sync.InFlightFence(frame_index);
-
-    sync.ResetFence(ctx, frame_index);
-    impl_->framegraph_command_buffers.Reset(frame_index);
-    vk::CommandBuffer cmd = impl_->framegraph_command_buffers.Handle(frame_index);
-
-    cmd.begin(vk::CommandBufferBeginInfo{});
-
-    vk::Image const swap_img = swapchain.Image(image_index);
-    vk::ImageSubresourceRange const range{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
-    vk::ImageLayout const old_layout = swapchain.IsFirstUse(image_index) ? vk::ImageLayout::eUndefined
-                                                                         : vk::ImageLayout::ePresentSrcKHR;
-
-    vk::ImageMemoryBarrier to_color{};
-    to_color.oldLayout = old_layout;
-    to_color.newLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    to_color.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_color.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_color.image = swap_img;
-    to_color.subresourceRange = range;
-    to_color.srcAccessMask = {};
-    to_color.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
-                        vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                        {}, {}, {}, to_color);
-
-    RenderViewTarget target{};
-    target.color_target.image = swapchain.Image(image_index);
-    target.color_target.image_view = swapchain.ImageView(image_index);
-    target.color_target.format = swapchain.Format();
-    target.color_target.extent = swapchain.Extent();
-    target.view_index = 0;
-    target.frame_resource_index = image_index;
-    target.frame_resource_count = swapchain.ImageCount();
-    if (image_index < impl_->depth_textures.size()) {
-        target.depth_target.texture = &impl_->depth_textures[image_index];
-        target.depth_target.extent = swapchain.Extent();
-        target.depth_target.format = vk::Format::eD32Sfloat;
-    }
-    if (image_index < impl_->depth_texture_ready.size()) {
-        target.depth_target.ready = &impl_->depth_texture_ready[image_index];
-    }
-    if (!ctx.SupportsDynamicRendering()) {
-        target.color_target.compatibility_render_pass = impl_->framegraph_render_pass.Handle();
-        target.color_target.compatibility_framebuffer = impl_->framegraph_framebuffers.Handle(image_index);
-        target.color_target.compatibility_load_render_pass = impl_->framegraph_load_render_pass.Handle();
-        target.color_target.compatibility_load_framebuffer = impl_->framegraph_load_framebuffers.Handle(image_index);
-    }
-
+    AndroidSurfaceRenderBackend backend{impl_->surface_resources, frame, ctx, swapchain, sync, frame_index};
     RenderFrameRequest request{};
-    request.frame = &frame;
-    request.vk = &ctx;
-    request.command_buffer = cmd;
-    request.views.push_back(target);
-    if (RenderFrameGraphToTargets(request) != FrameGraphRenderResult::Success) {
-        LOGW("RenderFrameGraphFrame graph execution skipped for image_index=%u", image_index);
+    FrameGraphRenderResult const begin_result = backend.BeginFrame(request);
+    if (begin_result != FrameGraphRenderResult::Success) {
+        return begin_result;
     }
 
-    vk::ImageMemoryBarrier to_present{};
-    to_present.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    to_present.newLayout = vk::ImageLayout::ePresentSrcKHR;
-    to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_present.image = swap_img;
-    to_present.subresourceRange = range;
-    to_present.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-    to_present.dstAccessMask = {};
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                        vk::PipelineStageFlagBits::eBottomOfPipe,
-                        {}, {}, {}, to_present);
-
-    cmd.end();
-    swapchain.MarkUsed(image_index);
-
-    vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-    vk::SubmitInfo submit{};
-    submit.waitSemaphoreCount = 1;
-    auto image_avail = sync.ImageAvailable(frame_index);
-    submit.pWaitSemaphores = &image_avail;
-    submit.pWaitDstStageMask = &wait_stage;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &cmd;
-    submit.signalSemaphoreCount = 1;
-    auto render_finished = sync.RenderFinished(image_index);
-    submit.pSignalSemaphores = &render_finished;
-    ctx.GraphicsQueue().submit(submit, sync.InFlightFence(frame_index));
-
-    vk::PresentInfoKHR present{};
-    present.waitSemaphoreCount = 1;
-    present.pWaitSemaphores = &render_finished;
-    present.swapchainCount = 1;
-    auto handle = swapchain.Handle();
-    present.pSwapchains = &handle;
-    present.pImageIndices = &image_index;
-    vk::Result const present_result = ctx.GraphicsQueue().presentKHR(present);
-
-    frame_index = (frame_index + 1) % sync.FramesInFlight();
-    if (acq_result == vk::Result::eSuboptimalKHR ||
-        present_result == vk::Result::eSuboptimalKHR ||
-        present_result == vk::Result::eErrorOutOfDateKHR) {
-        return FrameGraphRenderResult::SwapchainOutOfDate;
+    FrameGraphRenderResult render_result = RenderFrameGraphToTargets(request);
+    if (render_result != FrameGraphRenderResult::Success) {
+        LOGW("RenderFrameGraphFrame graph execution skipped");
     }
-    return FrameGraphRenderResult::Success;
+    return backend.EndFrame(render_result);
 }
 
 FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest const& request)

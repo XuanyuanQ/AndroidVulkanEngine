@@ -33,6 +33,8 @@ add_library(ave_engine STATIC
     src/render/PassDataView.cpp
     src/render/RenderSceneBuilder.cpp
     src/render/PipelineSystem.cpp
+    src/render/AndroidSurfaceRenderBackend.cpp
+    src/xr/OpenXRRenderBackend.cpp
     # src/rhi/VulkanDevice.cpp
 )
 

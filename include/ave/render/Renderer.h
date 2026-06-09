@@ -1,13 +1,13 @@
 #pragma once
 
 #include "ave/core/FrameData.h"
+#include "ave/render/RenderBackend.h"
 #include "ave/render/FrameGraph.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/PipelineSystem.h"
 #include "ave/render/MaterialSystem.h"
 
 #include <memory>
-#include <vector>
 
 namespace ave::core {
 class JobSystem;
@@ -20,27 +20,6 @@ class VkFrameSync;
 }
 
 namespace ave::render {
-
-enum class FrameGraphRenderResult {
-    Success,
-    Skipped,
-    SwapchainOutOfDate,
-};
-
-struct RenderViewTarget {
-    RenderTargetView color_target{};
-    DepthTargetView depth_target{};
-    uint32_t view_index = 0;
-    uint32_t frame_resource_index = 0;
-    uint32_t frame_resource_count = 1;
-};
-
-struct RenderFrameRequest {
-    core::FrameData const* frame = nullptr;
-    vkfw::VkContext* vk = nullptr;
-    vk::CommandBuffer command_buffer = {};
-    std::vector<RenderViewTarget> views{};
-};
 
 struct RendererConfig {
     bool enable_validation = true;
