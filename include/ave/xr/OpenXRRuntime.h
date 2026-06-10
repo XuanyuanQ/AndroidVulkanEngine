@@ -20,6 +20,8 @@ enum class OpenXRRuntimeState : uint8_t {
 
 struct OpenXRRuntimeConfig {
     bool enabled = false;
+    void* android_application_vm = nullptr;
+    void* android_application_context = nullptr;
 };
 
 // Minimal OpenXR lifecycle shell. This class intentionally has no OpenXR SDK
@@ -47,6 +49,8 @@ private:
     bool logged_stub_frame_ = false;
     void* loader_handle_ = nullptr;
     void* instance_handle_ = nullptr;
+    void* android_application_vm_ = nullptr;
+    void* android_application_context_ = nullptr;
     uint64_t system_id_ = 0;
     OpenXRRuntimeState state_ = OpenXRRuntimeState::Disabled;
 };

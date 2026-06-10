@@ -39,7 +39,7 @@ void Jni_DestroyScript(std::string const& object_id);
 
 class MinimalVulkanTriangle {
 public:
-    bool create(AAssetManager* assets, std::string project_path);
+    bool create(AAssetManager* assets, std::string project_path, void* android_application_vm, void* android_application_context);
     void destroy();
     void setSurface(ANativeWindow* window);
     void clearSurface();
@@ -84,6 +84,8 @@ private:
 
     AAssetManager* assets_ = nullptr;
     std::string project_path_;
+    void* android_application_vm_ = nullptr;
+    void* android_application_context_ = nullptr;
     ANativeWindow* window_ = nullptr;
     int width_ = 0;
     int height_ = 0;

@@ -19,6 +19,7 @@ static jmethodID g_trigger_script_value_mid = nullptr;
 static jmethodID g_clear_scripts_mid = nullptr;
 static jmethodID g_generate_font_atlas_mid = nullptr;
 static jmethodID g_destroy_script_mid = nullptr;
+static jobject g_application_context = nullptr;
 
 namespace {
 
@@ -254,18 +255,29 @@ std::unique_ptr<MinimalVulkanTriangle> g_runtime;
 using namespace ave::android;
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ave_engine_AveActivity_nativeCreate(JNIEnv* env, jclass, jobject asset_manager, jstring project_path)
+Java_com_ave_engine_AveActivity_nativeCreate(JNIEnv* env, jclass, jobject asset_manager, jstring project_path, jobject application_context)
 {
+    if (g_application_context != nullptr) {
+        env->DeleteGlobalRef(g_application_context);
+        g_application_context = nullptr;
+    }
+    if (application_context != nullptr) {
+        g_application_context = env->NewGlobalRef(application_context);
+    }
     g_runtime = std::make_unique<ave::android::MinimalVulkanTriangle>();
-    g_runtime->create(AAssetManager_fromJava(env, asset_manager), ReadJString(env, project_path));
+    g_runtime->create(AAssetManager_fromJava(env, asset_manager), ReadJString(env, project_path), g_vm, g_application_context);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ave_engine_AveActivity_nativeDestroy(JNIEnv*, jclass)
+Java_com_ave_engine_AveActivity_nativeDestroy(JNIEnv* env, jclass)
 {
     if (g_runtime) {
         g_runtime->destroy();
         g_runtime.reset();
+    }
+    if (g_application_context != nullptr) {
+        env->DeleteGlobalRef(g_application_context);
+        g_application_context = nullptr;
     }
 }
 

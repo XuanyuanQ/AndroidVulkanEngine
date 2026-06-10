@@ -47,7 +47,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
         surfaceView = new SurfaceView(this);
         surfaceView.getHolder().addCallback(this);
         setContentView(surfaceView);
-        nativeCreate(getAssets(), "project.xml");
+        nativeCreate(getAssets(), "project.xml", this);
         surfaceView.setFocusable(true);
         surfaceView.setFocusableInTouchMode(true);
         surfaceView.requestFocus();
@@ -354,7 +354,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
                 ", nativeSurfaceAttached=" + nativeSurfaceAttached);
     }
 
-    private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath);
+    private static native void nativeCreate(android.content.res.AssetManager assets, String projectPath, android.content.Context applicationContext);
     private static native void nativeDestroy();
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeClearSurface();

@@ -54,10 +54,15 @@ bool ReadBoolSystemProperty(char const* name, bool fallback)
 
 } // namespace
 
-bool MinimalVulkanTriangle::create(AAssetManager* assets, std::string project_path)
+bool MinimalVulkanTriangle::create(AAssetManager* assets,
+                                   std::string project_path,
+                                   void* android_application_vm,
+                                   void* android_application_context)
 {
     assets_ = assets;
     project_path_ = std::move(project_path);
+    android_application_vm_ = android_application_vm;
+    android_application_context_ = android_application_context;
     logProjectAsset();
     return true;
 }
@@ -757,7 +762,11 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
 
     bool const enable_openxr = ReadBoolSystemProperty("debug.ave.openxr", false);
     LOGI("OpenXR optional startup: property debug.ave.openxr enabled=%d", enable_openxr ? 1 : 0);
-    if (!openxr_runtime_.Initialize(ctx_, ave::xr::OpenXRRuntimeConfig{.enabled = enable_openxr})) {
+    if (!openxr_runtime_.Initialize(ctx_, ave::xr::OpenXRRuntimeConfig{
+                                              .enabled = enable_openxr,
+                                              .android_application_vm = android_application_vm_,
+                                              .android_application_context = android_application_context_,
+                                          })) {
         LOGW("OpenXRRuntime initialization failed; continuing Android surface rendering");
     }
 

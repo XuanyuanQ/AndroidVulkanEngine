@@ -26,6 +26,7 @@ using XrInstance = struct XrInstance_T*;
 constexpr XrResult XR_SUCCESS = 0;
 constexpr XrStructureType XR_TYPE_INSTANCE_CREATE_INFO = 3;
 constexpr XrStructureType XR_TYPE_SYSTEM_GET_INFO = 4;
+constexpr XrStructureType XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR = 1000089000;
 constexpr XrFormFactor XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY = 1;
 constexpr XrVersion XR_CURRENT_API_VERSION = (1ULL << 48);
 constexpr uint32_t XR_MAX_APPLICATION_NAME_SIZE = 128;
@@ -56,8 +57,16 @@ struct XrSystemGetInfo {
     XrFormFactor formFactor;
 };
 
+struct XrLoaderInitInfoAndroidKHR {
+    XrStructureType type;
+    void const* next;
+    void* applicationVM;
+    void* applicationContext;
+};
+
 using PFN_xrVoidFunction = void (*)();
 using PFN_xrGetInstanceProcAddr = XrResult (*)(XrInstance instance, char const* name, PFN_xrVoidFunction* function);
+using PFN_xrInitializeLoaderKHR = XrResult (*)(XrLoaderInitInfoAndroidKHR const* loader_init_info);
 using PFN_xrCreateInstance = XrResult (*)(XrInstanceCreateInfo const* create_info, XrInstance* instance);
 using PFN_xrDestroyInstance = XrResult (*)(XrInstance instance);
 using PFN_xrGetSystem = XrResult (*)(XrInstance instance, XrSystemGetInfo const* get_info, XrSystemId* system_id);
@@ -112,6 +121,34 @@ bool OpenXRRuntime::ProbeOpenXRLoader()
         return false;
     }
 
+    auto xr_initialize_loader =
+        LoadOpenXRCommand<PFN_xrInitializeLoaderKHR>(get_proc_addr, nullptr, "xrInitializeLoaderKHR");
+    if (xr_initialize_loader == nullptr) {
+        dlclose(loader_handle_);
+        loader_handle_ = nullptr;
+        return false;
+    }
+    if (android_application_vm_ == nullptr || android_application_context_ == nullptr) {
+        LOGW("OpenXR loader init skipped: missing Android VM or application context");
+        dlclose(loader_handle_);
+        loader_handle_ = nullptr;
+        return false;
+    }
+
+    XrLoaderInitInfoAndroidKHR loader_init_info{};
+    loader_init_info.type = XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR;
+    loader_init_info.next = nullptr;
+    loader_init_info.applicationVM = android_application_vm_;
+    loader_init_info.applicationContext = android_application_context_;
+    XrResult result = xr_initialize_loader(&loader_init_info);
+    if (result != XR_SUCCESS) {
+        LOGW("OpenXR xrInitializeLoaderKHR failed: result=%d", result);
+        dlclose(loader_handle_);
+        loader_handle_ = nullptr;
+        return false;
+    }
+    LOGI("OpenXR xrInitializeLoaderKHR success");
+
     auto xr_create_instance = LoadOpenXRCommand<PFN_xrCreateInstance>(get_proc_addr, nullptr, "xrCreateInstance");
     if (xr_create_instance == nullptr) {
         dlclose(loader_handle_);
@@ -134,7 +171,7 @@ bool OpenXRRuntime::ProbeOpenXRLoader()
     create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
 
     XrInstance instance = nullptr;
-    XrResult result = xr_create_instance(&create_info, &instance);
+    result = xr_create_instance(&create_info, &instance);
     if (result != XR_SUCCESS || instance == nullptr) {
         LOGW("OpenXR xrCreateInstance failed: result=%d", result);
         dlclose(loader_handle_);
@@ -186,6 +223,8 @@ bool OpenXRRuntime::ProbeOpenXRLoader()
 bool OpenXRRuntime::Initialize(vkfw::VkContext& ctx, OpenXRRuntimeConfig const& config)
 {
     enabled_ = config.enabled;
+    android_application_vm_ = config.android_application_vm;
+    android_application_context_ = config.android_application_context;
     if (!enabled_) {
         state_ = OpenXRRuntimeState::Disabled;
         initialized_ = false;

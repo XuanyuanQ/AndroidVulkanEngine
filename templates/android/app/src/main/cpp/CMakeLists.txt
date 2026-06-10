@@ -65,6 +65,7 @@ target_include_directories(ave_runtime
         "${AVE_ENGINE_ROOT}/src/rhi/core"
         "${AVE_ENGINE_ROOT}/external/glm-0.9.9.5"
         "${AVE_ENGINE_ROOT}/external/stb_image"
+        "${AVE_ENGINE_ROOT}/external/openxr/include"
 )
 
 # 添加本地 Vulkan 头文件路径
@@ -72,12 +73,25 @@ if(VULKAN_HPP_INCLUDE_DIR)
     target_include_directories(ave_runtime PRIVATE "${VULKAN_HPP_INCLUDE_DIR}")
 endif()
 
+set(OPENXR_LOADER_PATH "${AVE_ENGINE_ROOT}/external/openxr/lib/android/${ANDROID_ABI}/libopenxr_loader.so")
+if(EXISTS "${OPENXR_LOADER_PATH}")
+    add_library(openxr_loader SHARED IMPORTED)
+    set_target_properties(openxr_loader PROPERTIES
+        IMPORTED_LOCATION "${OPENXR_LOADER_PATH}"
+    )
+    set(OPENXR_LOADER_TARGET openxr_loader)
+    message(STATUS "Using bundled OpenXR loader: ${OPENXR_LOADER_PATH}")
+else()
+    set(OPENXR_LOADER_TARGET "")
+    message(WARNING "Bundled OpenXR loader not found: ${OPENXR_LOADER_PATH}")
+endif()
 
 target_link_libraries(ave_runtime
     PRIVATE
         android
         log
         dl
+        ${OPENXR_LOADER_TARGET}
         ${VULKAN_LIBRARY}
 )
 
