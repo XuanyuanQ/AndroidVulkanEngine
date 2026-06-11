@@ -41,7 +41,7 @@ public:
     OpenXRRuntimeState State() const noexcept { return state_; }
 
 private:
-    bool ProbeOpenXRLoader();
+    bool ProbeOpenXRLoader(vkfw::VkContext& ctx);
 
     bool enabled_ = false;
     bool initialized_ = false;
@@ -49,6 +49,10 @@ private:
     bool logged_stub_frame_ = false;
     void* loader_handle_ = nullptr;
     void* instance_handle_ = nullptr;
+    void* session_handle_ = nullptr;
+    void* local_space_handle_ = nullptr;
+    void* xr_vulkan_instance_ = nullptr;
+    void* xr_vulkan_device_ = nullptr;
     void* android_application_vm_ = nullptr;
     void* android_application_context_ = nullptr;
     uint64_t system_id_ = 0;
