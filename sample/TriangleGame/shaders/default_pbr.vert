@@ -17,6 +17,12 @@ layout(location = 5) out vec4 vWorldTangent;
 layout(set = 0, binding = 0) uniform FrameUbo {
     mat4 view_projection;
     mat4 shadowViewProj;
+    vec4 camera_position;
+    vec4 light_position_range;
+    vec4 light_direction_type;
+    vec4 light_color_intensity;
+    vec4 ambient_color;
+    vec4 clear_color;
     mat4 view;
     mat4 projection;
 } frame;

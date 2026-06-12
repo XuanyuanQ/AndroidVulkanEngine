@@ -119,6 +119,7 @@ GLFWwindow* window = nullptr;
   uint32_t graphics_queue_family_index = 0;
   vk::raii::Queue graphics_queue{nullptr};
   bool supports_dynamic_rendering = false;
+  bool uses_core_dynamic_rendering = false;
 };
 
 VkContext::VkContext() : impl_(new Impl()) {}
@@ -172,9 +173,12 @@ bool VkContext::Init(ContextCreateInfo const& info)
   app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
   app_info.pEngineName = "vkfw";
   app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  // The current Android sample still uses render passes and classic sync primitives,
-  // so requiring Vulkan 1.3 would reject otherwise-capable mobile GPUs for no benefit.
+#if defined(__ANDROID__)
+  // The Android sample still supports classic render passes on older mobile GPUs.
   app_info.apiVersion = VK_API_VERSION_1_0;
+#else
+  app_info.apiVersion = VK_API_VERSION_1_3;
+#endif
 
   std::vector<char const*> layers{};
   if (impl_->enable_validation) {
@@ -270,6 +274,8 @@ bool VkContext::Init(ContextCreateInfo const& info)
   bool const enable_dynamic_rendering = device_supports_dynamic_rendering;
 #endif
   impl_->supports_dynamic_rendering = enable_dynamic_rendering;
+  bool const use_khr_dynamic_rendering = enable_dynamic_rendering && has_khr_dynamic_rendering;
+  impl_->uses_core_dynamic_rendering = enable_dynamic_rendering && use_core_dynamic_rendering && !use_khr_dynamic_rendering;
 #if defined(__ANDROID__)
   LOGI("Vulkan dynamic rendering selection: property debug.ave.dynamic_rendering='%s' len=%d device_supports=%d core13=%d khr_ext=%d enabled=%d",
        dynamic_rendering_property,
@@ -279,16 +285,16 @@ bool VkContext::Init(ContextCreateInfo const& info)
        has_khr_dynamic_rendering ? 1 : 0,
        enable_dynamic_rendering ? 1 : 0);
 #endif
-  if (!use_core_dynamic_rendering && has_khr_dynamic_rendering) {
+  if (use_khr_dynamic_rendering) {
     dev_exts.push_back(vk::KHRDynamicRenderingExtensionName);
   }
 
   // Enable dynamic rendering feature.
   vk::PhysicalDeviceVulkan13Features vk13_features{};
   vk::PhysicalDeviceDynamicRenderingFeaturesKHR dyn_rendering_features{};
-  if (enable_dynamic_rendering && use_core_dynamic_rendering) {
+  if (impl_->uses_core_dynamic_rendering) {
     vk13_features.dynamicRendering = VK_TRUE;
-  } else if (enable_dynamic_rendering && has_khr_dynamic_rendering) {
+  } else if (use_khr_dynamic_rendering) {
     dyn_rendering_features.dynamicRendering = VK_TRUE;
   }
 
@@ -297,9 +303,9 @@ bool VkContext::Init(ContextCreateInfo const& info)
   dci.pQueueCreateInfos = &qci;
   dci.enabledExtensionCount = static_cast<uint32_t>(dev_exts.size());
   dci.ppEnabledExtensionNames = dev_exts.data();
-  if (enable_dynamic_rendering && use_core_dynamic_rendering) {
+  if (impl_->uses_core_dynamic_rendering) {
     dci.pNext = &vk13_features;
-  } else if (enable_dynamic_rendering && has_khr_dynamic_rendering) {
+  } else if (use_khr_dynamic_rendering) {
     dci.pNext = &dyn_rendering_features;
   } else {
     dci.pNext = nullptr;
@@ -386,5 +392,6 @@ vk::raii::Device& VkContext::Device() const { return impl_->device; }
 vk::raii::Queue& VkContext::GraphicsQueue() const { return impl_->graphics_queue; }
 uint32_t VkContext::GraphicsQueueFamilyIndex() const noexcept { return impl_->graphics_queue_family_index; }
 bool VkContext::SupportsDynamicRendering() const noexcept { return impl_->supports_dynamic_rendering; }
+bool VkContext::UsesCoreDynamicRendering() const noexcept { return impl_->uses_core_dynamic_rendering; }
 
 } // namespace vkfw

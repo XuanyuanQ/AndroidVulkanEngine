@@ -150,6 +150,9 @@ public:
     std::optional<UiAction> HandlePointerMove(float x_px, float y_px);
     std::optional<UiAction> HandlePointerCancel();
     std::optional<UiAction> HandlePointerUp(float x_px, float y_px);
+    std::optional<UiAction> HandlePointerNdcDown(float x_ndc, float y_ndc);
+    std::optional<UiAction> HandlePointerNdcMove(float x_ndc, float y_ndc);
+    std::optional<UiAction> HandlePointerNdcUp(float x_ndc, float y_ndc);
 
 private:
     struct UiTransform {
@@ -163,9 +166,10 @@ private:
     void RefreshNodeSize(UiRuntimeNode& node);
     UiButtonNode* FindButtonNode(std::string const& object_id);
     UiSliderNode* FindSliderNode(std::string const& object_id);
-    UiButtonNode const* HitTestButton(float x_px, float y_px) const;
-    UiSliderNode const* HitTestSlider(float x_px, float y_px) const;
-    float SliderValueFromPointer(UiSliderNode const& slider, float x_px, float y_px) const;
+    glm::vec2 PixelToInputNdc(float x_px, float y_px) const;
+    UiButtonNode const* HitTestButtonNdc(float x_ndc, float y_ndc) const;
+    UiSliderNode const* HitTestSliderNdc(float x_ndc, float y_ndc) const;
+    float SliderValueFromPointerNdc(UiSliderNode const& slider, float x_ndc) const;
     void AppendTextItems(std::vector<core::FrameUiData>& out_items,
                          std::string const& object_id,
                          std::string const& debug_name,

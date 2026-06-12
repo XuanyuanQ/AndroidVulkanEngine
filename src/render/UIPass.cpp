@@ -68,8 +68,15 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
     std::vector<ave::render::UiVertex> vertices;
     std::vector<uint32_t> indices;
+    struct UiDrawRange {
+        uint32_t first_index = 0;
+        uint32_t index_count = 0;
+        uint32_t texture_index = 0;
+    };
+    std::vector<UiDrawRange> draw_ranges;
     vertices.reserve(view.ui_items.size() * 4);
     indices.reserve(view.ui_items.size() * 6);
+    draw_ranges.reserve(view.ui_items.size());
 
     float const width = has_vk ? static_cast<float>(context.color_target.extent.width) : 1080.0f;
     float const height = has_vk ? static_cast<float>(context.color_target.extent.height) : 1920.0f;
@@ -114,7 +121,13 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
             }
         }
 
+        uint32_t const first_index = static_cast<uint32_t>(indices.size());
         AppendUiQuad(vertices, indices, *item, texture_index, aspect_ratio);
+        draw_ranges.push_back(UiDrawRange{
+            .first_index = first_index,
+            .index_count = static_cast<uint32_t>(indices.size()) - first_index,
+            .texture_index = texture_index,
+        });
     }
 
     if (!has_vk || vertices.empty() || indices.empty()) {
@@ -204,35 +217,36 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     context.command_buffer.bindIndexBuffer(ui_index_buffers_[buf_idx].Handle(), 0, vk::IndexType::eUint32);
 
     uint32_t const texture_layout_id = desc_cache.GetOrCreateLayout(MakeTextureSetLayoutKey());
-    vk::Sampler const sampler = GetCommonSampler(*context.vk);
+    vk::Sampler const sampler = GetUiSampler(*context.vk);
     EnsureFallbackWhiteTexture(*context.vk, fallback_white_texture_);
 
-    uint32_t descriptor_set_id = texture_descriptor_sets_[buf_idx];
-    if (descriptor_set_id == 0) {
-        descriptor_set_id = desc_alloc.AllocateDescriptorSet(texture_layout_id);
-        texture_descriptor_sets_[buf_idx] = descriptor_set_id;
+    std::array<uint32_t, 16> descriptor_set_ids{};
+    for (uint32_t slot = 0; slot < descriptor_set_ids.size(); ++slot) {
+        uint32_t const runtime_id = texture_runtime_ids[slot];
+        uint32_t const descriptor_key = (buf_idx << 8u) | slot;
+        uint32_t descriptor_set_id = texture_descriptor_sets_[descriptor_key];
+        if (descriptor_set_id == 0) {
+            descriptor_set_id = desc_alloc.AllocateDescriptorSet(texture_layout_id);
+            texture_descriptor_sets_[descriptor_key] = descriptor_set_id;
+        }
+        descriptor_set_ids[slot] = descriptor_set_id;
+
+        vkfw::VkTexture const* texture = ResolveTextureOrFallback(*context.vk, texture_mgr, runtime_id, fallback_white_texture_);
+        if (descriptor_set_id != 0 && texture != nullptr) {
+            desc_alloc.UpdateImageSampler(descriptor_set_id,
+                                          0,
+                                          sampler,
+                                          texture->View(),
+                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+        }
     }
 
-    if (descriptor_set_id != 0) {
-        desc_alloc.UpdateImageSamplerArray(descriptor_set_id,
-                                           0,
-                                           0,
-                                           sampler,
-                                           fallback_white_texture_.View(),
-                                           vk::ImageLayout::eShaderReadOnlyOptimal);
-        for (uint32_t slot = 1; slot < 16; ++slot) {
-            uint32_t const runtime_id = texture_runtime_ids[slot];
-            vkfw::VkTexture const* texture = ResolveTextureOrFallback(*context.vk, texture_mgr, runtime_id, fallback_white_texture_);
-            if (texture != nullptr) {
-                desc_alloc.UpdateImageSamplerArray(descriptor_set_id,
-                                                   0,
-                                                   slot,
-                                                   sampler,
-                                                   texture->View(),
-                                                   vk::ImageLayout::eShaderReadOnlyOptimal);
-            }
+    for (UiDrawRange const& range : draw_ranges) {
+        if (range.index_count == 0) {
+            continue;
         }
-
+        uint32_t const descriptor_set_id =
+            range.texture_index < descriptor_set_ids.size() ? descriptor_set_ids[range.texture_index] : descriptor_set_ids[0];
         vk::DescriptorSet const set = desc_alloc.GetHandle(descriptor_set_id);
         if (set) {
             context.command_buffer.bindDescriptorSets(pipeline->BindPoint(),
@@ -243,9 +257,8 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                       0,
                                                       nullptr);
         }
+        context.command_buffer.drawIndexed(range.index_count, 1, range.first_index, 0, 0);
     }
-
-    context.command_buffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     EndSwapchainRendering(context);
 }

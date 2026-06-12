@@ -139,7 +139,7 @@ void VkTexture::Shutdown(VkContext& ctx) {
     image_view_handle_ = nullptr;
     image_handle_ = nullptr;
     memory_handle_ = nullptr;
-    extent_ = {};
+    extent_ = vk::Extent3D{};
     format_ = vk::Format::eUndefined;
 }
 
@@ -198,8 +198,8 @@ void VkTexture::UpdateData(VkContext& ctx, void const* data, uint32_t size, uint
     copy_region.imageSubresource.mipLevel = mip_level;
     copy_region.imageSubresource.baseArrayLayer = array_layer;
     copy_region.imageSubresource.layerCount = 1;
-    copy_region.imageOffset = {0, 0, 0};
-    copy_region.imageExtent = {
+    copy_region.imageOffset = vk::Offset3D{0, 0, 0};
+    copy_region.imageExtent = vk::Extent3D{
         std::max(1u, extent_.width >> mip_level),
         std::max(1u, extent_.height >> mip_level),
         extent_.depth,

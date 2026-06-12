@@ -6,8 +6,8 @@ layout(location = 2) flat in uint vTextureIndex;
 
 layout(location = 0) out vec4 outColor;
 
-layout(set = 0, binding = 0) uniform sampler2D uiTextures[16];
+layout(set = 0, binding = 0) uniform sampler2D uiTexture;
 
 void main() {
-    outColor = texture(uiTextures[vTextureIndex], vTexcoord0) * vColor;
+    outColor = texture(uiTexture, vTexcoord0) * vColor;
 }

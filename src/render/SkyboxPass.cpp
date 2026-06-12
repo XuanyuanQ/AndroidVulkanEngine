@@ -120,12 +120,12 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
     core::FrameViewData const* frame_view = CurrentFrameView(context);
     if (context.frame != nullptr) {
         if (frame_view != nullptr) {
-            frame_ubo.view_projection = frame_view->view_projection;
+            frame_ubo.view_projection = GpuMatrix(frame_view->view_projection);
         }
         if (context.frame_graph_resources != nullptr) {
-            frame_ubo.shadow_view_projection = context.frame_graph_resources->GetMatrix(
+            frame_ubo.shadow_view_projection = GpuMatrix(context.frame_graph_resources->GetMatrix(
                 FrameGraphResourceRegistry::ShadowViewProjection,
-                frame_ubo.shadow_view_projection);
+                frame_ubo.shadow_view_projection));
         }
         if (frame_view != nullptr) {
             frame_ubo.camera_position = glm::vec4(frame_view->world_position, 1.0f);
@@ -133,8 +133,8 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
         frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
         frame_ubo.clear_color = context.frame->environment.clear_color;
         if (frame_view != nullptr) {
-            frame_ubo.view = frame_view->view;
-            frame_ubo.projection = frame_view->projection;
+            frame_ubo.view = GpuMatrix(frame_view->view);
+            frame_ubo.projection = GpuMatrix(frame_view->projection);
         }
     }
 
@@ -191,7 +191,7 @@ void SkyboxPass::Execute(RenderPassContext const& context, PassExecutionView con
 
     context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
-    glm::mat4 const world{1.0f};
+    glm::mat4 const world = GpuMatrix(glm::mat4{1.0f});
     context.command_buffer.pushConstants(pipeline->Layout(),
                                          vk::ShaderStageFlagBits::eVertex,
                                          0,

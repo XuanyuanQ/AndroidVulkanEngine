@@ -134,7 +134,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
     shadow_view_projection_ = BuildShadowViewProjection(view, context.frame);
 
     ShadowFrameUbo frame_ubo{};
-    frame_ubo.shadow_view_projection = shadow_view_projection_;
+    frame_ubo.shadow_view_projection = GpuMatrix(shadow_view_projection_);
 
     if (!frame_binding.ubo.IsInitialized()) {
         frame_binding.ubo.Init(*context.vk, vkfw::BufferInfo{
@@ -263,7 +263,7 @@ void ShadowPass::Execute(RenderPassContext const& context, PassExecutionView con
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
         ObjectPushConstants object_push{};
-        object_push.world = renderable->world;
+        object_push.world = GpuMatrix(renderable->world);
         context.command_buffer.pushConstants(pipeline->Layout(),
                                              vk::ShaderStageFlagBits::eVertex,
                                              0,

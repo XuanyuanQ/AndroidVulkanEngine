@@ -67,9 +67,16 @@ extern std::unique_ptr<vk::raii::Framebuffer> g_compatibility_shadow_framebuffer
 extern vk::ImageView g_last_shadow_image_view;
 extern SharedEnvironmentMaps g_shared_environment_maps;
 
+inline glm::mat4 GpuMatrix(glm::mat4 const& matrix)
+{
+    return matrix;
+}
+
 vk::Sampler GetCommonSampler(vkfw::VkContext& ctx);
+vk::Sampler GetUiSampler(vkfw::VkContext& ctx);
 vk::Sampler GetShadowSampler(vkfw::VkContext& ctx);
 void ResetCommonSampler();
+void ResetUiSampler();
 void ResetShadowSampler();
 
 void EnsureFallbackWhiteTexture(vkfw::VkContext& ctx, vkfw::VkTexture& texture);

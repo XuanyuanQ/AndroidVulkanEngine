@@ -161,12 +161,12 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         core::FrameViewData const* frame_view = CurrentFrameView(context);
         if (context.frame != nullptr) {
             if (frame_view != nullptr) {
-                frame_ubo.view_projection = frame_view->view_projection;
+                frame_ubo.view_projection = GpuMatrix(frame_view->view_projection);
             }
             if (context.frame_graph_resources != nullptr) {
-                frame_ubo.shadow_view_projection = context.frame_graph_resources->GetMatrix(
+                frame_ubo.shadow_view_projection = GpuMatrix(context.frame_graph_resources->GetMatrix(
                     FrameGraphResourceRegistry::ShadowViewProjection,
-                    frame_ubo.shadow_view_projection);
+                    frame_ubo.shadow_view_projection));
             }
             if (frame_view != nullptr) {
                 frame_ubo.camera_position = glm::vec4(frame_view->world_position, 1.0f);
@@ -174,8 +174,8 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
             frame_ubo.ambient_color = glm::vec4(context.frame->environment.ambient_color, 1.0f);
             frame_ubo.clear_color = context.frame->environment.clear_color;
             if (frame_view != nullptr) {
-                frame_ubo.view = frame_view->view;
-                frame_ubo.projection = frame_view->projection;
+                frame_ubo.view = GpuMatrix(frame_view->view);
+                frame_ubo.projection = GpuMatrix(frame_view->projection);
             }
         }
 
@@ -368,7 +368,7 @@ void PBRPass::Execute(RenderPassContext const& context, PassExecutionView const&
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
         ObjectPushConstants object_push{};
-        object_push.world = renderable->world;
+        object_push.world = GpuMatrix(renderable->world);
         context.command_buffer.pushConstants(pipeline->Layout(),
                                              vk::ShaderStageFlagBits::eVertex,
                                              0,

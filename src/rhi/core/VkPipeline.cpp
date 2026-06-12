@@ -177,8 +177,7 @@ bool VkPipeline::Init(VkContext& ctx, PipelineInfo const& info) {
 
     try {
         if (info.use_dynamic_rendering) {
-            bool const core_dynamic_rendering =
-                ctx.PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+            bool const core_dynamic_rendering = ctx.UsesCoreDynamicRendering();
 
             if (core_dynamic_rendering) {
                 vk::PipelineRenderingCreateInfo rendering_info{};

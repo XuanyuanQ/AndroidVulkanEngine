@@ -4,6 +4,7 @@
 #include "ave/render/AndroidSurfaceRenderBackend.h"
 #include "ave/render/RenderPasses.h"
 #include "ave/render/RenderPass.h"
+#include "ave/render/RenderPassCommon.h"
 #include "LogUtil.h"
 
 namespace ave::render {
@@ -44,6 +45,10 @@ void Renderer::Shutdown()
         pipeline_system_.Clear();
     } catch (...) {
     }
+
+    detail::ResetCommonSampler();
+    detail::ResetUiSampler();
+    detail::ResetShadowSampler();
 }
 
 void Renderer::Render(core::FrameData const& frame, core::JobSystem& jobs)

@@ -8,7 +8,9 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <functional>
 #include <glm/glm.hpp>
+#include <optional>
 
 namespace ave::resource {
 class ResourceSystem;

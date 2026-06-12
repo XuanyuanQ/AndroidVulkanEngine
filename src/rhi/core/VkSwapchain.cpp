@@ -1,16 +1,8 @@
 #include "VkSwapchain.hpp"
 
-#define GLFW_INCLUDE_VULKAN
-// #include <GLFW/glfw3.h>
-
 #include "VkContext.hpp"
 
-#if defined(__ANDROID__)
-#include <android/native_window.h>
-#endif
-
 #include <algorithm>
-#include <cassert>
 #include <limits>
 #include <stdexcept>
 
@@ -27,7 +19,9 @@ static uint32_t ChooseMinImageCount(vk::SurfaceCapabilitiesKHR const& caps)
 
 static vk::SurfaceFormatKHR ChooseSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& formats)
 {
-  assert(!formats.empty());
+  if (formats.empty()) {
+    throw std::runtime_error("surface reported no supported formats");
+  }
   auto it = std::find_if(formats.begin(), formats.end(), [](auto const& f) {
     return f.format == vk::Format::eB8G8R8A8Srgb && f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
   });
@@ -41,16 +35,16 @@ static vk::PresentModeKHR ChoosePresentMode(std::vector<vk::PresentModeKHR> cons
   return (it != modes.end()) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
 }
 
-static vk::Extent2D ChooseExtent(ANativeWindow *window, vk::SurfaceCapabilitiesKHR const& caps)
+static vk::Extent2D ChooseExtent(SwapchainInfo const& info, vk::SurfaceCapabilitiesKHR const& caps)
 {
     if (caps.currentExtent.width != std::numeric_limits<uint32_t>::max())
         return caps.currentExtent;
         
     vk::Extent2D e{};
-    int w = ANativeWindow_getWidth(window);
-    int h = ANativeWindow_getHeight(window);
-    e.width = std::clamp<uint32_t>(static_cast<uint32_t>(w), caps.minImageExtent.width, caps.maxImageExtent.width);
-    e.height = std::clamp<uint32_t>(static_cast<uint32_t>(h), caps.minImageExtent.height, caps.maxImageExtent.height);
+    uint32_t const w = info.width != 0 ? info.width : caps.minImageExtent.width;
+    uint32_t const h = info.height != 0 ? info.height : caps.minImageExtent.height;
+    e.width = std::clamp<uint32_t>(w, caps.minImageExtent.width, caps.maxImageExtent.width);
+    e.height = std::clamp<uint32_t>(h, caps.minImageExtent.height, caps.maxImageExtent.height);
     
     return e;
 }
@@ -80,9 +74,9 @@ void VkSwapchain::Shutdown(VkContext& ctx)
   ctx.Device().waitIdle();
   CleanupSwapchain();
   info_ = {};
-  extent_ = {};
+  extent_ = vk::Extent2D{};
   format_ = vk::Format::eUndefined;
-  surface_format_ = {};
+  surface_format_ = vk::SurfaceFormatKHR{};
   first_use_.clear();
 }
 
@@ -100,7 +94,7 @@ void VkSwapchain::CreateSwapchain(VkContext& ctx)
   auto& device = ctx.Device();
 
   auto caps = pd.getSurfaceCapabilitiesKHR(*ctx.Surface());
-  extent_ = ChooseExtent(ctx.Window(), caps);
+  extent_ = ChooseExtent(info_, caps);
   uint32_t min_count = ChooseMinImageCount(caps);
 
   auto formats = pd.getSurfaceFormatsKHR(*ctx.Surface());
@@ -126,6 +120,9 @@ void VkSwapchain::CreateSwapchain(VkContext& ctx)
 
   swapchain_ = vk::raii::SwapchainKHR{device, sci};
   images_ = swapchain_.getImages();
+  if (images_.empty()) {
+    throw std::runtime_error("swapchain created with no images");
+  }
 }
 
 void VkSwapchain::CreateImageViews(VkContext& ctx)

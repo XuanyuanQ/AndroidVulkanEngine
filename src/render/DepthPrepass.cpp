@@ -178,7 +178,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
     }
     DepthFrameUbo frame_ubo{};
     if (auto const* frame_view = CurrentFrameView(context)) {
-        frame_ubo.view_projection = frame_view->view_projection;
+        frame_ubo.view_projection = GpuMatrix(frame_view->view_projection);
     }
 
     if (!frame_binding.ubo.IsInitialized()) {
@@ -320,7 +320,7 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
         context.command_buffer.bindPipeline(pipeline->BindPoint(), pipeline->Handle());
 
         ObjectPushConstants object_push{};
-        object_push.world = renderable->world;
+        object_push.world = GpuMatrix(renderable->world);
         context.command_buffer.pushConstants(pipeline->Layout(),
                                              vk::ShaderStageFlagBits::eVertex,
                                              0,

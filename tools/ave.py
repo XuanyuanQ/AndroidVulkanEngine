@@ -136,6 +136,17 @@ def compile_shaders(project_dir: Path, output_dir: Path) -> None:
 
     glslc = shutil.which("glslc")
     spv_dir = output_dir / "app" / "src" / "main" / "assets" / "compiled_shaders"
+    compile_shaders_to_dir(project_dir, spv_dir, glslc)
+
+
+def compile_shaders_to_dir(project_dir: Path, spv_dir: Path, glslc: str | None = None) -> None:
+    shader_dir = project_dir / "shaders"
+    if not shader_dir.exists():
+        return
+
+    if glslc is None:
+        glslc = shutil.which("glslc")
+
     spv_dir.mkdir(parents=True, exist_ok=True)
 
     for shader in shader_dir.iterdir():
@@ -215,6 +226,67 @@ def build_android(args: argparse.Namespace) -> None:
     print(f"[ok] Entry scene: {config['entry_scene']}")
 
 
+def preview_project(args: argparse.Namespace) -> None:
+    project_dir = Path(args.project).resolve()
+    config = read_project(project_dir)
+    validate_scene(project_dir, config["entry_scene"])
+
+    preview_dir = project_dir / "build" / "preview"
+    compiled_shader_dir = preview_dir / "compiled_shaders"
+    compile_shaders_to_dir(project_dir, compiled_shader_dir)
+
+    build_dir = Path(args.build_dir).resolve() if args.build_dir else ENGINE_ROOT / "build" / "preview"
+    if not args.no_build:
+        configure = [
+            "cmake",
+            "-S",
+            str(ENGINE_ROOT),
+            "-B",
+            str(build_dir),
+            "-DAVE_BUILD_EXAMPLES=ON",
+        ]
+        subprocess.run(configure, check=True)
+
+        build = [
+            "cmake",
+            "--build",
+            str(build_dir),
+            "--target",
+            "ave_preview",
+            "--config",
+            args.config,
+        ]
+        if args.parallel:
+            build.extend(["-j", str(args.parallel)])
+        subprocess.run(build, check=True)
+
+    candidates = [
+        build_dir / args.config / "ave_preview.exe",
+        build_dir / args.config / "ave_preview",
+        build_dir / "ave_preview.exe",
+        build_dir / "ave_preview",
+    ]
+    executable = next((path for path in candidates if path.exists()), None)
+    if executable is None:
+        raise RuntimeError(
+            "ave_preview executable not found. Ensure CMake found Vulkan and glfw3, "
+            "or pass --build-dir pointing at an existing preview build."
+        )
+
+    print(f"[ok] Preview project: {project_dir}")
+    print(f"[ok] Entry scene: {config['entry_scene']}")
+    print(f"[ok] Compiled shaders: {compiled_shader_dir}")
+
+    command = [
+        str(executable),
+        str(project_dir),
+        str(compiled_shader_dir),
+        str(args.width),
+        str(args.height),
+    ]
+    subprocess.run(command, check=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ave", description="Ave Android Vulkan Engine build tool")
     subparsers = parser.add_subparsers(dest="command")
@@ -229,6 +301,16 @@ def main() -> int:
     android.add_argument("--vulkan-sdk", help="Vulkan SDK path (sets VULKAN_SDK environment variable)")
     android.add_argument("--no-gradle", action="store_true", help="Generate Android project without invoking Gradle")
     android.set_defaults(func=build_android)
+
+    preview = subparsers.add_parser("preview", help="Run the desktop PC preview runtime")
+    preview.add_argument("project", help="Path to a game project folder")
+    preview.add_argument("--build-dir", help="CMake build directory for the preview executable")
+    preview.add_argument("--config", default="Debug", help="CMake configuration to build/run")
+    preview.add_argument("--width", type=int, default=1280, help="Preview window width")
+    preview.add_argument("--height", type=int, default=720, help="Preview window height")
+    preview.add_argument("--parallel", type=int, default=8, help="Parallel build jobs")
+    preview.add_argument("--no-build", action="store_true", help="Run an existing preview executable without rebuilding")
+    preview.set_defaults(func=preview_project)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):

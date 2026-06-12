@@ -380,64 +380,14 @@ void UIRuntime::BuildFrameUi(std::vector<core::FrameUiData>& out_items) const
 
 std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerDown(float x_px, float y_px)
 {
-    pressed_button_id_.clear();
-    active_slider_id_.clear();
-
-    if (UiSliderNode const* slider = HitTestSlider(x_px, y_px)) {
-        active_slider_id_ = slider->object_id;
-        if (auto* mutable_slider = FindSliderNode(active_slider_id_)) {
-            mutable_slider->value = SliderValueFromPointer(*mutable_slider, x_px, y_px);
-            LOGI("HandlePointerDown: slider '%s' hit value=%.4f", mutable_slider->debug_name.c_str(), mutable_slider->value);
-            return UiAction{
-                .type = ActionType::ValueChanged,
-                .target = mutable_slider->target,
-                .method = mutable_slider->method,
-                .source_id = mutable_slider->object_id,
-                .value = mutable_slider->value,
-            };
-        }
-        return UiAction{.type = ActionType::ValueChanged};
-    }
-
-    UiButtonNode const* button = HitTestButton(x_px, y_px);
-    if (button == nullptr) {
-        LOGD("HandlePointerDown: no button hit at (%.2f, %.2f)", x_px, y_px);
-        return std::nullopt;
-    }
-
-    pressed_button_id_ = button->object_id;
-    if (auto* mutable_button = FindButtonNode(pressed_button_id_)) {
-        mutable_button->pressed = true;
-    }
-    LOGI("HandlePointerDown: button '%s' hit at (%.2f, %.2f), target=%s, method=%s",
-         button->debug_name.c_str(), x_px, y_px, button->target.c_str(), button->method.c_str());
-    return UiAction{.type = ActionType::None};
+    glm::vec2 const ndc = PixelToInputNdc(x_px, y_px);
+    return HandlePointerNdcDown(ndc.x, ndc.y);
 }
 
 std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerMove(float x_px, float y_px)
 {
-    if (!pressed_button_id_.empty()) {
-        return UiAction{.type = ActionType::None};
-    }
-
-    if (active_slider_id_.empty()) {
-        return std::nullopt;
-    }
-
-    auto* slider = FindSliderNode(active_slider_id_);
-    if (slider == nullptr) {
-        active_slider_id_.clear();
-        return std::nullopt;
-    }
-
-    slider->value = SliderValueFromPointer(*slider, x_px, y_px);
-    return UiAction{
-        .type = ActionType::ValueChanged,
-        .target = slider->target,
-        .method = slider->method,
-        .source_id = slider->object_id,
-        .value = slider->value,
-    };
+    glm::vec2 const ndc = PixelToInputNdc(x_px, y_px);
+    return HandlePointerNdcMove(ndc.x, ndc.y);
 }
 
 std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerCancel()
@@ -453,13 +403,81 @@ std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerCancel()
 
 std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerUp(float x_px, float y_px)
 {
+    glm::vec2 const ndc = PixelToInputNdc(x_px, y_px);
+    return HandlePointerNdcUp(ndc.x, ndc.y);
+}
+
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerNdcDown(float x_ndc, float y_ndc)
+{
+    pressed_button_id_.clear();
+    active_slider_id_.clear();
+
+    if (UiSliderNode const* slider = HitTestSliderNdc(x_ndc, y_ndc)) {
+        active_slider_id_ = slider->object_id;
+        if (auto* mutable_slider = FindSliderNode(active_slider_id_)) {
+            mutable_slider->value = SliderValueFromPointerNdc(*mutable_slider, x_ndc);
+            LOGI("HandlePointerDown: slider '%s' hit value=%.4f", mutable_slider->debug_name.c_str(), mutable_slider->value);
+            return UiAction{
+                .type = ActionType::ValueChanged,
+                .target = mutable_slider->target,
+                .method = mutable_slider->method,
+                .source_id = mutable_slider->object_id,
+                .value = mutable_slider->value,
+            };
+        }
+        return UiAction{.type = ActionType::ValueChanged};
+    }
+
+    UiButtonNode const* button = HitTestButtonNdc(x_ndc, y_ndc);
+    if (button == nullptr) {
+        LOGD("HandlePointerNdcDown: no button hit at ndc=(%.4f, %.4f)", x_ndc, y_ndc);
+        return std::nullopt;
+    }
+
+    pressed_button_id_ = button->object_id;
+    if (auto* mutable_button = FindButtonNode(pressed_button_id_)) {
+        mutable_button->pressed = true;
+    }
+    LOGI("HandlePointerNdcDown: button '%s' hit at ndc=(%.4f, %.4f), target=%s, method=%s",
+         button->debug_name.c_str(), x_ndc, y_ndc, button->target.c_str(), button->method.c_str());
+    return UiAction{.type = ActionType::None};
+}
+
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerNdcMove(float x_ndc, float y_ndc)
+{
+    if (!pressed_button_id_.empty()) {
+        return UiAction{.type = ActionType::None};
+    }
+
+    if (active_slider_id_.empty()) {
+        return std::nullopt;
+    }
+
+    auto* slider = FindSliderNode(active_slider_id_);
+    if (slider == nullptr) {
+        active_slider_id_.clear();
+        return std::nullopt;
+    }
+
+    slider->value = SliderValueFromPointerNdc(*slider, x_ndc);
+    return UiAction{
+        .type = ActionType::ValueChanged,
+        .target = slider->target,
+        .method = slider->method,
+        .source_id = slider->object_id,
+        .value = slider->value,
+    };
+}
+
+std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerNdcUp(float x_ndc, float y_ndc)
+{
     if (!active_slider_id_.empty()) {
         auto* slider = FindSliderNode(active_slider_id_);
         active_slider_id_.clear();
         if (slider == nullptr) {
             return UiAction{.type = ActionType::None};
         }
-        slider->value = SliderValueFromPointer(*slider, x_px, y_px);
+        slider->value = SliderValueFromPointerNdc(*slider, x_ndc);
         return UiAction{
             .type = ActionType::ValueChanged,
             .target = slider->target,
@@ -488,7 +506,7 @@ std::optional<UIRuntime::UiAction> UIRuntime::HandlePointerUp(float x_px, float 
         return action;
     }
 
-    LOGD("HandlePointerUp: no captured button, ignoring release at (%.2f, %.2f)", x_px, y_px);
+    LOGD("HandlePointerNdcUp: no captured button, ignoring release at ndc=(%.4f, %.4f)", x_ndc, y_ndc);
     HandlePointerCancel();
     return std::nullopt;
 }
@@ -521,24 +539,32 @@ UiSliderNode* UIRuntime::FindSliderNode(std::string const& object_id)
     return nullptr;
 }
 
-UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
+glm::vec2 UIRuntime::PixelToInputNdc(float x_px, float y_px) const
 {
     uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
     uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
     if (input_width == 0 || input_height == 0) {
-        LOGD("HitTestButton: input viewport is zero");
-        return nullptr;
+        return {0.0f, 0.0f};
     }
 
     float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
     float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
-    glm::vec2 const ui_ndc = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_);
-    float const ndc_x = ui_ndc.x;
-    float const ndc_y = ui_ndc.y;
+    return MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_);
+}
+
+UiButtonNode const* UIRuntime::HitTestButtonNdc(float x_ndc, float y_ndc) const
+{
+    uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
+    uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
+    if (input_width == 0 || input_height == 0) {
+        LOGD("HitTestButtonNdc: input viewport is zero");
+        return nullptr;
+    }
+
     float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
 
-    LOGD("HitTestButton: px=(%.2f, %.2f) -> raw_ndc=(%.4f, %.4f), ui_ndc=(%.4f, %.4f), input viewport=%ux%u, rotation=%u, aspect=%.4f",
-         x_px, y_px, raw_ndc_x, raw_ndc_y, ndc_x, ndc_y, input_width, input_height, input_rotation_, aspect_ratio);
+    LOGD("HitTestButtonNdc: ndc=(%.4f, %.4f), input viewport=%ux%u, rotation=%u, aspect=%.4f",
+         x_ndc, y_ndc, input_width, input_height, input_rotation_, aspect_ratio);
 
     for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
         if (!std::holds_alternative<UiButtonNode>(*it)) {
@@ -566,8 +592,8 @@ UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
              button.size.x, button.size.y, left, bottom, right, top);
 
         bool const hit =
-            ndc_x >= left && ndc_x <= right &&
-            ndc_y >= bottom && ndc_y <= top;
+            x_ndc >= left && x_ndc <= right &&
+            y_ndc >= bottom && y_ndc <= top;
 
         if (hit) {
             LOGI("HitTestButton: button '%s' HIT!", button.debug_name.c_str());
@@ -579,7 +605,7 @@ UiButtonNode const* UIRuntime::HitTestButton(float x_px, float y_px) const
     return nullptr;
 }
 
-UiSliderNode const* UIRuntime::HitTestSlider(float x_px, float y_px) const
+UiSliderNode const* UIRuntime::HitTestSliderNdc(float x_ndc, float y_ndc) const
 {
     uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
     uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
@@ -587,11 +613,6 @@ UiSliderNode const* UIRuntime::HitTestSlider(float x_px, float y_px) const
         return nullptr;
     }
 
-    float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
-    float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
-    glm::vec2 const ui_ndc = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_);
-    float const ndc_x = ui_ndc.x;
-    float const ndc_y = ui_ndc.y;
     float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
 
     for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
@@ -607,8 +628,8 @@ UiSliderNode const* UIRuntime::HitTestSlider(float x_px, float y_px) const
         float const half_w = (slider.size.x / aspect_ratio) * 0.5f;
         float const half_h = std::max(slider.size.y, 0.08f) * 0.5f;
         bool const hit =
-            ndc_x >= slider.position.x - half_w && ndc_x <= slider.position.x + half_w &&
-            ndc_y >= slider.position.y - half_h && ndc_y <= slider.position.y + half_h;
+            x_ndc >= slider.position.x - half_w && x_ndc <= slider.position.x + half_w &&
+            y_ndc >= slider.position.y - half_h && y_ndc <= slider.position.y + half_h;
         if (hit) {
             return &slider;
         }
@@ -617,23 +638,20 @@ UiSliderNode const* UIRuntime::HitTestSlider(float x_px, float y_px) const
     return nullptr;
 }
 
-float UIRuntime::SliderValueFromPointer(UiSliderNode const& slider, float x_px, float y_px) const
+float UIRuntime::SliderValueFromPointerNdc(UiSliderNode const& slider, float x_ndc) const
 {
     uint32_t const input_width = input_viewport_width_ != 0 ? input_viewport_width_ : viewport_width_;
     uint32_t const input_height = input_viewport_height_ != 0 ? input_viewport_height_ : viewport_height_;
     if (input_width == 0 || input_height == 0) {
         return slider.value;
     }
-    float const raw_ndc_x = (x_px / static_cast<float>(input_width)) * 2.0f - 1.0f;
-    float const raw_ndc_y = 1.0f - (y_px / static_cast<float>(input_height)) * 2.0f;
-    float const ndc_x = MapInputNdcToUiNdc(raw_ndc_x, raw_ndc_y, input_rotation_).x;
     float const aspect_ratio = static_cast<float>(input_height) / static_cast<float>(input_width);
     float const half_w = (slider.size.x / aspect_ratio) * 0.5f;
     if (half_w <= 0.0001f) {
         return slider.value;
     }
 
-    float const normalized = std::clamp((ndc_x - (slider.position.x - half_w)) / (half_w * 2.0f), 0.0f, 1.0f);
+    float const normalized = std::clamp((x_ndc - (slider.position.x - half_w)) / (half_w * 2.0f), 0.0f, 1.0f);
     return slider.min_value + (slider.max_value - slider.min_value) * normalized;
 }
 

@@ -61,6 +61,7 @@ public:
   vk::raii::Queue& GraphicsQueue() const;
   uint32_t GraphicsQueueFamilyIndex() const noexcept;
   bool SupportsDynamicRendering() const noexcept;
+  bool UsesCoreDynamicRendering() const noexcept;
 
 private:
   class Impl;

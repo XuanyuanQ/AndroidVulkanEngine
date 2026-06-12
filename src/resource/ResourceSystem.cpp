@@ -892,8 +892,37 @@ uint32_t TextureManager::LoadTextureFromData(std::string const& name, uint32_t w
         return 0;
     }
 
-    if(path_to_id_.find(name) != path_to_id_.end()) {
-        return path_to_id_[name];
+    if (auto const it = path_to_id_.find(name); it != path_to_id_.end()) {
+        auto runtime_it = textures_.find(it->second);
+        if (runtime_it != textures_.end() && runtime_it->second.texture) {
+            TextureRuntime& runtime = runtime_it->second;
+            if (runtime.width == width && runtime.height == height && runtime.mip_levels == mip_levels &&
+                runtime.texture->IsInitialized()) {
+                runtime.texture->UpdateData(*ctx_, data, width * height * 4);
+                runtime.is_loaded = true;
+                return runtime.id;
+            }
+
+            if (runtime.texture->IsInitialized()) {
+                runtime.texture->Shutdown(*ctx_);
+            }
+            runtime.texture = std::make_unique<vkfw::VkTexture>();
+            runtime.width = width;
+            runtime.height = height;
+            runtime.mip_levels = mip_levels;
+
+            vkfw::TextureInfo texture_info;
+            texture_info.width = width;
+            texture_info.height = height;
+            texture_info.mip_levels = mip_levels;
+            texture_info.format = vkfw::TextureFormat::R8G8B8A8_UNORM;
+            texture_info.usage = vkfw::TextureUsage::Sampled;
+            if (runtime.texture->Init(*ctx_, texture_info)) {
+                runtime.texture->UpdateData(*ctx_, data, width * height * 4);
+                runtime.is_loaded = true;
+            }
+            return runtime.id;
+        }
     }
     
     uint32_t id = next_id_++;

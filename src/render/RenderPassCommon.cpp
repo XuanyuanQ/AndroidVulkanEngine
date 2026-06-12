@@ -58,10 +58,48 @@ std::unique_ptr<vk::raii::Sampler>& ShadowSamplerObject()
     return sampler;
 }
 
+std::unique_ptr<vk::raii::Sampler>& UiSamplerObject()
+{
+    static std::unique_ptr<vk::raii::Sampler> sampler;
+    return sampler;
+}
+
 vk::Sampler& ShadowSamplerHandle()
 {
     static vk::Sampler handle{};
     return handle;
+}
+
+vk::Sampler& UiSamplerHandle()
+{
+    static vk::Sampler handle{};
+    return handle;
+}
+
+vk::Sampler& UiSamplerStorage(vkfw::VkContext& ctx)
+{
+    auto& sampler = UiSamplerObject();
+    if (!sampler) {
+        vk::SamplerCreateInfo create_info{};
+        create_info.magFilter = vk::Filter::eLinear;
+        create_info.minFilter = vk::Filter::eLinear;
+        create_info.mipmapMode = vk::SamplerMipmapMode::eNearest;
+        create_info.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+        create_info.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+        create_info.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+        create_info.maxLod = 0.0f;
+        sampler = std::make_unique<vk::raii::Sampler>(ctx.Device(), create_info);
+    }
+    auto& handle = UiSamplerHandle();
+    handle = **sampler;
+    return handle;
+}
+
+void ResetUiSamplerStorage()
+{
+    auto& sampler = UiSamplerObject();
+    sampler.reset();
+    UiSamplerHandle() = nullptr;
 }
 
 vk::Sampler& ShadowSamplerStorage(vkfw::VkContext& ctx)
@@ -451,6 +489,11 @@ vk::Sampler GetCommonSampler(vkfw::VkContext& ctx)
     return CommonSamplerStorage(ctx);
 }
 
+vk::Sampler GetUiSampler(vkfw::VkContext& ctx)
+{
+    return UiSamplerStorage(ctx);
+}
+
 vk::Sampler GetShadowSampler(vkfw::VkContext& ctx)
 {
     return ShadowSamplerStorage(ctx);
@@ -459,6 +502,11 @@ vk::Sampler GetShadowSampler(vkfw::VkContext& ctx)
 void ResetCommonSampler()
 {
     ResetCommonSamplerStorage();
+}
+
+void ResetUiSampler()
+{
+    ResetUiSamplerStorage();
 }
 
 void ResetShadowSampler()
@@ -643,8 +691,7 @@ bool BeginShadowMapRendering(RenderPassContext const& context,
     if (context.vk == nullptr || context.command_buffer == vk::CommandBuffer{} || !shadow_map.IsInitialized()) {
         return false;
     }
-    bool const core_dynamic_rendering =
-        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool const core_dynamic_rendering = context.vk->UsesCoreDynamicRendering();
     if (context.vk->SupportsDynamicRendering()) {
         if (core_dynamic_rendering) {
             vk::RenderingAttachmentInfo depth_attachment{};
@@ -768,8 +815,7 @@ bool BeginDepthOnlyRendering(RenderPassContext const& context,
         return false;
     }
 
-    bool const core_dynamic_rendering =
-        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool const core_dynamic_rendering = context.vk->UsesCoreDynamicRendering();
     if (core_dynamic_rendering) {
         vk::ImageView const raw_depth_view = depth_texture.View();
         vk::RenderingAttachmentInfo depth_attachment{};
@@ -808,8 +854,7 @@ void EndShadowMapRendering(RenderPassContext const& context)
         return;
     }
 
-    bool const core_dynamic_rendering =
-        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool const core_dynamic_rendering = context.vk->UsesCoreDynamicRendering();
     if (context.vk->SupportsDynamicRendering()) {
         if (core_dynamic_rendering) {
             context.command_buffer.endRendering();
@@ -869,8 +914,7 @@ bool BeginRenderTargetRendering(RenderPassContext const& context,
     }
 
     auto const extent = context.color_target.extent;
-    bool const core_dynamic_rendering =
-        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool const core_dynamic_rendering = context.vk->UsesCoreDynamicRendering();
 
     if (context.vk->SupportsDynamicRendering()) {
         SynchronizeDynamicRenderingAttachmentLoads(context, depth_texture, clear_color, clear_depth);
@@ -975,8 +1019,7 @@ void EndSwapchainRendering(RenderPassContext const& context)
         return;
     }
 
-    bool const core_dynamic_rendering =
-        context.vk->PhysicalDevice().getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool const core_dynamic_rendering = context.vk->UsesCoreDynamicRendering();
     if (context.vk->SupportsDynamicRendering()) {
         if (core_dynamic_rendering) {
             context.command_buffer.endRendering();

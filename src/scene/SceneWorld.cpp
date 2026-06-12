@@ -2,7 +2,9 @@
 #include "ave/project/SharedDataContract.h"
 #include "ave/resource/ResourceSystem.h"
 #include "ave/render/MaterialSystem.h"
+#if defined(__ANDROID__)
 #include <android/input.h>
+#endif
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
@@ -670,6 +672,8 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             if (!mesh.mesh.empty()) {
                 if (auto const* mesh_runtime = resources.GetMeshManager().GetMeshByPath(mesh.mesh)) {
                     renderable.mesh_handle = mesh_runtime->id;
+                } else {
+                    renderable.mesh_handle = resources.GetMeshManager().LoadMesh(mesh.mesh);
                 }
             }
             if (!mesh.material.empty()) {
@@ -677,9 +681,15 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
                 if (auto const* gpu_material = resources.GetMaterialManager().GetMaterialByName(mesh.material)) {
                     renderable.material_handle = gpu_material->id;
                     renderable.material_mode = gpu_material->mode;
-                } else if (auto const* material = materials.GetMaterial(mesh.material)) {
-                    renderable.material_handle = material->id;
-                    renderable.material_mode = material->mode;
+                } else {
+                    materials.LoadMaterial(mesh.material);
+                    if (auto const* loaded_gpu_material = resources.GetMaterialManager().GetMaterialByName(mesh.material)) {
+                        renderable.material_handle = loaded_gpu_material->id;
+                        renderable.material_mode = loaded_gpu_material->mode;
+                    } else if (auto const* material = materials.GetMaterial(mesh.material)) {
+                        renderable.material_handle = material->id;
+                        renderable.material_mode = material->mode;
+                    }
                 }
             } else {
                 bool const has_texture_overrides =

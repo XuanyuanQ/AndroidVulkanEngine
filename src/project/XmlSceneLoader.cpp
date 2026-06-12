@@ -359,19 +359,33 @@ GameObjectData ParseGameObjectData(ElementMatch const& element, std::string cons
         object.components.light = std::move(light);
     }
 
+    auto script_bodies = MatchTagBodies(component_body, "Script");
     auto script_tags = MatchTags(component_body, "Script");
-    if (!script_tags.empty()) {
+    if (!script_bodies.empty() || !script_tags.empty()) {
+        std::string const script_tag = !script_bodies.empty() ? script_bodies.front().first : script_tags.front();
+        std::string const script_body = !script_bodies.empty() ? script_bodies.front().second : std::string{};
+        std::string script_class = Attribute(script_tag, "class");
+        if (script_class.empty()) {
+            script_class = Attribute(script_tag, "java_class");
+        }
         LOGI("Found Script component in GameObject %s with class %s and method %s",
              object.id.c_str(),
-             Attribute(script_tags.front(), "class").c_str(),
-             Attribute(script_tags.front(), "method").c_str());
+             script_class.c_str(),
+             Attribute(script_tag, "method").c_str());
         ScriptBindingData script{};
-        script.java_class = Attribute(script_tags.front(), "class");
-        script.method = Attribute(script_tags.front(), "method");
-        script.target_object = Attribute(script_tags.front(), "target", object.id);
-        script.parameters = Attributes(script_tags.front());
+        script.java_class = script_class;
+        script.method = Attribute(script_tag, "method");
+        script.target_object = Attribute(script_tag, "target", object.id);
+        script.parameters = Attributes(script_tag);
+        for (auto const& param_tag : MatchTags(script_body, "Parameter")) {
+            std::string const key = Attribute(param_tag, "key");
+            if (!key.empty()) {
+                script.parameters[key] = Attribute(param_tag, "value");
+            }
+        }
         script.parameters["target"] = script.target_object;
         script.parameters.erase("class");
+        script.parameters.erase("java_class");
         script.parameters.erase("method");
         object.components.script = std::move(script);
     }
