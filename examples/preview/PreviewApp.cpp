@@ -78,6 +78,7 @@ public:
         java_id_to_runtime_id_.clear();
         bool const java_ready = java_runtime_.Start(java_class_dir_, this);
         if (java_ready) {
+            SendJava(MakeProtocolLine("reload", java_class_dir_.string()));
             SendJavaScene(scene);
         }
     }
@@ -413,12 +414,18 @@ public:
 private:
     std::filesystem::path JavaClassDir() const
     {
-        return args_.project_dir / "build" / "preview" / "java_classes";
+        return args_.project_dir / "build" / "preview" / ("java_classes_" + std::to_string(java_compile_generation_));
     }
 
     bool CompilePreviewJavaScripts()
     {
-        return ave_preview::CompilePreviewJavaScripts(args_.project_dir, JavaClassDir());
+        ++java_compile_generation_;
+        auto const class_dir = JavaClassDir();
+        if (!ave_preview::CompilePreviewJavaScripts(args_.project_dir, class_dir)) {
+            return false;
+        }
+        current_java_class_dir_ = class_dir;
+        return true;
     }
 
     void InitializeRuntime()
@@ -473,7 +480,7 @@ private:
         renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
-        script_host_.SetJavaClassDir(java_compiled ? JavaClassDir() : std::filesystem::path{});
+        script_host_.SetJavaClassDir(java_compiled ? current_java_class_dir_ : std::filesystem::path{});
     }
 
     void CreateSwapchainResources()
@@ -592,7 +599,7 @@ private:
                 frame_data_ = {};
                 std::cout << "[preview] reloading scene after asset change...\n";
                 bool const java_compiled = CompilePreviewJavaScripts();
-                script_host_.SetJavaClassDir(java_compiled ? JavaClassDir() : std::filesystem::path{});
+                script_host_.SetJavaClassDir(java_compiled ? current_java_class_dir_ : std::filesystem::path{});
                 LoadProjectAndScene(false);
                 last_time = std::chrono::steady_clock::now();
             }
@@ -702,9 +709,11 @@ private:
     bool scene_pointer_active_ = false;
     bool reload_pending_ = false;
     std::chrono::steady_clock::time_point last_asset_change_{};
+    uint64_t java_compile_generation_ = 0;
     uint64_t frame_index_ = 0;
     uint32_t sync_frame_index_ = 0;
     std::string last_error_;
+    std::filesystem::path current_java_class_dir_;
 
     ave::core::JobSystem jobs_{};
     ave::render::Renderer renderer_{};

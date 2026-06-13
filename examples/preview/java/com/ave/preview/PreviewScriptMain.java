@@ -9,7 +9,10 @@ import com.ave.engine.PreviewBridge;
 import android.view.MotionEvent;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PreviewScriptMain {
     private final Map<String, AveScript> scripts = new ConcurrentHashMap<>();
     private final AveActivity activity = new AveActivity();
+    private ClassLoader scriptClassLoader = PreviewScriptMain.class.getClassLoader();
 
     public static void main(String[] args) throws Exception {
         new PreviewScriptMain().run();
@@ -43,6 +47,11 @@ public final class PreviewScriptMain {
                 return;
             }
             switch (parts[0]) {
+            case "reload":
+                if (parts.length >= 2) {
+                    reloadScriptClassLoader(parts[1]);
+                }
+                break;
             case "clear":
                 scripts.clear();
                 PreviewBridge.clearObjects();
@@ -99,13 +108,73 @@ public final class PreviewScriptMain {
                 params.put(parts[i].substring(0, eq), parts[i].substring(eq + 1));
             }
         }
-        Class<?> clazz = Class.forName(className);
+        Class<?> clazz = Class.forName(className, true, scriptClassLoader);
         AveScript script = (AveScript) clazz.getDeclaredConstructor().newInstance();
         script.__bindObject(objectId);
         script.__bindParams(target, params);
         scripts.put(objectId, script);
         script.start();
         PreviewBridge.log("loaded script " + className + " for " + objectId);
+    }
+
+    private void reloadScriptClassLoader(String classDir) throws Exception {
+        scripts.clear();
+        PreviewBridge.clearObjects();
+        closeScriptClassLoader();
+
+        URL[] urls = new URL[] { new File(classDir).toURI().toURL() };
+        scriptClassLoader = new ScriptClassLoader(urls, PreviewScriptMain.class.getClassLoader());
+        PreviewBridge.log("reloaded script class loader: " + classDir);
+    }
+
+    private void closeScriptClassLoader() {
+        if (!(scriptClassLoader instanceof URLClassLoader)) {
+            return;
+        }
+        if (scriptClassLoader == PreviewScriptMain.class.getClassLoader()) {
+            return;
+        }
+        try {
+            ((URLClassLoader) scriptClassLoader).close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static final class ScriptClassLoader extends URLClassLoader {
+        ScriptClassLoader(URL[] urls, ClassLoader parent) {
+            super(urls, parent);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (shouldLoadScriptFirst(name)) {
+                synchronized (getClassLoadingLock(name)) {
+                    Class<?> loaded = findLoadedClass(name);
+                    if (loaded == null) {
+                        try {
+                            loaded = findClass(name);
+                        } catch (ClassNotFoundException ignored) {
+                        }
+                    }
+                    if (loaded != null) {
+                        if (resolve) {
+                            resolveClass(loaded);
+                        }
+                        return loaded;
+                    }
+                }
+            }
+            return super.loadClass(name, resolve);
+        }
+
+        private static boolean shouldLoadScriptFirst(String name) {
+            return !name.startsWith("java.") &&
+                    !name.startsWith("javax.") &&
+                    !name.startsWith("jdk.") &&
+                    !name.startsWith("sun.") &&
+                    !name.startsWith("android.") &&
+                    !name.startsWith("com.ave.");
+        }
     }
 
     private void update(float dt) {

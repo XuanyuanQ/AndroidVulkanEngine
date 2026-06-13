@@ -41,6 +41,24 @@ std::string TrimAssetPath(std::string text)
     return text.substr(first, last - first + 1);
 }
 
+bool ShouldSkipWatchDirectory(std::filesystem::path const& root, std::filesystem::path const& path)
+{
+    std::error_code ec;
+    auto const relative = std::filesystem::relative(path, root, ec);
+    if (ec) {
+        return false;
+    }
+    if (relative.empty()) {
+        return false;
+    }
+    auto const first = relative.begin();
+    if (first == relative.end()) {
+        return false;
+    }
+    auto const name = first->string();
+    return name == "build" || name == ".gradle" || name == ".idea" || name == ".vs";
+}
+
 } // namespace
 
 std::vector<uint8_t> ReadBinaryFile(std::filesystem::path const& path)
@@ -174,7 +192,7 @@ bool CompilePreviewJavaScripts(std::filesystem::path const& project_dir, std::fi
     }
     int const result = std::system(command.c_str());
     if (result != 0) {
-        std::cerr << "[preview] javac failed, falling back to C++ script mock\n";
+        std::cerr << "[preview] javac failed, Java scripts disabled for this reload\n";
         return false;
     }
     std::cout << "[preview] compiled Java scripts: " << class_dir << "\n";
@@ -346,7 +364,14 @@ bool FileStampCache::Refresh(std::filesystem::path const& root)
         return false;
     }
 
-    for (auto const& entry : std::filesystem::recursive_directory_iterator(root)) {
+    std::filesystem::recursive_directory_iterator it(root);
+    std::filesystem::recursive_directory_iterator end;
+    for (; it != end; ++it) {
+        auto const& entry = *it;
+        if (entry.is_directory() && ShouldSkipWatchDirectory(root, entry.path())) {
+            it.disable_recursion_pending();
+            continue;
+        }
         if (!entry.is_regular_file()) {
             continue;
         }
