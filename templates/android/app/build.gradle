@@ -28,6 +28,9 @@ android {
     }
 
     sourceSets {
-        main.java.srcDirs += ["__AVE_ENGINE_ROOT__/engine/runtime/android/java"]
+        main.java.srcDirs += [
+            "__AVE_ENGINE_ROOT__/engine/runtime/java-common",
+            "__AVE_ENGINE_ROOT__/engine/runtime/android/java"
+        ]
     }
 }

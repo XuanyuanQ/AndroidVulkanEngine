@@ -9,11 +9,11 @@ public class AveScript {
     private String targetObjectId = "";
     private Map<String, String> params = Collections.emptyMap();
 
-    final void __bindObject(String id) {
+    public final void __bindObject(String id) {
         objectId = id != null ? id : "";
     }
 
-    final void __bindParams(String targetId, Map<String, String> scriptParams) {
+    public final void __bindParams(String targetId, Map<String, String> scriptParams) {
         targetObjectId = targetId != null ? targetId : objectId;
         params = scriptParams != null ? new HashMap<>(scriptParams) : Collections.emptyMap();
     }
@@ -34,72 +34,49 @@ public class AveScript {
         return params.getOrDefault(name, fallback);
     }
 
-    public void start() {
-    }
-
-    public void update(float dt) {
-    }
-
-    public void onClick(String target) {
-    }
-
-    public void onValueChanged(String sourceId, float value) {
-    }
+    public void start() {}
+    public void update(float dt) {}
+    public void onClick(String target) {}
+    public void onValueChanged(String sourceId, float value) {}
 
     protected final void setPosition(float x, float y, float z) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setPosition(target, x, y, z);
-        }
+        if (!target.isEmpty()) AveObjectController.setPosition(target, x, y, z);
     }
 
     protected final void setRotation(float x, float y, float z) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setRotation(target, x, y, z);
-        }
+        if (!target.isEmpty()) AveObjectController.setRotation(target, x, y, z);
     }
 
     protected final void setScale(float x, float y, float z) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setScale(target, x, y, z);
-        }
+        if (!target.isEmpty()) AveObjectController.setScale(target, x, y, z);
     }
 
     protected final void setVisible(boolean visible) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setVisible(target, visible);
-        }
+        if (!target.isEmpty()) AveObjectController.setVisible(target, visible);
     }
 
     protected final void setColor(float r, float g, float b, float a) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setColor(target, r, g, b, a);
-        }
+        if (!target.isEmpty()) AveObjectController.setColor(target, r, g, b, a);
     }
 
     protected final void setTexture(String texture) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setTexture(target, texture);
-        }
+        if (!target.isEmpty()) AveObjectController.setTexture(target, texture);
     }
 
     protected final void setText(String text) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setText(target, text);
-        }
+        if (!target.isEmpty()) AveObjectController.setText(target, text);
     }
 
     protected final void setProgress(float value) {
         String target = getTargetObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.setProgress(target, value);
-        }
+        if (!target.isEmpty()) AveObjectController.setProgress(target, value);
     }
 
     protected final float[] getPosition() {
@@ -143,14 +120,10 @@ public class AveScript {
 
     protected final void destroySelf() {
         String target = getObjectId();
-        if (!target.isEmpty()) {
-            AveObjectController.destroyObject(target);
-        }
+        if (!target.isEmpty()) AveObjectController.destroyObject(target);
     }
 
     protected final void destroyObject(String objectId) {
-        if (objectId != null && !objectId.isEmpty()) {
-            AveObjectController.destroyObject(objectId);
-        }
+        if (objectId != null && !objectId.isEmpty()) AveObjectController.destroyObject(objectId);
     }
 }

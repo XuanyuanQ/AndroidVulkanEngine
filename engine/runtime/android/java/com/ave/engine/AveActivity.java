@@ -34,6 +34,7 @@ public class AveActivity extends Activity implements SurfaceHolder.Callback {
 
     static {
         System.loadLibrary("ave_runtime");
+        AveRuntime.setBridge(new AndroidAveRuntimeBridge());
     }
     private static final AveScriptManager scriptManager = new AveScriptManager();
 

@@ -16,7 +16,7 @@ public final class SelfDestruct extends AveScript {
     public void update(float dt) {
         timer += dt;
         if (timer >= lifeTime) {
-            log("SelfDestruct: Time's up! Destroying self: " + getObjectId());
+            // log("SelfDestruct: Time's up! Destroying self: " + getObjectId());
             destroySelf();
         }
     }

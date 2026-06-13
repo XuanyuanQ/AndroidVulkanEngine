@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -28,6 +29,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -98,6 +100,90 @@ std::vector<uint32_t> ReadSpirv(std::filesystem::path const& path)
     std::vector<uint32_t> words(bytes.size() / sizeof(uint32_t));
     std::memcpy(words.data(), bytes.data(), bytes.size());
     return words;
+}
+
+std::string QuoteCommandArg(std::filesystem::path const& path)
+{
+    std::string text = path.string();
+    std::string quoted = "\"";
+    for (char ch : text) {
+        if (ch == '"') {
+            quoted += "\\\"";
+        } else {
+            quoted += ch;
+        }
+    }
+    quoted += "\"";
+    return quoted;
+}
+
+std::string ProtocolEscape(std::string const& text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (char ch : text) {
+        switch (ch) {
+        case '\\': out += "\\\\"; break;
+        case '|': out += "\\p"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        default: out += ch; break;
+        }
+    }
+    return out;
+}
+
+std::string ProtocolUnescape(std::string const& text)
+{
+    std::string out;
+    out.reserve(text.size());
+    bool escaped = false;
+    for (char ch : text) {
+        if (!escaped) {
+            if (ch == '\\') {
+                escaped = true;
+            } else {
+                out += ch;
+            }
+            continue;
+        }
+        switch (ch) {
+        case 'p': out += '|'; break;
+        case 'n': out += '\n'; break;
+        case 'r': out += '\r'; break;
+        default: out += ch; break;
+        }
+        escaped = false;
+    }
+    if (escaped) {
+        out += '\\';
+    }
+    return out;
+}
+
+std::vector<std::string> SplitProtocolLine(std::string const& line)
+{
+    std::vector<std::string> parts;
+    size_t start = 0;
+    while (start <= line.size()) {
+        size_t const end = line.find('|', start);
+        parts.push_back(ProtocolUnescape(line.substr(start, end == std::string::npos ? std::string::npos : end - start)));
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return parts;
+}
+
+template <typename... Args>
+std::string MakeProtocolLine(std::string const& command, Args const&... args)
+{
+    std::ostringstream out;
+    out << command;
+    ((out << '|' << ProtocolEscape(args)), ...);
+    out << '\n';
+    return out.str();
 }
 
 std::vector<uint8_t> BuildPreviewFontAtlas(uint32_t width, uint32_t height)
@@ -303,6 +389,16 @@ private:
     };
 
 public:
+    ~PreviewScriptHost()
+    {
+        StopJavaRuntime();
+    }
+
+    void SetJavaClassDir(std::filesystem::path class_dir)
+    {
+        java_class_dir_ = std::move(class_dir);
+    }
+
     void Bind(ave::project::SceneData const& scene,
               ave::scene::SceneWorld* scene_world,
               ave::ui::UIRuntime* ui_runtime,
@@ -317,12 +413,22 @@ public:
         project_dir_ = std::move(project_dir);
         scripts_.clear();
         known_objects_.clear();
+        java_id_to_runtime_id_.clear();
         AddScriptsFromScene(scene);
+        bool const java_ready = StartJavaRuntime();
+        if (java_ready) {
+            SendJavaScene(scene);
+        }
     }
 
     void Update(float delta_time)
     {
         if (scene_world_ == nullptr || ui_runtime_ == nullptr) {
+            return;
+        }
+        if (java_runtime_active_) {
+            SendJava(MakeProtocolLine("update", std::to_string(delta_time)));
+            PollJavaOutput();
             return;
         }
 
@@ -377,6 +483,11 @@ public:
 
     void DispatchClick(std::string const& target, std::string const& method)
     {
+        if (java_runtime_active_) {
+            SendJava(MakeProtocolLine("click", target, method));
+            PollJavaOutput();
+            return;
+        }
         for (auto& script : scripts_) {
             if (!MatchesTarget(script, target)) {
                 continue;
@@ -398,8 +509,13 @@ public:
         }
     }
 
-    void DispatchValueChanged(std::string const& target, std::string const& source_id, float value)
+    void DispatchValueChanged(std::string const& target, std::string const& method, std::string const& source_id, float value)
     {
+        if (java_runtime_active_) {
+            SendJava(MakeProtocolLine("value", target, method, source_id, std::to_string(value)));
+            PollJavaOutput();
+            return;
+        }
         for (auto& script : scripts_) {
             if (!MatchesTarget(script, target) || script.type != ScriptType::LightControl) {
                 continue;
@@ -484,6 +600,289 @@ public:
     }
 
 private:
+    bool StartJavaRuntime()
+    {
+#if defined(_WIN32)
+        if (java_runtime_active_) {
+            StopJavaRuntime();
+        }
+        if (java_class_dir_.empty() || !std::filesystem::exists(java_class_dir_)) {
+            return false;
+        }
+
+        SECURITY_ATTRIBUTES sa{};
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+
+        HANDLE child_stdout_read = nullptr;
+        HANDLE child_stdout_write = nullptr;
+        HANDLE child_stdin_read = nullptr;
+        HANDLE child_stdin_write = nullptr;
+        if (!CreatePipe(&child_stdout_read, &child_stdout_write, &sa, 0)) {
+            return false;
+        }
+        if (!SetHandleInformation(child_stdout_read, HANDLE_FLAG_INHERIT, 0)) {
+            CloseHandle(child_stdout_read);
+            CloseHandle(child_stdout_write);
+            return false;
+        }
+        if (!CreatePipe(&child_stdin_read, &child_stdin_write, &sa, 0)) {
+            CloseHandle(child_stdout_read);
+            CloseHandle(child_stdout_write);
+            return false;
+        }
+        if (!SetHandleInformation(child_stdin_write, HANDLE_FLAG_INHERIT, 0)) {
+            CloseHandle(child_stdout_read);
+            CloseHandle(child_stdout_write);
+            CloseHandle(child_stdin_read);
+            CloseHandle(child_stdin_write);
+            return false;
+        }
+
+        std::string command = "java -cp " + QuoteCommandArg(java_class_dir_) + " com.ave.preview.PreviewScriptMain";
+        std::vector<char> command_buffer(command.begin(), command.end());
+        command_buffer.push_back('\0');
+
+        STARTUPINFOA startup{};
+        startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = child_stdin_read;
+        startup.hStdOutput = child_stdout_write;
+        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+
+        PROCESS_INFORMATION process{};
+        BOOL const created = CreateProcessA(nullptr,
+                                            command_buffer.data(),
+                                            nullptr,
+                                            nullptr,
+                                            TRUE,
+                                            CREATE_NO_WINDOW,
+                                            nullptr,
+                                            nullptr,
+                                            &startup,
+                                            &process);
+        CloseHandle(child_stdout_write);
+        CloseHandle(child_stdin_read);
+        if (!created) {
+            CloseHandle(child_stdout_read);
+            CloseHandle(child_stdin_write);
+            std::cerr << "[preview] failed to launch Java preview runtime\n";
+            return false;
+        }
+
+        java_process_ = process.hProcess;
+        java_thread_ = process.hThread;
+        java_stdout_read_ = child_stdout_read;
+        java_stdin_write_ = child_stdin_write;
+        java_runtime_active_ = true;
+        std::cout << "[preview] Java script runtime started: " << java_class_dir_ << "\n";
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    void StopJavaRuntime()
+    {
+#if defined(_WIN32)
+        if (java_stdin_write_ != nullptr) {
+            CloseHandle(java_stdin_write_);
+            java_stdin_write_ = nullptr;
+        }
+        if (java_process_ != nullptr) {
+            WaitForSingleObject(java_process_, 200);
+            DWORD exit_code = 0;
+            if (GetExitCodeProcess(java_process_, &exit_code) && exit_code == STILL_ACTIVE) {
+                TerminateProcess(java_process_, 0);
+            }
+            CloseHandle(java_process_);
+            java_process_ = nullptr;
+        }
+        if (java_thread_ != nullptr) {
+            CloseHandle(java_thread_);
+            java_thread_ = nullptr;
+        }
+        if (java_stdout_read_ != nullptr) {
+            CloseHandle(java_stdout_read_);
+            java_stdout_read_ = nullptr;
+        }
+#endif
+        java_runtime_active_ = false;
+        java_output_buffer_.clear();
+    }
+
+    void SendJava(std::string const& line)
+    {
+#if defined(_WIN32)
+        if (!java_runtime_active_ || java_stdin_write_ == nullptr) {
+            return;
+        }
+        DWORD written = 0;
+        WriteFile(java_stdin_write_, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
+#else
+        (void)line;
+#endif
+    }
+
+    void PollJavaOutput()
+    {
+#if defined(_WIN32)
+        if (!java_runtime_active_ || java_stdout_read_ == nullptr) {
+            return;
+        }
+        DWORD available = 0;
+        while (PeekNamedPipe(java_stdout_read_, nullptr, 0, nullptr, &available, nullptr) && available > 0) {
+            std::array<char, 4096> buffer{};
+            DWORD read = 0;
+            if (!ReadFile(java_stdout_read_, buffer.data(), static_cast<DWORD>(std::min<size_t>(buffer.size(), available)), &read, nullptr) || read == 0) {
+                break;
+            }
+            java_output_buffer_.append(buffer.data(), read);
+            size_t newline = std::string::npos;
+            while ((newline = java_output_buffer_.find('\n')) != std::string::npos) {
+                std::string line = java_output_buffer_.substr(0, newline);
+                if (!line.empty() && line.back() == '\r') {
+                    line.pop_back();
+                }
+                java_output_buffer_.erase(0, newline + 1);
+                ApplyJavaCommand(line);
+            }
+        }
+#endif
+    }
+
+    void SendJavaScene(ave::project::SceneData const& scene)
+    {
+        SendJava("clear\n");
+        for (auto const& object : scene.objects) {
+            glm::vec3 position{0.0f};
+            glm::vec3 rotation{0.0f};
+            glm::vec3 scale{1.0f};
+            if (object.components.transform.has_value()) {
+                position = object.components.transform->position;
+                rotation = object.components.transform->rotation;
+                scale = object.components.transform->scale;
+            }
+            SendJava(MakeProtocolLine("object",
+                                      object.id,
+                                      std::to_string(position.x),
+                                      std::to_string(position.y),
+                                      std::to_string(position.z),
+                                      std::to_string(rotation.x),
+                                      std::to_string(rotation.y),
+                                      std::to_string(rotation.z),
+                                      std::to_string(scale.x),
+                                      std::to_string(scale.y),
+                                      std::to_string(scale.z)));
+        }
+        for (auto const& object : scene.objects) {
+            if (!object.components.script.has_value()) {
+                continue;
+            }
+            auto const& script = *object.components.script;
+            std::ostringstream line;
+            line << "script|" << ProtocolEscape(object.id)
+                 << '|' << ProtocolEscape(script.java_class)
+                 << '|' << ProtocolEscape(script.target_object);
+            for (auto const& [key, value] : script.parameters) {
+                line << '|' << ProtocolEscape(key + "=" + value);
+            }
+            line << '\n';
+            SendJava(line.str());
+        }
+        PollJavaOutput();
+    }
+
+    static float ToFloat(std::string const& text, float fallback = 0.0f)
+    {
+        try {
+            return std::stof(text);
+        } catch (...) {
+            return fallback;
+        }
+    }
+
+    void ApplyJavaCommand(std::string const& line)
+    {
+        auto parts = SplitProtocolLine(line);
+        if (parts.size() < 2 || parts[0] != "AVE_CMD") {
+            if (!line.empty()) {
+                std::cout << "[java] " << line << "\n";
+            }
+            return;
+        }
+        std::string const& op = parts[1];
+        if (op == "log" && parts.size() >= 3) {
+            std::cout << "[java] " << parts[2] << "\n";
+        } else if (op == "setPosition" && parts.size() >= 6) {
+            scene_world_->SetObjectPosition(ResolveJavaObjectId(parts[2]), {ToFloat(parts[3]), ToFloat(parts[4]), ToFloat(parts[5])});
+        } else if (op == "setRotation" && parts.size() >= 6) {
+            scene_world_->SetObjectRotation(ResolveJavaObjectId(parts[2]), {ToFloat(parts[3]), ToFloat(parts[4]), ToFloat(parts[5])});
+        } else if (op == "setScale" && parts.size() >= 6) {
+            scene_world_->SetObjectScale(ResolveJavaObjectId(parts[2]), {ToFloat(parts[3]), ToFloat(parts[4]), ToFloat(parts[5])});
+        } else if (op == "setVisible" && parts.size() >= 4) {
+            bool const visible = parts[3] == "1" || parts[3] == "true";
+            std::string const object_id = ResolveJavaObjectId(parts[2]);
+            scene_world_->SetObjectVisible(object_id, visible);
+            ui_runtime_->SetObjectVisible(object_id, visible);
+        } else if (op == "setColor" && parts.size() >= 7) {
+            glm::vec4 color{ToFloat(parts[3]), ToFloat(parts[4]), ToFloat(parts[5]), ToFloat(parts[6])};
+            std::string const object_id = ResolveJavaObjectId(parts[2]);
+            scene_world_->SetObjectColor(object_id, color);
+            ui_runtime_->SetObjectColor(object_id, color);
+        } else if (op == "setTexture" && parts.size() >= 4) {
+            ui_runtime_->SetObjectTexture(ResolveJavaObjectId(parts[2]), parts[3]);
+        } else if (op == "setText" && parts.size() >= 4) {
+            ui_runtime_->SetObjectText(ResolveJavaObjectId(parts[2]), parts[3]);
+        } else if (op == "setProgress" && parts.size() >= 4) {
+            ui_runtime_->SetObjectProgress(ResolveJavaObjectId(parts[2]), ToFloat(parts[3]));
+        } else if (op == "destroy" && parts.size() >= 3) {
+            auto destroyed = scene_world_->DestroyObject(ResolveJavaObjectId(parts[2]), *resources_, *materials_);
+            for (auto const& id : destroyed) {
+                known_objects_.erase(id);
+            }
+        } else if (op == "instantiatePrefab" && parts.size() >= 8) {
+            InstantiatePrefabFromJava(parts[2],
+                                      parts[3],
+                                      parts[4],
+                                      ToFloat(parts[5]),
+                                      ToFloat(parts[6]),
+                                      ToFloat(parts[7]));
+        }
+    }
+
+    std::string ResolveJavaObjectId(std::string const& object_id) const
+    {
+        auto const found = java_id_to_runtime_id_.find(object_id);
+        return found == java_id_to_runtime_id_.end() ? object_id : found->second;
+    }
+
+    void InstantiatePrefabFromJava(std::string const& requested_id,
+                                   std::string const& prefab_path,
+                                   std::string const& parent_id,
+                                   float x,
+                                   float y,
+                                   float z)
+    {
+        if (scene_world_ == nullptr || resources_ == nullptr || materials_ == nullptr) {
+            return;
+        }
+        ave::project::XmlSceneLoader loader;
+        loader.SetTextAssetLoader([this](std::string const& path) {
+            return ReadTextFile(ResolveProjectAsset(project_dir_, path));
+        });
+        auto const prefab_text = ReadTextFile(ResolveProjectAsset(project_dir_, prefab_path));
+        auto const prefab = loader.LoadPrefabText(prefab_text);
+        std::string const new_id = scene_world_->InstantiatePrefab(prefab, parent_id, *resources_, *materials_);
+        if (!new_id.empty()) {
+            java_id_to_runtime_id_[requested_id] = new_id;
+            scene_world_->SetObjectPosition(new_id, {x, y, z});
+            if (new_id != requested_id) {
+                std::cout << "[preview] Java prefab requested id " << requested_id << ", runtime id " << new_id << "\n";
+            }
+        }
+    }
+
     static std::string SimpleName(std::string const& class_name)
     {
         auto const pos = class_name.find_last_of('.');
@@ -803,8 +1202,18 @@ private:
     ave::resource::ResourceSystem* resources_ = nullptr;
     ave::render::MaterialSystem* materials_ = nullptr;
     std::filesystem::path project_dir_;
+    std::filesystem::path java_class_dir_;
     std::vector<PreviewScript> scripts_;
     std::unordered_map<std::string, bool> known_objects_;
+    std::unordered_map<std::string, std::string> java_id_to_runtime_id_;
+    bool java_runtime_active_ = false;
+    std::string java_output_buffer_;
+#if defined(_WIN32)
+    HANDLE java_process_ = nullptr;
+    HANDLE java_thread_ = nullptr;
+    HANDLE java_stdout_read_ = nullptr;
+    HANDLE java_stdin_write_ = nullptr;
+#endif
 };
 
 class PreviewApp {
@@ -885,9 +1294,61 @@ public:
     }
 
 private:
+    std::filesystem::path JavaClassDir() const
+    {
+        return args_.project_dir / "build" / "preview" / "java_classes";
+    }
+
+    bool CompilePreviewJavaScripts()
+    {
+        std::filesystem::path const preview_java_dir = std::filesystem::path("examples") / "preview" / "java";
+        std::filesystem::path const common_java_dir = std::filesystem::path("engine") / "runtime" / "java-common";
+        std::filesystem::path const script_dir = args_.project_dir / "scripts";
+        if (!std::filesystem::exists(script_dir)) {
+            return false;
+        }
+
+        std::vector<std::filesystem::path> sources;
+        for (auto const& root : {common_java_dir, preview_java_dir, script_dir}) {
+            if (!std::filesystem::exists(root)) {
+                continue;
+            }
+            for (auto const& entry : std::filesystem::recursive_directory_iterator(root)) {
+                if (entry.is_regular_file() && entry.path().extension() == ".java") {
+                    sources.push_back(entry.path());
+                }
+            }
+        }
+        if (sources.empty()) {
+            return false;
+        }
+
+        std::error_code ec;
+        std::filesystem::remove_all(JavaClassDir(), ec);
+        ec.clear();
+        std::filesystem::create_directories(JavaClassDir(), ec);
+        if (ec) {
+            std::cerr << "[preview] failed to create Java class dir: " << JavaClassDir() << "\n";
+            return false;
+        }
+
+        std::string command = "javac -encoding UTF-8 -d " + QuoteCommandArg(JavaClassDir());
+        for (auto const& source : sources) {
+            command += " " + QuoteCommandArg(source);
+        }
+        int const result = std::system(command.c_str());
+        if (result != 0) {
+            std::cerr << "[preview] javac failed, falling back to C++ script mock\n";
+            return false;
+        }
+        std::cout << "[preview] compiled Java scripts: " << JavaClassDir() << "\n";
+        return true;
+    }
+
     void InitializeRuntime()
     {
         jobs_.Start(0);
+        bool const java_compiled = CompilePreviewJavaScripts();
 
         vkfw::ContextCreateInfo ci{};
         ci.window = window_;
@@ -936,6 +1397,7 @@ private:
         renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
+        script_host_.SetJavaClassDir(java_compiled ? JavaClassDir() : std::filesystem::path{});
     }
 
     void CreateSwapchainResources()
@@ -1053,6 +1515,8 @@ private:
                 script_host_.EndCameraDrag();
                 frame_data_ = {};
                 std::cout << "[preview] reloading scene after asset change...\n";
+                bool const java_compiled = CompilePreviewJavaScripts();
+                script_host_.SetJavaClassDir(java_compiled ? JavaClassDir() : std::filesystem::path{});
                 LoadProjectAndScene(false);
                 last_time = std::chrono::steady_clock::now();
             }
@@ -1080,7 +1544,7 @@ private:
         if (action->type == ave::ui::UIRuntime::ActionType::Click) {
             script_host_.DispatchClick(action->target, action->method);
         } else if (action->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-            script_host_.DispatchValueChanged(action->target, action->source_id, action->value);
+            script_host_.DispatchValueChanged(action->target, action->method, action->source_id, action->value);
         }
     }
 
