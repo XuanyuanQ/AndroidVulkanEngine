@@ -7,6 +7,7 @@ option(AVE_BUILD_EXAMPLES "Build evaluation examples" ON)
 find_package(Threads REQUIRED)
 find_package(Vulkan QUIET)
 find_package(glfw3 QUIET)
+find_package(JNI QUIET)
 
 add_library(ave_engine STATIC
     src/core/Engine.cpp
@@ -90,12 +91,28 @@ else()
 endif()
 
 if (AVE_BUILD_EXAMPLES AND Vulkan_FOUND AND glfw3_FOUND)
-    add_executable(ave_preview examples/preview/main.cpp)
+    add_executable(ave_preview
+        examples/preview/main.cpp
+        examples/preview/PreviewArgs.cpp
+        examples/preview/PreviewApp.cpp
+        examples/preview/PreviewNativeEntry.cpp
+        examples/preview/PreviewUtils.cpp
+    )
     target_link_libraries(ave_preview PRIVATE ave_engine glfw)
     target_include_directories(ave_preview PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/runtime/android/cpp"
     )
+    if (JNI_FOUND)
+        target_compile_definitions(ave_preview PRIVATE AVE_PREVIEW_HAS_JNI=1)
+        target_include_directories(ave_preview PRIVATE ${JNI_INCLUDE_DIRS})
+        get_filename_component(AVE_JAVA_HOME_FROM_INCLUDE "${JAVA_INCLUDE_PATH}" DIRECTORY)
+        set(AVE_PREVIEW_JVM_DLL "${AVE_JAVA_HOME_FROM_INCLUDE}/bin/server/jvm.dll")
+        target_compile_definitions(ave_preview PRIVATE AVE_PREVIEW_JVM_DLL_PATH="${AVE_PREVIEW_JVM_DLL}")
+    else()
+        target_compile_definitions(ave_preview PRIVATE AVE_PREVIEW_HAS_JNI=0)
+        message(STATUS "ave_preview Java scripting disabled: JNI was not found")
+    endif()
 elseif(AVE_BUILD_EXAMPLES)
     message(STATUS "ave_preview skipped: Vulkan and glfw3 are required")
 endif()

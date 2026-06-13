@@ -8,6 +8,7 @@ public class AveScript {
     private String objectId = "";
     private String targetObjectId = "";
     private Map<String, String> params = Collections.emptyMap();
+    private boolean destroyed = false;
 
     public final void __bindObject(String id) {
         objectId = id != null ? id : "";
@@ -20,6 +21,10 @@ public class AveScript {
 
     protected final String getObjectId() {
         return objectId;
+    }
+
+    public final boolean __isDestroyed() {
+        return destroyed;
     }
 
     protected final String getTargetObjectId() {
@@ -120,7 +125,7 @@ public class AveScript {
 
     protected final void destroySelf() {
         String target = getObjectId();
-        if (!target.isEmpty()) AveObjectController.destroyObject(target);
+        if (!target.isEmpty()) destroyed = AveObjectController.destroyObject(target);
     }
 
     protected final void destroyObject(String objectId) {

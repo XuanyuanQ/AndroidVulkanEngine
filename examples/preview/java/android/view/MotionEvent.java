@@ -8,12 +8,26 @@ public final class MotionEvent {
     public static final int ACTION_POINTER_DOWN = 5;
     public static final int ACTION_POINTER_UP = 6;
 
+    private final int action;
+    private final float x;
+    private final float y;
+
+    public MotionEvent(int action, float x, float y) {
+        this.action = action;
+        this.x = x;
+        this.y = y;
+    }
+
+    public static MotionEvent obtain(int action, float x, float y) {
+        return new MotionEvent(action, x, y);
+    }
+
     public int getActionMasked() {
-        return ACTION_CANCEL;
+        return action;
     }
 
     public int getPointerCount() {
-        return 0;
+        return 1;
     }
 
     public int getActionIndex() {
@@ -21,18 +35,18 @@ public final class MotionEvent {
     }
 
     public float getX() {
-        return 0.0f;
+        return x;
     }
 
     public float getY() {
-        return 0.0f;
+        return y;
     }
 
     public float getX(int index) {
-        return 0.0f;
+        return index == 0 ? x : 0.0f;
     }
 
     public float getY(int index) {
-        return 0.0f;
+        return index == 0 ? y : 0.0f;
     }
 }

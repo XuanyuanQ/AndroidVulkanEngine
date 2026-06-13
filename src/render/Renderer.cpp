@@ -7,7 +7,23 @@
 #include "ave/render/RenderPassCommon.h"
 #include "LogUtil.h"
 
+#include <string>
+
 namespace ave::render {
+
+namespace {
+
+void LogFrameGraphSkipReason(std::string const& reason)
+{
+    static std::string last_reason;
+    if (reason == last_reason) {
+        return;
+    }
+    last_reason = reason;
+    LOGW("RenderFrameGraphFrame graph execution skipped: %s", reason.c_str());
+}
+
+} // namespace
 
 class Renderer::Impl {
 public:
@@ -262,16 +278,25 @@ FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& fr
     }
 
     FrameGraphRenderResult render_result = RenderFrameGraphToTargets(request);
-    if (render_result != FrameGraphRenderResult::Success) {
-        LOGW("RenderFrameGraphFrame graph execution skipped");
-    }
     return backend.EndFrame(render_result);
 }
 
 FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest const& request)
 {
-    if (request.frame == nullptr || request.vk == nullptr ||
-        request.command_buffer == vk::CommandBuffer{} || request.views.empty()) {
+    if (request.frame == nullptr) {
+        LogFrameGraphSkipReason("missing frame data");
+        return FrameGraphRenderResult::Skipped;
+    }
+    if (request.vk == nullptr) {
+        LogFrameGraphSkipReason("missing Vulkan context");
+        return FrameGraphRenderResult::Skipped;
+    }
+    if (request.command_buffer == vk::CommandBuffer{}) {
+        LogFrameGraphSkipReason("missing command buffer");
+        return FrameGraphRenderResult::Skipped;
+    }
+    if (request.views.empty()) {
+        LogFrameGraphSkipReason("missing render target views");
         return FrameGraphRenderResult::Skipped;
     }
 
@@ -281,6 +306,7 @@ FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest co
     for (uint32_t view_index = 0; view_index < view_count; ++view_index) {
         auto const& target = request.views[view_index];
         if (!target.color_target.IsValid()) {
+            LogFrameGraphSkipReason("invalid color target");
             return FrameGraphRenderResult::Skipped;
         }
 
@@ -295,6 +321,7 @@ FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest co
         pass_ctx.view_index = target.view_index;
         pass_ctx.view_count = view_count;
         if (CurrentFrameView(pass_ctx) == nullptr) {
+            LogFrameGraphSkipReason("missing frame view");
             return FrameGraphRenderResult::Skipped;
         }
         pass_ctx.frame_resource_index = target.frame_resource_index;

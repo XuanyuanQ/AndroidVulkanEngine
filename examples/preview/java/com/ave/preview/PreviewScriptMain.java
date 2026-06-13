@@ -1,9 +1,12 @@
 package com.ave.preview;
 
 import com.ave.engine.AveScript;
+import com.ave.engine.AveActivity;
+import com.ave.engine.AveActivityEventHandler;
 import com.ave.engine.AveRuntime;
 import com.ave.engine.PreviewAveRuntimeBridge;
 import com.ave.engine.PreviewBridge;
+import android.view.MotionEvent;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -14,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class PreviewScriptMain {
     private final Map<String, AveScript> scripts = new ConcurrentHashMap<>();
+    private final AveActivity activity = new AveActivity();
 
     public static void main(String[] args) throws Exception {
         new PreviewScriptMain().run();
@@ -67,6 +71,11 @@ public final class PreviewScriptMain {
                     triggerValue(parts[1], parts[2], parts[3], parseFloat(parts[4]));
                 }
                 break;
+            case "touch":
+                if (parts.length >= 4) {
+                    dispatchTouch(parseAction(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
+                }
+                break;
             default:
                 PreviewBridge.log("unknown command: " + line);
                 break;
@@ -100,9 +109,13 @@ public final class PreviewScriptMain {
     }
 
     private void update(float dt) {
-        for (AveScript script : scripts.values()) {
+        for (Map.Entry<String, AveScript> entry : scripts.entrySet()) {
+            AveScript script = entry.getValue();
             try {
                 script.update(dt);
+                if (script.__isDestroyed()) {
+                    scripts.remove(entry.getKey());
+                }
             } catch (Throwable error) {
                 error.printStackTrace(System.err);
             }
@@ -152,6 +165,20 @@ public final class PreviewScriptMain {
         }
     }
 
+    private void dispatchTouch(int action, float x, float y) {
+        MotionEvent event = MotionEvent.obtain(action, x, y);
+        for (AveScript script : scripts.values()) {
+            if (!(script instanceof AveActivityEventHandler)) {
+                continue;
+            }
+            try {
+                ((AveActivityEventHandler) script).dispatchTouchEvent(activity, event);
+            } catch (Throwable error) {
+                error.printStackTrace(System.err);
+            }
+        }
+    }
+
     private boolean matches(String objectId, AveScript script, String target) {
         return objectId.equals(target) ||
                 script.getClass().getSimpleName().equals(target) ||
@@ -163,6 +190,14 @@ public final class PreviewScriptMain {
             return Float.parseFloat(text);
         } catch (Exception ignored) {
             return 0.0f;
+        }
+    }
+
+    private static int parseAction(String text) {
+        try {
+            return Integer.parseInt(text);
+        } catch (Exception ignored) {
+            return MotionEvent.ACTION_CANCEL;
         }
     }
 

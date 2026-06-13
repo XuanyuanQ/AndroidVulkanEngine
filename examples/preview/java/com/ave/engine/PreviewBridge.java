@@ -48,7 +48,7 @@ public final class PreviewBridge {
     }
 
     public static void log(String message) {
-        emit("log", message);
+        nativeLog(message != null ? message : "");
     }
 
     public static void setObjectPosition(String objectId, float x, float y, float z) {
@@ -56,7 +56,7 @@ public final class PreviewBridge {
         state.position[0] = x;
         state.position[1] = y;
         state.position[2] = z;
-        emit("setPosition", objectId, x, y, z);
+        nativeSetPosition(objectId != null ? objectId : "", x, y, z);
     }
 
     public static void setObjectRotation(String objectId, float x, float y, float z) {
@@ -64,7 +64,7 @@ public final class PreviewBridge {
         state.rotation[0] = x;
         state.rotation[1] = y;
         state.rotation[2] = z;
-        emit("setRotation", objectId, x, y, z);
+        nativeSetRotation(objectId != null ? objectId : "", x, y, z);
     }
 
     public static void setObjectScale(String objectId, float x, float y, float z) {
@@ -72,12 +72,12 @@ public final class PreviewBridge {
         state.scale[0] = x;
         state.scale[1] = y;
         state.scale[2] = z;
-        emit("setScale", objectId, x, y, z);
+        nativeSetScale(objectId != null ? objectId : "", x, y, z);
     }
 
     public static void setObjectVisible(String objectId, boolean visible) {
         stateFor(objectId).visible = visible;
-        emit("setVisible", objectId, visible ? "1" : "0");
+        nativeSetVisible(objectId != null ? objectId : "", visible);
     }
 
     public static void setObjectColor(String objectId, float r, float g, float b, float a) {
@@ -86,33 +86,32 @@ public final class PreviewBridge {
         state.color[1] = g;
         state.color[2] = b;
         state.color[3] = a;
-        emit("setColor", objectId, r, g, b, a);
+        nativeSetColor(objectId != null ? objectId : "", r, g, b, a);
     }
 
     public static void setObjectTexture(String objectId, String texture) {
         stateFor(objectId).texture = texture != null ? texture : "";
-        emit("setTexture", objectId, stateFor(objectId).texture);
+        nativeSetTexture(objectId != null ? objectId : "", stateFor(objectId).texture);
     }
 
     public static void setObjectText(String objectId, String text) {
-        emit("setText", objectId, text != null ? text : "");
+        nativeSetText(objectId != null ? objectId : "", text != null ? text : "");
     }
 
     public static void setObjectProgress(String objectId, float value) {
         stateFor(objectId).progress = value;
-        emit("setProgress", objectId, value);
+        nativeSetProgress(objectId != null ? objectId : "", value);
     }
 
     public static boolean destroyObject(String objectId) {
         objects.remove(objectId);
-        emit("destroy", objectId);
-        return true;
+        return nativeDestroyObject(objectId != null ? objectId : "");
     }
 
     public static String instantiatePrefab(String prefabPath, String parentId, float x, float y, float z) {
         String id = "__java_prefab_" + (++prefabCounter);
         defineObject(id, x, y, z, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
-        emit("instantiatePrefab", id, prefabPath != null ? prefabPath : "", parentId != null ? parentId : "", x, y, z);
+        nativeInstantiatePrefab(id, prefabPath != null ? prefabPath : "", parentId != null ? parentId : "", x, y, z);
         return id;
     }
 
@@ -148,19 +147,15 @@ public final class PreviewBridge {
         return objects.computeIfAbsent(objectId != null ? objectId : "", ignored -> new ObjectState());
     }
 
-    private static void emit(String op, Object... args) {
-        StringBuilder line = new StringBuilder("AVE_CMD|").append(op);
-        for (Object arg : args) {
-            line.append('|').append(escape(String.valueOf(arg)));
-        }
-        System.out.println(line);
-        System.out.flush();
-    }
-
-    private static String escape(String text) {
-        return text.replace("\\", "\\\\")
-                .replace("|", "\\p")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
-    }
+    private static native void nativeLog(String message);
+    private static native void nativeSetPosition(String objectId, float x, float y, float z);
+    private static native void nativeSetRotation(String objectId, float x, float y, float z);
+    private static native void nativeSetScale(String objectId, float x, float y, float z);
+    private static native void nativeSetVisible(String objectId, boolean visible);
+    private static native void nativeSetColor(String objectId, float r, float g, float b, float a);
+    private static native void nativeSetTexture(String objectId, String texture);
+    private static native void nativeSetText(String objectId, String text);
+    private static native void nativeSetProgress(String objectId, float value);
+    private static native boolean nativeDestroyObject(String objectId);
+    private static native void nativeInstantiatePrefab(String requestedId, String prefabPath, String parentId, float x, float y, float z);
 }
