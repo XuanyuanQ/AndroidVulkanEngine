@@ -1,10 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00400000" android:required="true" />
+    <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="false" />
 
     <application
         android:label="Ave Game"
         android:theme="@style/AppTheme"
         android:hasCode="true">
+        <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" />
         <activity
             android:name="__AVE_ACTIVITY_CLASS__"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -13,6 +15,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
         </activity>
     </application>

@@ -320,6 +320,44 @@ bool VkContext::Init(ContextCreateInfo const& info)
   return true;
 }
 
+bool VkContext::InitExternal(ExternalVulkanContextCreateInfo const& info)
+{
+  if (info.instance == VK_NULL_HANDLE ||
+      info.physical_device == VK_NULL_HANDLE ||
+      info.device == VK_NULL_HANDLE) {
+    throw std::runtime_error("vkfw::VkContext: external Vulkan handles are invalid");
+  }
+
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(::vkGetInstanceProcAddr);
+
+  impl_->window = nullptr;
+  impl_->enable_validation = false;
+  impl_->surface = nullptr;
+  impl_->debug_messenger = nullptr;
+  impl_->context = vk::raii::Context{};
+  impl_->instance = vk::raii::Instance{impl_->context, info.instance};
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(*impl_->instance);
+  impl_->physical_device = vk::raii::PhysicalDevice{impl_->instance, info.physical_device};
+  impl_->device = vk::raii::Device{impl_->physical_device, info.device};
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(*impl_->device);
+  impl_->graphics_queue_family_index = info.graphics_queue_family_index;
+  impl_->graphics_queue = vk::raii::Queue{impl_->device, impl_->graphics_queue_family_index, 0};
+  impl_->supports_dynamic_rendering = info.supports_dynamic_rendering;
+  impl_->uses_core_dynamic_rendering = info.uses_core_dynamic_rendering;
+  impl_->initialized = true;
+
+#if defined(__ANDROID__)
+  LOGI("Vulkan context initialized from OpenXR external device: instance=%p physical_device=%p device=%p queue_family=%u dynamic=%d core_dynamic=%d",
+       static_cast<void*>(info.instance),
+       static_cast<void*>(info.physical_device),
+       static_cast<void*>(info.device),
+       info.graphics_queue_family_index,
+       info.supports_dynamic_rendering ? 1 : 0,
+       info.uses_core_dynamic_rendering ? 1 : 0);
+#endif
+  return true;
+}
+
 
 void VkContext::Shutdown()
 {

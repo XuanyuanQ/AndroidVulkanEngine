@@ -26,6 +26,15 @@ struct ContextCreateInfo {
   bool enable_validation = true;
 };
 
+struct ExternalVulkanContextCreateInfo {
+  VkInstance instance = VK_NULL_HANDLE;
+  VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+  VkDevice device = VK_NULL_HANDLE;
+  uint32_t graphics_queue_family_index = 0;
+  bool supports_dynamic_rendering = false;
+  bool uses_core_dynamic_rendering = false;
+};
+
 class VkContext {
 public:
   VkContext();
@@ -38,6 +47,7 @@ public:
   VkContext& operator=(VkContext&&) noexcept;
 
   bool Init(ContextCreateInfo const& info);
+  bool InitExternal(ExternalVulkanContextCreateInfo const& info);
   void Shutdown();
   #if defined(__ANDROID__)
   void SetWindow(::ANativeWindow* window);

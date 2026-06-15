@@ -652,13 +652,24 @@ void MinimalVulkanTriangle::drawFrame()
                 ui_runtime_.BuildFrameUi(frame_data_.ui_items);
             }
 
-            openxr_runtime_.PollEvents();
-            bool const xr_frame_started = openxr_runtime_.BeginFrame(frame_data_);
-
-            auto const render_result =
-                renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
-            if (xr_frame_started) {
-                openxr_runtime_.EndFrame();
+            ave::render::FrameGraphRenderResult render_result = ave::render::FrameGraphRenderResult::Success;
+            bool xr_frame_rendered = false;
+            if (openxr_render_backend_.HasGraphics() && openxr_render_backend_.HasSwapchain()) {
+                ave::xr::OpenXRRenderBackend::FrameTargets targets{};
+                targets.frame = &frame_data_;
+                targets.vk = &ctx_;
+                openxr_render_backend_.SetNextFrameTargets(std::move(targets));
+                ave::render::RenderFrameRequest xr_request{};
+                auto const xr_begin_result = openxr_render_backend_.BeginFrame(xr_request);
+                if (xr_begin_result == ave::render::FrameGraphRenderResult::Success) {
+                    render_result = renderer_.RenderFrameGraphToTargets(xr_request);
+                    render_result = openxr_render_backend_.EndFrame(render_result);
+                    xr_frame_rendered = true;
+                }
+            }
+            if (!xr_frame_rendered) {
+                render_result =
+                    renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
             }
             if (render_result == ave::render::FrameGraphRenderResult::SwapchainOutOfDate) {
                 std::lock_guard<std::mutex> lock(m_surface_mutex);
@@ -692,13 +703,22 @@ void MinimalVulkanTriangle::cleanupSurfaceResources(bool full_cleanup)
     }
 
     try {
-        openxr_runtime_.Shutdown(&ctx_);
+        openxr_render_backend_.ShutdownFrameResources(ctx_);
     } catch (...) {
     }
 
-    // Surface lifecycle teardown: drop runtime/framegraph caches before touching the Vulkan context.
     try {
         renderer_.Shutdown();
+    } catch (...) {
+    }
+
+    try {
+        openxr_render_backend_.ShutdownGraphics(openxr_runtime_);
+    } catch (...) {
+    }
+
+    try {
+        openxr_runtime_.Shutdown();
     } catch (...) {
     }
 
@@ -745,7 +765,36 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
 
     bool const first_time_init = !app_initialized_;
     bool const created_context = !ctx_.IsInitialized();
-    if (created_context) {
+    bool const enable_openxr = ReadBoolSystemProperty("debug.ave.openxr", false);
+    LOGI("OpenXR optional startup: property debug.ave.openxr enabled=%d", enable_openxr ? 1 : 0);
+    bool xr_graphics_ready = false;
+    if (enable_openxr) {
+        if (!openxr_runtime_.Initialize(ave::xr::OpenXRRuntimeConfig{
+                .enabled = enable_openxr,
+                .android_application_vm = android_application_vm_,
+                .android_application_context = android_application_context_,
+            })) {
+            LOGW("OpenXRRuntime initialization failed; continuing Android surface rendering");
+        } else if (openxr_runtime_.IsInitialized() && openxr_render_backend_.InitializeGraphics(openxr_runtime_)) {
+            if (created_context) {
+                if (!ctx_.InitExternal(vkfw::ExternalVulkanContextCreateInfo{
+                        .instance = static_cast<VkInstance>(openxr_render_backend_.VulkanInstanceHandle()),
+                        .physical_device = static_cast<VkPhysicalDevice>(openxr_render_backend_.VulkanPhysicalDeviceHandle()),
+                        .device = static_cast<VkDevice>(openxr_render_backend_.VulkanDeviceHandle()),
+                        .graphics_queue_family_index = openxr_render_backend_.GraphicsQueueFamilyIndex(),
+                        .supports_dynamic_rendering = openxr_render_backend_.SupportsDynamicRendering(),
+                        .uses_core_dynamic_rendering = false,
+                    })) {
+                    LOGW("OpenXR external Vulkan context initialization failed; continuing Android surface rendering");
+                }
+            }
+            xr_graphics_ready = ctx_.IsInitialized() && openxr_render_backend_.HasSwapchain();
+        } else {
+            LOGW("OpenXRRenderBackend graphics initialization failed; continuing Android surface rendering");
+        }
+    }
+
+    if (created_context && !ctx_.IsInitialized()) {
         vkfw::ContextCreateInfo ci{};
         ci.window = window_;
 #ifdef NDEBUG
@@ -756,19 +805,10 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         if (!ctx_.Init(ci)) {
             return false;
         }
-    } else {
+    } else if (!created_context && !xr_graphics_ready) {
         ctx_.SetWindow(window_);
     }
-
-    bool const enable_openxr = ReadBoolSystemProperty("debug.ave.openxr", false);
-    LOGI("OpenXR optional startup: property debug.ave.openxr enabled=%d", enable_openxr ? 1 : 0);
-    if (!openxr_runtime_.Initialize(ctx_, ave::xr::OpenXRRuntimeConfig{
-                                              .enabled = enable_openxr,
-                                              .android_application_vm = android_application_vm_,
-                                              .android_application_context = android_application_context_,
-                                          })) {
-        LOGW("OpenXRRuntime initialization failed; continuing Android surface rendering");
-    }
+    xr_graphics_ready = xr_graphics_ready && ctx_.IsInitialized();
 
     renderer_.SetVkContext(&ctx_);
     renderer_.GetResourceSystem().GetMeshManager().SetTextAssetLoader(
@@ -792,13 +832,20 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
             return readShaderAsset(path.c_str());
         });
 
-    if (sync_.FramesInFlight() == 0) {
+    if (xr_graphics_ready) {
+        if (!openxr_render_backend_.InitializeFrameResources(ctx_)) {
+            LOGW("OpenXR frame resources initialization failed; continuing Android surface rendering");
+            xr_graphics_ready = false;
+        }
+    }
+
+    if (!xr_graphics_ready && sync_.FramesInFlight() == 0) {
         if (!sync_.Init(ctx_, kFramesInFlight)) {
             return false;
         }
     }
 
-    if (swapchainWrap_.ImageCount() == 0) {
+    if (!xr_graphics_ready && swapchainWrap_.ImageCount() == 0) {
         vkfw::SwapchainInfo si{};
         si.width = static_cast<uint32_t>(std::max(width_, 0));
         si.height = static_cast<uint32_t>(std::max(height_, 0));
@@ -806,7 +853,9 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
             return false;
         }
     }
-    sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
+    if (!xr_graphics_ready) {
+        sync_.EnsureRenderFinishedSize(ctx_, swapchainWrap_.ImageCount());
+    }
 
     if (!scene_loaded_) {
         if (!loadSceneMesh()) {
@@ -825,7 +874,7 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
     }
-    if (!renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
+    if (!xr_graphics_ready && !renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {
         LOGE("Failed to initialize FrameGraph backend.");
         return false;
     }

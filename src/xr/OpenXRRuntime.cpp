@@ -8,7 +8,6 @@
 #endif
 
 #include <cstring>
-#include <vector>
 
 namespace ave::xr {
 
@@ -23,24 +22,32 @@ using XrResult = int32_t;
 using XrStructureType = int32_t;
 using XrFormFactor = int32_t;
 using XrReferenceSpaceType = int32_t;
+using XrSessionState = int32_t;
 using XrSessionCreateFlags = uint64_t;
 using XrInstance = struct XrInstance_T*;
 using XrSession = struct XrSession_T*;
 using XrSpace = struct XrSpace_T*;
 
 constexpr XrResult XR_SUCCESS = 0;
+constexpr XrResult XR_EVENT_UNAVAILABLE = 1;
 constexpr XrStructureType XR_TYPE_INSTANCE_CREATE_INFO = 3;
 constexpr XrStructureType XR_TYPE_SYSTEM_GET_INFO = 4;
 constexpr XrStructureType XR_TYPE_SESSION_CREATE_INFO = 8;
+constexpr XrStructureType XR_TYPE_EVENT_DATA_BUFFER = 16;
+constexpr XrStructureType XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED = 18;
 constexpr XrStructureType XR_TYPE_REFERENCE_SPACE_CREATE_INFO = 37;
 constexpr XrStructureType XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR = 1000089000;
-constexpr XrStructureType XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR = 1000025000;
-constexpr XrStructureType XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR = 1000025002;
-constexpr XrStructureType XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR = 1000090000;
-constexpr XrStructureType XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR = 1000090001;
-constexpr XrStructureType XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR = 1000090003;
 constexpr XrFormFactor XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY = 1;
 constexpr XrReferenceSpaceType XR_REFERENCE_SPACE_TYPE_LOCAL = 2;
+constexpr XrSessionState XR_SESSION_STATE_UNKNOWN = 0;
+constexpr XrSessionState XR_SESSION_STATE_IDLE = 1;
+constexpr XrSessionState XR_SESSION_STATE_READY = 2;
+constexpr XrSessionState XR_SESSION_STATE_SYNCHRONIZED = 3;
+constexpr XrSessionState XR_SESSION_STATE_VISIBLE = 4;
+constexpr XrSessionState XR_SESSION_STATE_FOCUSED = 5;
+constexpr XrSessionState XR_SESSION_STATE_STOPPING = 6;
+constexpr XrSessionState XR_SESSION_STATE_LOSS_PENDING = 7;
+constexpr XrSessionState XR_SESSION_STATE_EXITING = 8;
 constexpr XrVersion XR_CURRENT_API_VERSION = (1ULL << 48);
 constexpr uint32_t XR_MAX_APPLICATION_NAME_SIZE = 128;
 constexpr uint32_t XR_MAX_ENGINE_NAME_SIZE = 128;
@@ -103,59 +110,25 @@ struct XrReferenceSpaceCreateInfo {
     XrPosef poseInReferenceSpace;
 };
 
+struct XrEventDataBuffer {
+    XrStructureType type;
+    void const* next;
+    uint8_t varying[4000];
+};
+
+struct XrEventDataSessionStateChanged {
+    XrStructureType type;
+    void const* next;
+    XrSession session;
+    XrSessionState state;
+    int64_t time;
+};
+
 struct XrLoaderInitInfoAndroidKHR {
     XrStructureType type;
     void const* next;
     void* applicationVM;
     void* applicationContext;
-};
-
-struct XrGraphicsBindingVulkanKHR {
-    XrStructureType type;
-    void const* next;
-    VkInstance instance;
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-    uint32_t queueFamilyIndex;
-    uint32_t queueIndex;
-};
-
-struct XrGraphicsRequirementsVulkanKHR {
-    XrStructureType type;
-    void* next;
-    XrVersion minApiVersionSupported;
-    XrVersion maxApiVersionSupported;
-};
-
-struct XrVulkanGraphicsDeviceGetInfoKHR {
-    XrStructureType type;
-    void const* next;
-    XrSystemId systemId;
-    VkInstance vulkanInstance;
-};
-
-using XrVulkanInstanceCreateFlagsKHR = XrFlags64;
-using XrVulkanDeviceCreateFlagsKHR = XrFlags64;
-
-struct XrVulkanInstanceCreateInfoKHR {
-    XrStructureType type;
-    void const* next;
-    XrSystemId systemId;
-    XrVulkanInstanceCreateFlagsKHR createFlags;
-    PFN_vkGetInstanceProcAddr pfnGetInstanceProcAddr;
-    VkInstanceCreateInfo const* vulkanCreateInfo;
-    VkAllocationCallbacks const* vulkanAllocator;
-};
-
-struct XrVulkanDeviceCreateInfoKHR {
-    XrStructureType type;
-    void const* next;
-    XrSystemId systemId;
-    XrVulkanDeviceCreateFlagsKHR createFlags;
-    PFN_vkGetInstanceProcAddr pfnGetInstanceProcAddr;
-    VkPhysicalDevice vulkanPhysicalDevice;
-    VkDeviceCreateInfo const* vulkanCreateInfo;
-    VkAllocationCallbacks const* vulkanAllocator;
 };
 
 using PFN_xrVoidFunction = void (*)();
@@ -164,26 +137,11 @@ using PFN_xrInitializeLoaderKHR = XrResult (*)(XrLoaderInitInfoAndroidKHR const*
 using PFN_xrCreateInstance = XrResult (*)(XrInstanceCreateInfo const* create_info, XrInstance* instance);
 using PFN_xrDestroyInstance = XrResult (*)(XrInstance instance);
 using PFN_xrGetSystem = XrResult (*)(XrInstance instance, XrSystemGetInfo const* get_info, XrSystemId* system_id);
-using PFN_xrGetVulkanGraphicsRequirements2KHR =
-    XrResult (*)(XrInstance instance, XrSystemId system_id, XrGraphicsRequirementsVulkanKHR* graphics_requirements);
-using PFN_xrGetVulkanGraphicsDevice2KHR =
-    XrResult (*)(XrInstance instance,
-                 XrVulkanGraphicsDeviceGetInfoKHR const* get_info,
-                 VkPhysicalDevice* vk_physical_device);
-using PFN_xrCreateVulkanInstanceKHR =
-    XrResult (*)(XrInstance instance,
-                 XrVulkanInstanceCreateInfoKHR const* create_info,
-                 VkInstance* vulkan_instance,
-                 VkResult* vulkan_result);
-using PFN_xrCreateVulkanDeviceKHR =
-    XrResult (*)(XrInstance instance,
-                 XrVulkanDeviceCreateInfoKHR const* create_info,
-                 VkDevice* vulkan_device,
-                 VkResult* vulkan_result);
 using PFN_xrCreateSession = XrResult (*)(XrInstance instance, XrSessionCreateInfo const* create_info, XrSession* session);
 using PFN_xrDestroySession = XrResult (*)(XrSession session);
 using PFN_xrCreateReferenceSpace = XrResult (*)(XrSession session, XrReferenceSpaceCreateInfo const* create_info, XrSpace* space);
 using PFN_xrDestroySpace = XrResult (*)(XrSpace space);
+using PFN_xrPollEvent = XrResult (*)(XrInstance instance, XrEventDataBuffer* event_data);
 
 template <typename Fn>
 Fn LoadOpenXRCommand(PFN_xrGetInstanceProcAddr get_proc_addr, XrInstance instance, char const* name)
@@ -197,23 +155,6 @@ Fn LoadOpenXRCommand(PFN_xrGetInstanceProcAddr get_proc_addr, XrInstance instanc
     return reinterpret_cast<Fn>(raw);
 }
 
-uint32_t FindGraphicsQueueFamily(VkPhysicalDevice physical_device)
-{
-    uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-    if (queue_family_count == 0) {
-        return ~0u;
-    }
-
-    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
-    for (uint32_t i = 0; i < queue_family_count; ++i) {
-        if ((queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
-            return i;
-        }
-    }
-    return ~0u;
-}
 #endif
 
 char const* ToString(OpenXRRuntimeState state)
@@ -233,9 +174,34 @@ char const* ToString(OpenXRRuntimeState state)
     return "Unknown";
 }
 
+char const* ToString(XrSessionState state)
+{
+    switch (state) {
+    case XR_SESSION_STATE_UNKNOWN:
+        return "UNKNOWN";
+    case XR_SESSION_STATE_IDLE:
+        return "IDLE";
+    case XR_SESSION_STATE_READY:
+        return "READY";
+    case XR_SESSION_STATE_SYNCHRONIZED:
+        return "SYNCHRONIZED";
+    case XR_SESSION_STATE_VISIBLE:
+        return "VISIBLE";
+    case XR_SESSION_STATE_FOCUSED:
+        return "FOCUSED";
+    case XR_SESSION_STATE_STOPPING:
+        return "STOPPING";
+    case XR_SESSION_STATE_LOSS_PENDING:
+        return "LOSS_PENDING";
+    case XR_SESSION_STATE_EXITING:
+        return "EXITING";
+    }
+    return "UNKNOWN_VALUE";
+}
+
 } // namespace
 
-bool OpenXRRuntime::ProbeOpenXRLoader(vkfw::VkContext& ctx)
+bool OpenXRRuntime::ProbeOpenXRLoader()
 {
 #if defined(__ANDROID__)
     loader_handle_ = dlopen("libopenxr_loader.so", RTLD_NOW | RTLD_LOCAL);
@@ -252,6 +218,7 @@ bool OpenXRRuntime::ProbeOpenXRLoader(vkfw::VkContext& ctx)
         loader_handle_ = nullptr;
         return false;
     }
+    get_instance_proc_addr_ = reinterpret_cast<void*>(get_proc_addr);
 
     auto xr_initialize_loader =
         LoadOpenXRCommand<PFN_xrInitializeLoaderKHR>(get_proc_addr, nullptr, "xrInitializeLoaderKHR");
@@ -345,208 +312,86 @@ bool OpenXRRuntime::ProbeOpenXRLoader(vkfw::VkContext& ctx)
         return false;
     }
 
-    auto xr_create_session = LoadOpenXRCommand<PFN_xrCreateSession>(get_proc_addr, instance, "xrCreateSession");
-    auto xr_destroy_session = LoadOpenXRCommand<PFN_xrDestroySession>(get_proc_addr, instance, "xrDestroySession");
-    auto xr_get_vulkan_graphics_requirements =
-        LoadOpenXRCommand<PFN_xrGetVulkanGraphicsRequirements2KHR>(
-            get_proc_addr,
-            instance,
-            "xrGetVulkanGraphicsRequirements2KHR");
-    auto xr_get_vulkan_graphics_device =
-        LoadOpenXRCommand<PFN_xrGetVulkanGraphicsDevice2KHR>(
-            get_proc_addr,
-            instance,
-            "xrGetVulkanGraphicsDevice2KHR");
-    auto xr_create_vulkan_instance =
-        LoadOpenXRCommand<PFN_xrCreateVulkanInstanceKHR>(
-            get_proc_addr,
-            instance,
-            "xrCreateVulkanInstanceKHR");
-    auto xr_create_vulkan_device =
-        LoadOpenXRCommand<PFN_xrCreateVulkanDeviceKHR>(
-            get_proc_addr,
-            instance,
-            "xrCreateVulkanDeviceKHR");
+    instance_handle_ = instance;
+    system_id_ = system_id;
+    LOGI("OpenXR probe success: instance=%p system_id=%llu",
+         instance_handle_,
+         static_cast<unsigned long long>(system_id_));
+    return true;
+#else
+    LOGW("OpenXR probe unavailable on this platform");
+    return false;
+#endif
+}
+
+bool OpenXRRuntime::Initialize(OpenXRRuntimeConfig const& config)
+{
+    enabled_ = config.enabled;
+    android_application_vm_ = config.android_application_vm;
+    android_application_context_ = config.android_application_context;
+    if (!enabled_) {
+        state_ = OpenXRRuntimeState::Disabled;
+        initialized_ = false;
+        frame_started_ = false;
+        LOGI("OpenXRRuntime disabled");
+        return true;
+    }
+
+    if (!ProbeOpenXRLoader()) {
+        LOGW("OpenXRRuntime requested but no usable OpenXR runtime was found; continuing without XR rendering");
+        enabled_ = false;
+        initialized_ = false;
+        frame_started_ = false;
+        state_ = OpenXRRuntimeState::Disabled;
+        return true;
+    }
+
+    initialized_ = true;
+    frame_started_ = false;
+    logged_stub_frame_ = false;
+    session_state_ = XR_SESSION_STATE_UNKNOWN;
+    session_running_ = false;
+    state_ = OpenXRRuntimeState::Ready;
+    LOGI("OpenXRRuntime initialized: state=%s system_id=%llu",
+         ToString(state_),
+         static_cast<unsigned long long>(system_id_));
+    return true;
+}
+
+bool OpenXRRuntime::CreateSession(void const* graphics_binding)
+{
+#if defined(__ANDROID__)
+    if (!enabled_ || !initialized_ || instance_handle_ == nullptr || get_instance_proc_addr_ == nullptr ||
+        graphics_binding == nullptr || system_id_ == 0) {
+        return false;
+    }
+    if (session_handle_ != nullptr) {
+        return true;
+    }
+
+    auto get_proc_addr = reinterpret_cast<PFN_xrGetInstanceProcAddr>(get_instance_proc_addr_);
+    auto xr_create_session =
+        LoadOpenXRCommand<PFN_xrCreateSession>(get_proc_addr,
+                                               static_cast<XrInstance>(instance_handle_),
+                                               "xrCreateSession");
     auto xr_create_reference_space =
-        LoadOpenXRCommand<PFN_xrCreateReferenceSpace>(get_proc_addr, instance, "xrCreateReferenceSpace");
-    auto xr_destroy_space = LoadOpenXRCommand<PFN_xrDestroySpace>(get_proc_addr, instance, "xrDestroySpace");
-    if (xr_create_session == nullptr || xr_destroy_session == nullptr ||
-        xr_get_vulkan_graphics_requirements == nullptr ||
-        xr_get_vulkan_graphics_device == nullptr ||
-        xr_create_vulkan_instance == nullptr ||
-        xr_create_vulkan_device == nullptr ||
-        xr_create_reference_space == nullptr || xr_destroy_space == nullptr) {
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
+        LoadOpenXRCommand<PFN_xrCreateReferenceSpace>(get_proc_addr,
+                                                      static_cast<XrInstance>(instance_handle_),
+                                                      "xrCreateReferenceSpace");
+    if (xr_create_session == nullptr || xr_create_reference_space == nullptr) {
         return false;
     }
-
-    XrGraphicsRequirementsVulkanKHR graphics_requirements{};
-    graphics_requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR;
-    graphics_requirements.next = nullptr;
-    result = xr_get_vulkan_graphics_requirements(instance, system_id, &graphics_requirements);
-    if (result != XR_SUCCESS) {
-        LOGW("OpenXR xrGetVulkanGraphicsRequirements2KHR failed: result=%d", result);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
-        return false;
-    }
-    LOGI("OpenXR Vulkan graphics requirements: min_api=0x%llx max_api=0x%llx",
-         static_cast<unsigned long long>(graphics_requirements.minApiVersionSupported),
-         static_cast<unsigned long long>(graphics_requirements.maxApiVersionSupported));
-
-    VkApplicationInfo vk_app_info{};
-    vk_app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    vk_app_info.pApplicationName = "AveTriangleGameXR";
-    vk_app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    vk_app_info.pEngineName = "AveEngine";
-    vk_app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    vk_app_info.apiVersion = VK_API_VERSION_1_0;
-
-    VkInstanceCreateInfo vk_instance_create_info{};
-    vk_instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    vk_instance_create_info.pApplicationInfo = &vk_app_info;
-
-    XrVulkanInstanceCreateInfoKHR xr_vk_instance_create_info{};
-    xr_vk_instance_create_info.type = XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR;
-    xr_vk_instance_create_info.next = nullptr;
-    xr_vk_instance_create_info.systemId = system_id;
-    xr_vk_instance_create_info.createFlags = 0;
-    xr_vk_instance_create_info.pfnGetInstanceProcAddr = ::vkGetInstanceProcAddr;
-    xr_vk_instance_create_info.vulkanCreateInfo = &vk_instance_create_info;
-    xr_vk_instance_create_info.vulkanAllocator = nullptr;
-
-    VkInstance xr_vk_instance = VK_NULL_HANDLE;
-    VkResult vk_result = VK_SUCCESS;
-    result = xr_create_vulkan_instance(instance,
-                                       &xr_vk_instance_create_info,
-                                       &xr_vk_instance,
-                                       &vk_result);
-    if (result != XR_SUCCESS || vk_result != VK_SUCCESS || xr_vk_instance == VK_NULL_HANDLE) {
-        LOGW("OpenXR xrCreateVulkanInstanceKHR failed: result=%d vk_result=%d instance=%p",
-             result,
-             vk_result,
-             static_cast<void*>(xr_vk_instance));
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
-        return false;
-    }
-    LOGI("OpenXR xrCreateVulkanInstanceKHR success: instance=%p", static_cast<void*>(xr_vk_instance));
-
-    XrVulkanGraphicsDeviceGetInfoKHR graphics_device_info{};
-    graphics_device_info.type = XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR;
-    graphics_device_info.next = nullptr;
-    graphics_device_info.systemId = system_id;
-    graphics_device_info.vulkanInstance = xr_vk_instance;
-
-    VkPhysicalDevice xr_physical_device = VK_NULL_HANDLE;
-    result = xr_get_vulkan_graphics_device(instance, &graphics_device_info, &xr_physical_device);
-    if (result != XR_SUCCESS || xr_physical_device == VK_NULL_HANDLE) {
-        LOGW("OpenXR xrGetVulkanGraphicsDevice2KHR failed: result=%d physical_device=%p",
-             result,
-             static_cast<void*>(xr_physical_device));
-        vkDestroyInstance(xr_vk_instance, nullptr);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
-        return false;
-    }
-
-    uint32_t const xr_queue_family_index = FindGraphicsQueueFamily(xr_physical_device);
-    if (xr_queue_family_index == ~0u) {
-        LOGW("OpenXR Vulkan graphics queue family not found");
-        vkDestroyInstance(xr_vk_instance, nullptr);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
-        return false;
-    }
-    LOGI("OpenXR Vulkan graphics device verified: physical_device=%p queue_family=%u",
-         static_cast<void*>(xr_physical_device),
-         xr_queue_family_index);
-
-    float queue_priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_create_info{};
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = xr_queue_family_index;
-    queue_create_info.queueCount = 1;
-    queue_create_info.pQueuePriorities = &queue_priority;
-
-    VkDeviceCreateInfo device_create_info{};
-    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.queueCreateInfoCount = 1;
-    device_create_info.pQueueCreateInfos = &queue_create_info;
-
-    XrVulkanDeviceCreateInfoKHR xr_vk_device_create_info{};
-    xr_vk_device_create_info.type = XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR;
-    xr_vk_device_create_info.next = nullptr;
-    xr_vk_device_create_info.systemId = system_id;
-    xr_vk_device_create_info.createFlags = 0;
-    xr_vk_device_create_info.pfnGetInstanceProcAddr = ::vkGetInstanceProcAddr;
-    xr_vk_device_create_info.vulkanPhysicalDevice = xr_physical_device;
-    xr_vk_device_create_info.vulkanCreateInfo = &device_create_info;
-    xr_vk_device_create_info.vulkanAllocator = nullptr;
-
-    VkDevice xr_vk_device = VK_NULL_HANDLE;
-    vk_result = VK_SUCCESS;
-    result = xr_create_vulkan_device(instance,
-                                     &xr_vk_device_create_info,
-                                     &xr_vk_device,
-                                     &vk_result);
-    if (result != XR_SUCCESS || vk_result != VK_SUCCESS || xr_vk_device == VK_NULL_HANDLE) {
-        LOGW("OpenXR xrCreateVulkanDeviceKHR failed: result=%d vk_result=%d device=%p",
-             result,
-             vk_result,
-             static_cast<void*>(xr_vk_device));
-        vkDestroyInstance(xr_vk_instance, nullptr);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
-        return false;
-    }
-    LOGI("OpenXR xrCreateVulkanDeviceKHR success: device=%p", static_cast<void*>(xr_vk_device));
-
-    XrGraphicsBindingVulkanKHR graphics_binding{};
-    graphics_binding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR;
-    graphics_binding.next = nullptr;
-    graphics_binding.instance = xr_vk_instance;
-    graphics_binding.physicalDevice = xr_physical_device;
-    graphics_binding.device = xr_vk_device;
-    graphics_binding.queueFamilyIndex = xr_queue_family_index;
-    graphics_binding.queueIndex = 0;
 
     XrSessionCreateInfo session_info{};
     session_info.type = XR_TYPE_SESSION_CREATE_INFO;
-    session_info.next = &graphics_binding;
+    session_info.next = graphics_binding;
     session_info.createFlags = 0;
-    session_info.systemId = system_id;
+    session_info.systemId = static_cast<XrSystemId>(system_id_);
 
     XrSession session = nullptr;
-    result = xr_create_session(instance, &session_info, &session);
+    XrResult result = xr_create_session(static_cast<XrInstance>(instance_handle_), &session_info, &session);
     if (result != XR_SUCCESS || session == nullptr) {
         LOGW("OpenXR xrCreateSession failed: result=%d", result);
-        vkDestroyDevice(xr_vk_device, nullptr);
-        vkDestroyInstance(xr_vk_instance, nullptr);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
-        }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
         return false;
     }
     LOGI("OpenXR xrCreateSession success: session=%p", static_cast<void*>(session));
@@ -562,76 +407,63 @@ bool OpenXRRuntime::ProbeOpenXRLoader(vkfw::VkContext& ctx)
     result = xr_create_reference_space(session, &local_space_info, &local_space);
     if (result != XR_SUCCESS || local_space == nullptr) {
         LOGW("OpenXR xrCreateReferenceSpace(LOCAL) failed: result=%d", result);
-        xr_destroy_session(session);
-        vkDestroyDevice(xr_vk_device, nullptr);
-        vkDestroyInstance(xr_vk_instance, nullptr);
-        if (xr_destroy_instance != nullptr) {
-            xr_destroy_instance(instance);
+        auto xr_destroy_session =
+            LoadOpenXRCommand<PFN_xrDestroySession>(get_proc_addr,
+                                                    static_cast<XrInstance>(instance_handle_),
+                                                    "xrDestroySession");
+        if (xr_destroy_session != nullptr) {
+            xr_destroy_session(session);
         }
-        dlclose(loader_handle_);
-        loader_handle_ = nullptr;
         return false;
     }
-    LOGI("OpenXR xrCreateReferenceSpace(LOCAL) success: space=%p", static_cast<void*>(local_space));
 
-    instance_handle_ = instance;
     session_handle_ = session;
     local_space_handle_ = local_space;
-    xr_vulkan_instance_ = xr_vk_instance;
-    xr_vulkan_device_ = xr_vk_device;
-    system_id_ = system_id;
-    LOGI("OpenXR probe success: instance=%p system_id=%llu session=%p local_space=%p",
-         instance_handle_,
-         static_cast<unsigned long long>(system_id_),
-         session_handle_,
-         local_space_handle_);
+    LOGI("OpenXR xrCreateReferenceSpace(LOCAL) success: space=%p", static_cast<void*>(local_space));
     return true;
 #else
-    LOGW("OpenXR probe unavailable on this platform");
+    (void)graphics_binding;
     return false;
 #endif
 }
 
-bool OpenXRRuntime::Initialize(vkfw::VkContext& ctx, OpenXRRuntimeConfig const& config)
+void OpenXRRuntime::DestroySession()
 {
-    enabled_ = config.enabled;
-    android_application_vm_ = config.android_application_vm;
-    android_application_context_ = config.android_application_context;
-    if (!enabled_) {
-        state_ = OpenXRRuntimeState::Disabled;
-        initialized_ = false;
-        frame_started_ = false;
-        LOGI("OpenXRRuntime disabled");
-        return true;
+#if defined(__ANDROID__)
+    if (instance_handle_ == nullptr || get_instance_proc_addr_ == nullptr) {
+        session_handle_ = nullptr;
+        local_space_handle_ = nullptr;
+        return;
     }
 
-    if (!ctx.IsInitialized()) {
-        LOGW("OpenXRRuntime requested but VkContext is not initialized");
-        return false;
+    auto get_proc_addr = reinterpret_cast<PFN_xrGetInstanceProcAddr>(get_instance_proc_addr_);
+    if (local_space_handle_ != nullptr) {
+        auto xr_destroy_space =
+            LoadOpenXRCommand<PFN_xrDestroySpace>(get_proc_addr,
+                                                  static_cast<XrInstance>(instance_handle_),
+                                                  "xrDestroySpace");
+        if (xr_destroy_space != nullptr) {
+            xr_destroy_space(static_cast<XrSpace>(local_space_handle_));
+        }
     }
-
-    if (!ProbeOpenXRLoader(ctx)) {
-        LOGW("OpenXRRuntime requested but no usable OpenXR runtime was found; continuing without XR rendering");
-        enabled_ = false;
-        initialized_ = false;
-        frame_started_ = false;
-        state_ = OpenXRRuntimeState::Disabled;
-        return true;
+    if (session_handle_ != nullptr) {
+        auto xr_destroy_session =
+            LoadOpenXRCommand<PFN_xrDestroySession>(get_proc_addr,
+                                                    static_cast<XrInstance>(instance_handle_),
+                                                    "xrDestroySession");
+        if (xr_destroy_session != nullptr) {
+            xr_destroy_session(static_cast<XrSession>(session_handle_));
+        }
     }
-
-    initialized_ = true;
-    frame_started_ = false;
-    logged_stub_frame_ = false;
-    state_ = OpenXRRuntimeState::Ready;
-    LOGI("OpenXRRuntime initialized: state=%s system_id=%llu",
-         ToString(state_),
-         static_cast<unsigned long long>(system_id_));
-    return true;
+#endif
+    local_space_handle_ = nullptr;
+    session_handle_ = nullptr;
+    session_state_ = XR_SESSION_STATE_UNKNOWN;
+    session_running_ = false;
 }
 
-void OpenXRRuntime::Shutdown(vkfw::VkContext* ctx)
+void OpenXRRuntime::Shutdown()
 {
-    (void)ctx;
     if (!enabled_ && !initialized_) {
         return;
     }
@@ -642,30 +474,7 @@ void OpenXRRuntime::Shutdown(vkfw::VkContext* ctx)
         auto get_proc_addr =
             reinterpret_cast<PFN_xrGetInstanceProcAddr>(dlsym(loader_handle_, "xrGetInstanceProcAddr"));
         if (get_proc_addr != nullptr) {
-            if (local_space_handle_ != nullptr) {
-                auto xr_destroy_space =
-                    LoadOpenXRCommand<PFN_xrDestroySpace>(get_proc_addr,
-                                                          static_cast<XrInstance>(instance_handle_),
-                                                          "xrDestroySpace");
-                if (xr_destroy_space != nullptr) {
-                    xr_destroy_space(static_cast<XrSpace>(local_space_handle_));
-                }
-            }
-            if (session_handle_ != nullptr) {
-                auto xr_destroy_session =
-                    LoadOpenXRCommand<PFN_xrDestroySession>(get_proc_addr,
-                                                            static_cast<XrInstance>(instance_handle_),
-                                                            "xrDestroySession");
-                if (xr_destroy_session != nullptr) {
-                    xr_destroy_session(static_cast<XrSession>(session_handle_));
-                }
-            }
-            if (xr_vulkan_device_ != nullptr) {
-                vkDestroyDevice(static_cast<VkDevice>(xr_vulkan_device_), nullptr);
-            }
-            if (xr_vulkan_instance_ != nullptr) {
-                vkDestroyInstance(static_cast<VkInstance>(xr_vulkan_instance_), nullptr);
-            }
+            DestroySession();
             auto xr_destroy_instance =
                 LoadOpenXRCommand<PFN_xrDestroyInstance>(get_proc_addr,
                                                          static_cast<XrInstance>(instance_handle_),
@@ -680,12 +489,13 @@ void OpenXRRuntime::Shutdown(vkfw::VkContext* ctx)
     }
 #endif
     loader_handle_ = nullptr;
+    get_instance_proc_addr_ = nullptr;
     instance_handle_ = nullptr;
     session_handle_ = nullptr;
     local_space_handle_ = nullptr;
-    xr_vulkan_instance_ = nullptr;
-    xr_vulkan_device_ = nullptr;
     system_id_ = 0;
+    session_state_ = 0;
+    session_running_ = false;
     initialized_ = false;
     frame_started_ = false;
     state_ = enabled_ ? OpenXRRuntimeState::Idle : OpenXRRuntimeState::Disabled;
@@ -697,12 +507,68 @@ void OpenXRRuntime::PollEvents()
         return;
     }
 
-    // Stub mode has no platform events yet. Keep this call site so the Android
-    // render loop already matches the future OpenXR session event flow.
+#if defined(__ANDROID__)
+    if (instance_handle_ == nullptr || get_instance_proc_addr_ == nullptr) {
+        return;
+    }
+
+    auto get_proc_addr = reinterpret_cast<PFN_xrGetInstanceProcAddr>(get_instance_proc_addr_);
+    auto xr_poll_event =
+        LoadOpenXRCommand<PFN_xrPollEvent>(get_proc_addr,
+                                           static_cast<XrInstance>(instance_handle_),
+                                           "xrPollEvent");
+    if (xr_poll_event == nullptr) {
+        return;
+    }
+
+    for (;;) {
+        XrEventDataBuffer event_data{};
+        event_data.type = XR_TYPE_EVENT_DATA_BUFFER;
+        XrResult const result = xr_poll_event(static_cast<XrInstance>(instance_handle_), &event_data);
+        if (result == XR_EVENT_UNAVAILABLE) {
+            break;
+        }
+        if (result != XR_SUCCESS) {
+            LOGW("OpenXR xrPollEvent failed: result=%d", result);
+            break;
+        }
+
+        if (event_data.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
+            auto const* session_event =
+                reinterpret_cast<XrEventDataSessionStateChanged const*>(&event_data);
+            session_state_ = session_event->state;
+            LOGI("OpenXR session state changed: %s(%d) session=%p",
+                 ToString(session_event->state),
+                 session_event->state,
+                 static_cast<void*>(session_event->session));
+
+            switch (session_event->state) {
+            case XR_SESSION_STATE_READY:
+                state_ = OpenXRRuntimeState::Ready;
+                break;
+            case XR_SESSION_STATE_SYNCHRONIZED:
+            case XR_SESSION_STATE_VISIBLE:
+            case XR_SESSION_STATE_FOCUSED:
+                state_ = OpenXRRuntimeState::Focused;
+                break;
+            case XR_SESSION_STATE_STOPPING:
+            case XR_SESSION_STATE_LOSS_PENDING:
+            case XR_SESSION_STATE_EXITING:
+                state_ = OpenXRRuntimeState::Stopping;
+                session_running_ = false;
+                break;
+            default:
+                state_ = OpenXRRuntimeState::Ready;
+                break;
+            }
+        }
+    }
+#else
     if (state_ == OpenXRRuntimeState::Ready) {
         state_ = OpenXRRuntimeState::Focused;
         LOGI("OpenXRRuntime stub session focused");
     }
+#endif
 }
 
 bool OpenXRRuntime::BeginFrame(core::FrameData const& frame)
@@ -728,6 +594,17 @@ void OpenXRRuntime::EndFrame()
     }
 
     frame_started_ = false;
+}
+
+void OpenXRRuntime::MarkSessionBegan() noexcept
+{
+    session_running_ = true;
+    state_ = OpenXRRuntimeState::Focused;
+}
+
+void OpenXRRuntime::MarkSessionEnded() noexcept
+{
+    session_running_ = false;
 }
 
 } // namespace ave::xr

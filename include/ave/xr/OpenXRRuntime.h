@@ -4,10 +4,6 @@
 
 #include <cstdint>
 
-namespace vkfw {
-class VkContext;
-}
-
 namespace ave::xr {
 
 enum class OpenXRRuntimeState : uint8_t {
@@ -29,33 +25,46 @@ struct OpenXRRuntimeConfig {
 // keeping the Android/runtime integration points stable.
 class OpenXRRuntime {
 public:
-    bool Initialize(vkfw::VkContext& ctx, OpenXRRuntimeConfig const& config);
-    void Shutdown(vkfw::VkContext* ctx);
+    bool Initialize(OpenXRRuntimeConfig const& config);
+    void Shutdown();
 
     void PollEvents();
     bool BeginFrame(core::FrameData const& frame);
     void EndFrame();
 
+    bool CreateSession(void const* graphics_binding);
+    void DestroySession();
+    bool IsSessionReadyToBegin() const noexcept { return session_state_ == 2 && !session_running_; }
+    bool IsSessionRunning() const noexcept { return session_running_; }
+    void MarkSessionBegan() noexcept;
+    void MarkSessionEnded() noexcept;
+
     bool IsEnabled() const noexcept { return enabled_; }
     bool IsInitialized() const noexcept { return initialized_; }
     OpenXRRuntimeState State() const noexcept { return state_; }
+    void* GetInstanceHandle() const noexcept { return instance_handle_; }
+    void* GetInstanceProcAddr() const noexcept { return get_instance_proc_addr_; }
+    void* GetSessionHandle() const noexcept { return session_handle_; }
+    void* GetLocalSpaceHandle() const noexcept { return local_space_handle_; }
+    uint64_t SystemId() const noexcept { return system_id_; }
 
 private:
-    bool ProbeOpenXRLoader(vkfw::VkContext& ctx);
+    bool ProbeOpenXRLoader();
 
     bool enabled_ = false;
     bool initialized_ = false;
     bool frame_started_ = false;
     bool logged_stub_frame_ = false;
     void* loader_handle_ = nullptr;
+    void* get_instance_proc_addr_ = nullptr;
     void* instance_handle_ = nullptr;
     void* session_handle_ = nullptr;
     void* local_space_handle_ = nullptr;
-    void* xr_vulkan_instance_ = nullptr;
-    void* xr_vulkan_device_ = nullptr;
     void* android_application_vm_ = nullptr;
     void* android_application_context_ = nullptr;
     uint64_t system_id_ = 0;
+    int32_t session_state_ = 0;
+    bool session_running_ = false;
     OpenXRRuntimeState state_ = OpenXRRuntimeState::Disabled;
 };
 
