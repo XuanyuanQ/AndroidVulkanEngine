@@ -1,13 +1,18 @@
 ﻿cmake_minimum_required(VERSION 3.20)
 
-project(AndroidVulkanEngineEvaluation LANGUAGES CXX)
+project(AndroidVulkanEngineEvaluation LANGUAGES C CXX)
 
 option(AVE_BUILD_EXAMPLES "Build evaluation examples" ON)
 
 find_package(Threads REQUIRED)
 find_package(Vulkan QUIET)
-find_package(glfw3 QUIET)
 find_package(JNI QUIET)
+
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "Build GLFW documentation" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build GLFW tests" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build GLFW examples" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "Generate GLFW install target" FORCE)
+add_subdirectory(external/glfw EXCLUDE_FROM_ALL)
 
 add_library(ave_engine STATIC
     src/core/Engine.cpp
@@ -46,6 +51,7 @@ target_include_directories(ave_engine
         "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/external/glm-0.9.9.5"
         "${CMAKE_CURRENT_SOURCE_DIR}/external/stb_image"
+        "${CMAKE_CURRENT_SOURCE_DIR}/external/openxr/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/runtime/android/cpp"
 )
 
@@ -68,9 +74,7 @@ target_link_libraries(ave_engine
 if (Vulkan_FOUND)
     target_compile_definitions(ave_engine PUBLIC AVE_HAS_VULKAN=1)
     target_link_libraries(ave_engine PUBLIC Vulkan::Vulkan)
-    if (glfw3_FOUND)
-        target_link_libraries(ave_engine PUBLIC glfw)
-    endif()
+    target_link_libraries(ave_engine PUBLIC glfw)
     target_sources(ave_engine PRIVATE
         src/rhi/core/VkBuffer.cpp
         src/rhi/core/VkCommandBuffer.cpp
@@ -90,7 +94,7 @@ else()
     target_compile_definitions(ave_engine PUBLIC AVE_HAS_VULKAN=0)
 endif()
 
-if (AVE_BUILD_EXAMPLES AND Vulkan_FOUND AND glfw3_FOUND)
+if (AVE_BUILD_EXAMPLES AND Vulkan_FOUND)
     add_executable(ave_preview
         examples/preview/main.cpp
         examples/preview/PreviewArgs.cpp
@@ -114,5 +118,5 @@ if (AVE_BUILD_EXAMPLES AND Vulkan_FOUND AND glfw3_FOUND)
         message(STATUS "ave_preview Java scripting disabled: JNI was not found")
     endif()
 elseif(AVE_BUILD_EXAMPLES)
-    message(STATUS "ave_preview skipped: Vulkan and glfw3 are required")
+    message(STATUS "ave_preview skipped: Vulkan is required")
 endif()

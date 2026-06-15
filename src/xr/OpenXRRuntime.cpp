@@ -5,6 +5,8 @@
 
 #if defined(__ANDROID__)
 #include <dlfcn.h>
+#else
+#include <openxr/openxr.h>
 #endif
 
 #include <cstring>
