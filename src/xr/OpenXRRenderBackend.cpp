@@ -1,6 +1,7 @@
 #include "ave/xr/OpenXRRenderBackend.h"
 
 #include "ave/xr/OpenXRRuntime.h"
+#include "ave/xr/OpenXRActionSystem.h"
 #include "LogUtil.h"
 #include "VkContext.hpp"
 
@@ -388,12 +389,37 @@ int64_t ChooseSwapchainFormat(std::vector<int64_t> const& formats)
     return formats.empty() ? 0 : formats.front();
 }
 
-glm::mat4 BuildViewMatrix(XrPosef const& pose)
+float ApplyDeadzone(float value, float deadzone)
 {
-    glm::quat const orientation{pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z};
-    glm::vec3 const position{pose.position.x, pose.position.y, pose.position.z};
-    glm::mat4 const world = glm::translate(glm::mat4{1.0f}, position) * glm::mat4_cast(orientation);
+    return std::abs(value) < deadzone ? 0.0f : value;
+}
+
+glm::quat YawRotation(float yaw_radians)
+{
+    return glm::angleAxis(yaw_radians, glm::vec3{0.0f, 1.0f, 0.0f});
+}
+
+float ExtractYawRadians(glm::quat const& orientation)
+{
+    glm::vec3 const forward = orientation * glm::vec3{0.0f, 0.0f, -1.0f};
+    return std::atan2(-forward.x, -forward.z);
+}
+
+glm::mat4 BuildViewMatrix(glm::vec3 const& world_position, glm::quat const& world_orientation)
+{
+    glm::mat4 const world =
+        glm::translate(glm::mat4{1.0f}, world_position) * glm::mat4_cast(world_orientation);
     return glm::inverse(world);
+}
+
+glm::vec3 PosePosition(XrPosef const& pose)
+{
+    return {pose.position.x, pose.position.y, pose.position.z};
+}
+
+glm::quat PoseOrientation(XrPosef const& pose)
+{
+    return {pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z};
 }
 
 glm::mat4 BuildProjectionMatrix(XrFovf const& fov, float near_plane, float far_plane)
@@ -975,6 +1001,10 @@ void OpenXRRenderBackend::ShutdownGraphics(OpenXRRuntime& runtime)
     xr_frame_begun_ = false;
     xr_frame_should_render_ = false;
     xr_predicted_display_time_ = 0;
+    xr_origin_position_ = glm::vec3{0.0f, 0.0f, 0.0f};
+    xr_origin_yaw_radians_ = 0.0f;
+    xr_last_input_time_ = 0;
+    xr_locomotion_log_counter_ = 0;
     xr_acquired_image_index_ = 0;
 }
 
@@ -1066,6 +1096,7 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
         }
 
         xr_predicted_display_time_ = frame_state.predictedDisplayTime;
+        runtime_->SyncActionsAndLog(frame_state.predictedDisplayTime);
         xr_frame_should_render_ = frame_state.shouldRender != 0;
         xr_frame_begun_ = true;
         if (!xr_frame_should_render_) {
@@ -1099,6 +1130,47 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
             frame_started_ = true;
             out_request = {};
             return render::FrameGraphRenderResult::Success;
+        }
+
+        float dt_seconds = 1.0f / 72.0f;
+        if (xr_last_input_time_ != 0 && frame_state.predictedDisplayTime > xr_last_input_time_) {
+            dt_seconds = static_cast<float>(
+                static_cast<double>(frame_state.predictedDisplayTime - xr_last_input_time_) * 0.000000001);
+            dt_seconds = std::clamp(dt_seconds, 0.0f, 0.1f);
+        }
+        xr_last_input_time_ = frame_state.predictedDisplayTime;
+
+        XRInputState const& input = runtime_->InputState();
+        glm::vec2 move_stick{
+            ApplyDeadzone(input.left.thumbstick.x, 0.18f),
+            ApplyDeadzone(input.left.thumbstick.y, 0.18f),
+        };
+        glm::vec2 turn_stick{
+            ApplyDeadzone(input.right.thumbstick.x, 0.22f),
+            ApplyDeadzone(input.right.thumbstick.y, 0.22f),
+        };
+
+        glm::quat const hmd_local_orientation = PoseOrientation(views[0].pose);
+        float const world_yaw = xr_origin_yaw_radians_ + ExtractYawRadians(hmd_local_orientation);
+        glm::quat const move_yaw = YawRotation(world_yaw);
+        glm::vec3 const right = move_yaw * glm::vec3{1.0f, 0.0f, 0.0f};
+        glm::vec3 const forward = move_yaw * glm::vec3{0.0f, 0.0f, -1.0f};
+        float constexpr move_speed_mps = 2.0f;
+        float constexpr turn_speed_rps = 1.8f;
+        xr_origin_position_ += (right * move_stick.x + forward * move_stick.y) * move_speed_mps * dt_seconds;
+        xr_origin_yaw_radians_ -= turn_stick.x * turn_speed_rps * dt_seconds;
+
+        ++xr_locomotion_log_counter_;
+        if ((xr_locomotion_log_counter_ % 120u) == 1u) {
+            LOGI("XROrigin locomotion pos=(%.2f, %.2f, %.2f) yaw=%.2f left_stick=(%.2f, %.2f) right_stick=(%.2f, %.2f)",
+                 xr_origin_position_.x,
+                 xr_origin_position_.y,
+                 xr_origin_position_.z,
+                 xr_origin_yaw_radians_,
+                 move_stick.x,
+                 move_stick.y,
+                 turn_stick.x,
+                 turn_stick.y);
         }
 
         XrSwapchainImageAcquireInfo acquire_info{};
@@ -1171,17 +1243,20 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
         xr_frame_data_ = *next_targets_.frame;
         xr_frame_data_.views.clear();
         xr_frame_data_.views.reserve(2);
+        glm::quat const origin_rotation = YawRotation(xr_origin_yaw_radians_);
         for (uint32_t eye = 0; eye < 2; ++eye) {
             core::FrameViewData frame_view{};
             frame_view.camera_object_id = eye == 0 ? "xr_left_eye" : "xr_right_eye";
             frame_view.near_plane = next_targets_.frame->views.empty() ? 0.1f : next_targets_.frame->views[0].near_plane;
             frame_view.far_plane = next_targets_.frame->views.empty() ? 1000.0f : next_targets_.frame->views[0].far_plane;
-            frame_view.view = BuildViewMatrix(views[eye].pose);
+            glm::vec3 const local_position = PosePosition(views[eye].pose);
+            glm::quat const local_orientation = PoseOrientation(views[eye].pose);
+            glm::vec3 const world_position = xr_origin_position_ + origin_rotation * local_position;
+            glm::quat const world_orientation = origin_rotation * local_orientation;
+            frame_view.view = BuildViewMatrix(world_position, world_orientation);
             frame_view.projection = BuildProjectionMatrix(views[eye].fov, frame_view.near_plane, frame_view.far_plane);
             frame_view.view_projection = frame_view.projection * frame_view.view;
-            frame_view.world_position = glm::vec3(views[eye].pose.position.x,
-                                                  views[eye].pose.position.y,
-                                                  views[eye].pose.position.z);
+            frame_view.world_position = world_position;
             xr_frame_data_.views.push_back(frame_view);
         }
 

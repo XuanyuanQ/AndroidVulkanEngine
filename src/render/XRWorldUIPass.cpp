@@ -3,9 +3,98 @@
 #include "ave/render/RenderPassCommon.h"
 
 namespace ave::render {
+namespace {
 
+struct UiDrawRange {
+    uint32_t first_index = 0;
+    uint32_t index_count = 0;
+    uint32_t texture_index = 0;
+};
 
-void UIPass::Reset(vkfw::VkContext* ctx)
+glm::vec3 ExtractCameraRight(glm::mat4 const& camera_world)
+{
+    return glm::normalize(glm::vec3{camera_world[0]});
+}
+
+glm::vec3 ExtractCameraUp(glm::mat4 const& camera_world)
+{
+    return glm::normalize(glm::vec3{camera_world[1]});
+}
+
+glm::vec3 ExtractCameraForward(glm::mat4 const& camera_world)
+{
+    return glm::normalize(-glm::vec3{camera_world[2]});
+}
+
+glm::vec3 ComputeStereoCenter(core::FrameData const& frame, core::FrameViewData const& fallback_view)
+{
+    if (frame.views.empty()) {
+        return fallback_view.world_position;
+    }
+
+    glm::vec3 center{0.0f};
+    for (auto const& view : frame.views) {
+        center += view.world_position;
+    }
+    return center / static_cast<float>(frame.views.size());
+}
+
+core::FrameViewData const& StereoBasisView(core::FrameData const& frame, core::FrameViewData const& fallback_view)
+{
+    return frame.views.empty() ? fallback_view : frame.views.front();
+}
+
+bool AppendXRWorldUiQuad(std::vector<UiVertex>& vertices,
+                         std::vector<uint32_t>& indices,
+                         core::FrameUiData const& item,
+                         uint32_t texture_index,
+                         float ui_aspect_ratio,
+                         core::FrameViewData const& frame_view,
+                         core::FrameViewData const& basis_view,
+                         glm::vec3 const& stereo_center)
+{
+    std::vector<UiVertex> screen_vertices;
+    std::vector<uint32_t> screen_indices;
+    detail::AppendUiQuad(screen_vertices, screen_indices, item, texture_index, ui_aspect_ratio);
+    if (screen_vertices.size() != 4 || screen_indices.size() != 6) {
+        return false;
+    }
+
+    glm::mat4 const camera_world = glm::inverse(basis_view.view);
+    glm::vec3 const right = ExtractCameraRight(camera_world);
+    glm::vec3 const up = ExtractCameraUp(camera_world);
+    glm::vec3 const forward = ExtractCameraForward(camera_world);
+
+    float constexpr panel_distance = 2.0f;
+    float constexpr panel_half_height = 0.55f;
+    float const panel_half_width = panel_half_height / std::max(ui_aspect_ratio, 0.01f);
+    glm::vec3 const panel_center = stereo_center + forward * panel_distance - up * 0.05f;
+
+    uint32_t const base_vertex = static_cast<uint32_t>(vertices.size());
+    for (UiVertex vertex : screen_vertices) {
+        glm::vec2 const panel_position{vertex.position.x, -vertex.position.y};
+        glm::vec3 const world_position =
+            panel_center +
+            right * (panel_position.x * panel_half_width) +
+            up * (panel_position.y * panel_half_height);
+
+        glm::vec4 const clip = frame_view.view_projection * glm::vec4{world_position, 1.0f};
+        if (clip.w <= 0.0001f) {
+            return false;
+        }
+        vertex.position = glm::vec2{clip.x, clip.y} / clip.w;
+        vertices.push_back(vertex);
+    }
+
+    for (uint32_t index : screen_indices) {
+        indices.push_back(base_vertex + index);
+    }
+    return true;
+}
+
+} // namespace
+
+void XRWorldUIPass::Reset(vkfw::VkContext* ctx)
 {
     texture_descriptor_sets_.clear();
     ui_shader_id_ = 0;
@@ -28,7 +117,7 @@ void UIPass::Reset(vkfw::VkContext* ctx)
     ui_index_buffers_.clear();
 }
 
-PassDataFilter UIPass::GetDataFilter() const
+PassDataFilter XRWorldUIPass::GetDataFilter() const
 {
     PassDataFilter filter{};
     filter.pass_bit = core::RenderPassBit::UI;
@@ -36,15 +125,11 @@ PassDataFilter UIPass::GetDataFilter() const
     return filter;
 }
 
-void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
+void XRWorldUIPass::Execute(RenderPassContext const& context, PassExecutionView const& view)
 {
     using namespace detail;
 
-    if (context.view_count > 1) {
-        return;
-    }
-
-    if (view.ui_items.empty()) {
+    if (context.view_count <= 1 || view.ui_items.empty()) {
         return;
     }
 
@@ -53,7 +138,16 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         context.color_target.IsValid() &&
         context.command_buffer != vk::CommandBuffer{} &&
         context.pipelines != nullptr &&
-        context.resources != nullptr;
+        context.resources != nullptr &&
+        context.frame != nullptr;
+    if (!has_vk) {
+        return;
+    }
+
+    core::FrameViewData const* frame_view = CurrentFrameView(context);
+    if (frame_view == nullptr) {
+        return;
+    }
 
     uint32_t const image_count = context.frame_resource_count != 0 ? context.frame_resource_count : 1u;
     uint32_t const buf_idx = context.frame_resource_index;
@@ -70,32 +164,15 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     auto& texture_mgr = context.resources->GetTextureManager();
     auto& desc_cache = context.pipelines->GetDescriptorSetLayoutCache();
     auto& desc_alloc = context.pipelines->GetDescriptorAllocator();
-    std::vector<ave::render::UiVertex> vertices;
-    std::vector<uint32_t> indices;
-    struct UiDrawRange {
-        uint32_t first_index = 0;
-        uint32_t index_count = 0;
-        uint32_t texture_index = 0;
-    };
-    std::vector<UiDrawRange> draw_ranges;
-    vertices.reserve(view.ui_items.size() * 4);
-    indices.reserve(view.ui_items.size() * 6);
-    draw_ranges.reserve(view.ui_items.size());
-
-    float const width = has_vk ? static_cast<float>(context.color_target.extent.width) : 1080.0f;
-    float const height = has_vk ? static_cast<float>(context.color_target.extent.height) : 1920.0f;
-    float const aspect_ratio = (width > 0.0f) ? (height / width) : (9.0f / 16.0f);
 
     std::vector<std::string> unique_texture_paths;
-    if (has_vk) {
-        for (auto const* item : view.ui_items) {
-            if (!item || !item->visible || item->texture_id.empty()) {
-                continue;
-            }
-            if (std::find(unique_texture_paths.begin(), unique_texture_paths.end(), item->texture_id) == unique_texture_paths.end()) {
-                if (unique_texture_paths.size() < 15) {
-                    unique_texture_paths.push_back(item->texture_id);
-                }
+    for (auto const* item : view.ui_items) {
+        if (!item || !item->visible || item->texture_id.empty()) {
+            continue;
+        }
+        if (std::find(unique_texture_paths.begin(), unique_texture_paths.end(), item->texture_id) == unique_texture_paths.end()) {
+            if (unique_texture_paths.size() < 15) {
+                unique_texture_paths.push_back(item->texture_id);
             }
         }
     }
@@ -112,6 +189,19 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         texture_runtime_ids[i + 1] = runtime_id;
     }
 
+    float const width = static_cast<float>(context.color_target.extent.width);
+    float const height = static_cast<float>(context.color_target.extent.height);
+    float const ui_aspect_ratio = (width > 0.0f) ? (height / width) : 1.0f;
+    glm::vec3 const stereo_center = ComputeStereoCenter(*context.frame, *frame_view);
+    core::FrameViewData const& basis_view = StereoBasisView(*context.frame, *frame_view);
+
+    std::vector<UiVertex> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<UiDrawRange> draw_ranges;
+    vertices.reserve(view.ui_items.size() * 4);
+    indices.reserve(view.ui_items.size() * 6);
+    draw_ranges.reserve(view.ui_items.size());
+
     for (auto const* item : view.ui_items) {
         if (!item || !item->visible) {
             continue;
@@ -126,7 +216,16 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         }
 
         uint32_t const first_index = static_cast<uint32_t>(indices.size());
-        AppendUiQuad(vertices, indices, *item, texture_index, aspect_ratio);
+        if (!AppendXRWorldUiQuad(vertices,
+                                 indices,
+                                 *item,
+                                 texture_index,
+                                 ui_aspect_ratio,
+                                 *frame_view,
+                                 basis_view,
+                                 stereo_center)) {
+            continue;
+        }
         draw_ranges.push_back(UiDrawRange{
             .first_index = first_index,
             .index_count = static_cast<uint32_t>(indices.size()) - first_index,
@@ -134,7 +233,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
         });
     }
 
-    if (!has_vk || vertices.empty() || indices.empty()) {
+    if (vertices.empty() || indices.empty()) {
         return;
     }
 
@@ -142,12 +241,12 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     if (ui_shader_id_ == 0) {
         ui_shader_id_ = shader_mgr.LoadShader("compiled_shaders/ui_textured");
         if (ui_shader_id_ == 0) {
-            LOGE("UIPass failed to load ui_textured shader");
+            LOGE("XRWorldUIPass failed to load ui_textured shader");
             return;
         }
     }
 
-    uint32_t const vertex_bytes = static_cast<uint32_t>(vertices.size() * sizeof(ave::render::UiVertex));
+    uint32_t const vertex_bytes = static_cast<uint32_t>(vertices.size() * sizeof(UiVertex));
     uint32_t const index_bytes = static_cast<uint32_t>(indices.size() * sizeof(uint32_t));
 
     if (!ui_vertex_buffers_[buf_idx].IsInitialized() || ui_vertex_buffers_[buf_idx].Size() < vertex_bytes) {
@@ -159,7 +258,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                      .usage = vkfw::BufferUsage::Vertex,
                                                      .mappable = true,
                                                  })) {
-            LOGE("UIPass failed to create vertex buffer");
+            LOGE("XRWorldUIPass failed to create vertex buffer");
             return;
         }
     }
@@ -172,7 +271,7 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
                                                     .usage = vkfw::BufferUsage::Index,
                                                     .mappable = true,
                                                 })) {
-            LOGE("UIPass failed to create index buffer");
+            LOGE("XRWorldUIPass failed to create index buffer");
             return;
         }
     }
@@ -181,17 +280,14 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     ui_index_buffers_[buf_idx].UpdateData(*context.vk, indices.data(), index_bytes);
 
     vk::ClearValue clear{};
-    clear.color.float32[0] = 0.0f;
-    clear.color.float32[1] = 0.0f;
-    clear.color.float32[2] = 0.0f;
     clear.color.float32[3] = 0.0f;
     if (!BeginRenderTargetRendering(context, clear, false)) {
-        LOGE("UIPass failed to begin rendering");
+        LOGE("XRWorldUIPass failed to begin rendering");
         return;
     }
 
     ave::resource::MeshRuntime ui_mesh{};
-    ui_mesh.vertex_stride = sizeof(ave::render::UiVertex);
+    ui_mesh.vertex_stride = sizeof(UiVertex);
 
     PipelineKey key = MakePipelineKey(ui_shader_id_, ui_mesh);
     key.vertex_layout_id = 2;
@@ -201,16 +297,16 @@ void UIPass::Execute(RenderPassContext const& context, PassExecutionView const& 
     key.viewport_width = context.color_target.extent.width;
     key.viewport_height = context.color_target.extent.height;
 
-    vk::RenderPass const ui_compatibility_render_pass =
+    vk::RenderPass const compatibility_render_pass =
         context.color_target.compatibility_load_render_pass != vk::RenderPass{}
             ? context.color_target.compatibility_load_render_pass
             : context.color_target.compatibility_render_pass;
     uint32_t const pipeline_id =
-        context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, ui_compatibility_render_pass);
+        context.pipelines->GetPipelineCache().GetOrCreatePipeline(key, compatibility_render_pass);
     auto const* pipeline = context.pipelines->GetPipelineCache().GetPipeline(pipeline_id);
     if (!pipeline) {
         EndSwapchainRendering(context);
-        LOGE("UIPass failed to create pipeline");
+        LOGE("XRWorldUIPass failed to create pipeline");
         return;
     }
 

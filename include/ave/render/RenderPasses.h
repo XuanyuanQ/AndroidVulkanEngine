@@ -146,6 +146,21 @@ private:
     uint32_t ui_shader_id_ = 0;
 };
 
+class XRWorldUIPass final : public RenderPass {
+public:
+    std::string_view Name() const override { return "XRWorldUIPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    std::unordered_map<uint32_t, uint32_t> texture_descriptor_sets_{};
+    std::vector<vkfw::VkBuffer> ui_vertex_buffers_{};
+    std::vector<vkfw::VkBuffer> ui_index_buffers_{};
+    vkfw::VkTexture fallback_white_texture_{};
+    uint32_t ui_shader_id_ = 0;
+};
+
 class ToneMappingPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ToneMappingPass"; }

@@ -35,10 +35,12 @@ add_library(ave_engine STATIC
     src/render/PBRPass.cpp
     src/render/ComputePass.cpp
     src/render/UIPass.cpp
+    src/render/XRWorldUIPass.cpp
     src/render/ToneMappingPass.cpp
     src/render/PassDataView.cpp
     src/render/PipelineSystem.cpp
     src/render/AndroidSurfaceRenderBackend.cpp
+    src/xr/OpenXRActionSystem.cpp
     src/xr/OpenXRRenderBackend.cpp
     src/xr/OpenXRRuntime.cpp
     # src/rhi/VulkanDevice.cpp

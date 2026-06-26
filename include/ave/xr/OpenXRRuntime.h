@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ave/core/FrameData.h"
+#include "ave/xr/OpenXRActionSystem.h"
 
 #include <cstdint>
 
@@ -47,6 +48,8 @@ public:
     void* GetSessionHandle() const noexcept { return session_handle_; }
     void* GetLocalSpaceHandle() const noexcept { return local_space_handle_; }
     uint64_t SystemId() const noexcept { return system_id_; }
+    void SyncActionsAndLog(int64_t predicted_display_time);
+    XRInputState const& InputState() const noexcept { return action_system_.State(); }
 
 private:
     bool ProbeOpenXRLoader();
@@ -65,6 +68,7 @@ private:
     uint64_t system_id_ = 0;
     int32_t session_state_ = 0;
     bool session_running_ = false;
+    OpenXRActionSystem action_system_{};
     OpenXRRuntimeState state_ = OpenXRRuntimeState::Disabled;
 };
 

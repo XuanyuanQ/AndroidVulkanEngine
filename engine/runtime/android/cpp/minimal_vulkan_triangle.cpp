@@ -3,6 +3,7 @@
 #include "minimal_vulkan_triangle.h"
 
 #include "ave/project/XmlSceneLoader.h"
+#include "ave/render/AndroidSurfaceRenderBackend.h"
 #include "ave/render/RenderPasses.h"
 #include "ave/render/RenderPassCommon.h"
 #include "ave/resource/ResourceSystem.h"
@@ -659,17 +660,25 @@ void MinimalVulkanTriangle::drawFrame()
                 targets.frame = &frame_data_;
                 targets.vk = &ctx_;
                 openxr_render_backend_.SetNextFrameTargets(std::move(targets));
-                ave::render::RenderFrameRequest xr_request{};
-                auto const xr_begin_result = openxr_render_backend_.BeginFrame(xr_request);
-                if (xr_begin_result == ave::render::FrameGraphRenderResult::Success) {
-                    render_result = renderer_.RenderFrameGraphToTargets(xr_request);
-                    render_result = openxr_render_backend_.EndFrame(render_result);
+                render_result = renderer_.RenderFrame(openxr_render_backend_);
+                if (render_result == ave::render::FrameGraphRenderResult::Success) {
                     xr_frame_rendered = true;
                 }
             }
             if (!xr_frame_rendered) {
-                render_result =
-                    renderer_.RenderFrameGraphFrame(frame_data_, ctx_, swapchainWrap_, sync_, sync_frame_index_);
+                if (auto* surface_resources = renderer_.GetAndroidSurfaceRenderResources()) {
+                    ave::render::AndroidSurfaceRenderBackend android_backend{
+                        *surface_resources,
+                        frame_data_,
+                        ctx_,
+                        swapchainWrap_,
+                        sync_,
+                        sync_frame_index_,
+                    };
+                    render_result = renderer_.RenderFrame(android_backend);
+                } else {
+                    render_result = ave::render::FrameGraphRenderResult::Skipped;
+                }
             }
             if (render_result == ave::render::FrameGraphRenderResult::SwapchainOutOfDate) {
                 std::lock_guard<std::mutex> lock(m_surface_mutex);
@@ -872,6 +881,7 @@ bool MinimalVulkanTriangle::initializeSurfaceResources()
         renderer_.Graph().AddPass(std::make_unique<ave::render::DepthPrepass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::SkyboxPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::PBRPass>());
+        renderer_.Graph().AddPass(std::make_unique<ave::render::XRWorldUIPass>());
         renderer_.Graph().AddPass(std::make_unique<ave::render::UIPass>());
     }
     if (!xr_graphics_ready && !renderer_.InitializeFrameGraphBackend(ctx_, swapchainWrap_, sync_)) {

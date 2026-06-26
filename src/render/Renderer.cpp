@@ -20,7 +20,7 @@ void LogFrameGraphSkipReason(std::string const& reason)
         return;
     }
     last_reason = reason;
-    LOGW("RenderFrameGraphFrame graph execution skipped: %s", reason.c_str());
+    LOGW("RenderFrame graph execution skipped: %s", reason.c_str());
 }
 
 } // namespace
@@ -257,27 +257,18 @@ void Renderer::ShutdownFrameGraphBackend()
     }
 }
 
-FrameGraphRenderResult Renderer::RenderFrameGraphFrame(core::FrameData const& frame,
-                                                       vkfw::VkContext& ctx,
-                                                       vkfw::VkSwapchain& swapchain,
-                                                       vkfw::VkFrameSync& sync,
-                                                       uint32_t& frame_index)
+FrameGraphRenderResult Renderer::RenderFrame(RenderBackend& backend)
 {
-    if (impl_ == nullptr || !impl_->surface_resources.framegraph_command_buffers.IsInitialized()) {
-        return FrameGraphRenderResult::Skipped;
-    }
-
-    // Ensure context is wired (PipelineSystem/ResourceSystem need this for Vk handles).
-    SetVkContext(&ctx);
-
-    AndroidSurfaceRenderBackend backend{impl_->surface_resources, frame, ctx, swapchain, sync, frame_index};
     RenderFrameRequest request{};
     FrameGraphRenderResult const begin_result = backend.BeginFrame(request);
     if (begin_result != FrameGraphRenderResult::Success) {
         return begin_result;
     }
 
-    FrameGraphRenderResult render_result = RenderFrameGraphToTargets(request);
+    FrameGraphRenderResult render_result = FrameGraphRenderResult::Success;
+    if (!request.views.empty()) {
+        render_result = RenderFrameGraphToTargets(request);
+    }
     return backend.EndFrame(render_result);
 }
 
@@ -330,6 +321,14 @@ FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest co
     }
 
     return FrameGraphRenderResult::Success;
+}
+
+AndroidSurfaceRenderResources* Renderer::GetAndroidSurfaceRenderResources()
+{
+    if (impl_ == nullptr || !impl_->surface_resources.framegraph_command_buffers.IsInitialized()) {
+        return nullptr;
+    }
+    return &impl_->surface_resources;
 }
 
 FrameGraph& Renderer::Graph() noexcept

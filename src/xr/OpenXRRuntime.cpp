@@ -422,6 +422,9 @@ bool OpenXRRuntime::CreateSession(void const* graphics_binding)
     session_handle_ = session;
     local_space_handle_ = local_space;
     LOGI("OpenXR xrCreateReferenceSpace(LOCAL) success: space=%p", static_cast<void*>(local_space));
+    if (!action_system_.Initialize(*this)) {
+        LOGW("OpenXRActionSystem initialization failed; XR rendering will continue without controller input");
+    }
     return true;
 #else
     (void)graphics_binding;
@@ -439,6 +442,7 @@ void OpenXRRuntime::DestroySession()
     }
 
     auto get_proc_addr = reinterpret_cast<PFN_xrGetInstanceProcAddr>(get_instance_proc_addr_);
+    action_system_.Shutdown(*this);
     if (local_space_handle_ != nullptr) {
         auto xr_destroy_space =
             LoadOpenXRCommand<PFN_xrDestroySpace>(get_proc_addr,
@@ -596,6 +600,11 @@ void OpenXRRuntime::EndFrame()
     }
 
     frame_started_ = false;
+}
+
+void OpenXRRuntime::SyncActionsAndLog(int64_t predicted_display_time)
+{
+    action_system_.SyncAndLog(*this, predicted_display_time);
 }
 
 void OpenXRRuntime::MarkSessionBegan() noexcept

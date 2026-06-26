@@ -21,6 +21,8 @@ class VkFrameSync;
 
 namespace ave::render {
 
+struct AndroidSurfaceRenderResources;
+
 struct RendererConfig {
     bool enable_validation = true;
 };
@@ -35,18 +37,15 @@ public:
     void Render(core::FrameData const& frame, core::JobSystem& jobs);
 
     // FrameGraph Vulkan backend (ForwardOpaque bring-up).
+    FrameGraphRenderResult RenderFrame(RenderBackend& backend);
 
     bool InitializeFrameGraphBackend(vkfw::VkContext& ctx,
                                      vkfw::VkSwapchain& swapchain,
                                      vkfw::VkFrameSync& sync);
     void ResetFrameGraphRuntimeState(vkfw::VkContext& ctx);
     void ShutdownFrameGraphBackend();
-    FrameGraphRenderResult RenderFrameGraphFrame(core::FrameData const& frame,
-                                                 vkfw::VkContext& ctx,
-                                                 vkfw::VkSwapchain& swapchain,
-                                                 vkfw::VkFrameSync& sync,
-                                                 uint32_t& frame_index);
     FrameGraphRenderResult RenderFrameGraphToTargets(RenderFrameRequest const& request);
+    AndroidSurfaceRenderResources* GetAndroidSurfaceRenderResources();
 
     FrameGraph& Graph() noexcept;
     resource::ResourceSystem& GetResourceSystem() { return resource_system_; }

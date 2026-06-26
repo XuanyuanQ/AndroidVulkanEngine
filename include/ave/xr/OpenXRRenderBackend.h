@@ -3,6 +3,8 @@
 #include "ave/render/RenderBackend.h"
 #include "VkTexture.hpp"
 
+#include <glm/glm.hpp>
+
 #include <vector>
 
 namespace ave::xr {
@@ -53,6 +55,10 @@ private:
     bool xr_frame_should_render_ = false;
     int64_t xr_predicted_display_time_ = 0;
     uint32_t xr_acquired_image_index_ = 0;
+    glm::vec3 xr_origin_position_{0.0f, 0.0f, 0.0f};
+    float xr_origin_yaw_radians_ = 0.0f;
+    int64_t xr_last_input_time_ = 0;
+    uint64_t xr_locomotion_log_counter_ = 0;
     void* xr_vulkan_instance_ = nullptr;
     void* xr_vulkan_device_ = nullptr;
     void* xr_physical_device_ = nullptr;
