@@ -74,6 +74,10 @@ struct FrameLightData {
     float outer_angle = 35.0f;
 
     bool cast_shadows = false;
+    bool volumetric = false;
+    float volumetric_intensity = 0.65f;
+    float volumetric_density = 0.55f;
+    float volumetric_decay = 0.88f;
     uint32_t light_group = 0;
 };
 

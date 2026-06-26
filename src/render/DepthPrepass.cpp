@@ -144,7 +144,9 @@ void DepthPrepass::Execute(RenderPassContext const& context, PassExecutionView c
                                                 .height = height,
                                                 .mip_levels = 1,
                                                 .format = vkfw::TextureFormat::D32_SFLOAT,
-                                                .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                                .usage = static_cast<vkfw::TextureUsage>(
+                                                    static_cast<uint32_t>(vkfw::TextureUsage::DepthStencilAttachment) |
+                                                    static_cast<uint32_t>(vkfw::TextureUsage::Sampled)),
                                                 .mipmap = false,
         })) {
             LOGE("DepthPrepass failed to create depth texture");

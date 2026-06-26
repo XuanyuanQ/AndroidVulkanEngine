@@ -104,7 +104,8 @@
 
     <GameObject id="KeyLight" name="Key Light">
         <Transform position="0,6,6" rotation="0,0,0" scale="1,1,1" />
-        <PointLight color="1,1,1" intensity="15.0" range="20.0" castShadows="true" />
+        <PointLight color="1,0.92,0.72" intensity="15.0" range="20.0" castShadows="true"
+                    volumetric="false" volumetricIntensity="1.55" volumetricDensity="0.42" volumetricDecay="0.94" />
         <Script class="com.example.trianglegame.LightControlScript"
                 light="KeyLight"
                 autoButton="light_auto_button"

@@ -98,7 +98,8 @@ PassExecutionView BuildPassView(core::FrameData const& frame, PassDataFilter con
 
     if (filter.pass_bit == core::RenderPassBit::Shadow ||
         filter.pass_bit == core::RenderPassBit::ForwardOpaque ||
-        filter.pass_bit == core::RenderPassBit::ForwardTransparent) {
+        filter.pass_bit == core::RenderPassBit::ForwardTransparent ||
+        filter.pass_bit == core::RenderPassBit::VolumetricLight) {
         view.lights.reserve(frame.lights.size());
         for (auto const& light : frame.lights) {
             if (!PassesLightFilter(light, filter)) {

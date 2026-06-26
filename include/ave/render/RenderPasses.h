@@ -161,6 +161,25 @@ private:
     uint32_t ui_shader_id_ = 0;
 };
 
+class VolumetricLightPass final : public RenderPass {
+public:
+    std::string_view Name() const override { return "VolumetricLightPass"; }
+    void Reset(vkfw::VkContext* ctx = nullptr) override;
+    PassDataFilter GetDataFilter() const override;
+    void Execute(RenderPassContext const& context, PassExecutionView const& view) override;
+
+private:
+    struct FrameBinding {
+        vkfw::VkBuffer ubo{};
+        uint32_t descriptor_set_id = 0;
+    };
+
+    std::vector<FrameBinding> frame_bindings_{};
+    std::vector<vkfw::VkBuffer> vertex_buffers_{};
+    std::vector<vkfw::VkBuffer> index_buffers_{};
+    uint32_t shader_id_ = 0;
+};
+
 class ToneMappingPass final : public RenderPass {
 public:
     std::string_view Name() const override { return "ToneMappingPass"; }

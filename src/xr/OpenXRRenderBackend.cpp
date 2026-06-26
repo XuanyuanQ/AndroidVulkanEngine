@@ -938,7 +938,9 @@ bool OpenXRRenderBackend::InitializeFrameResources(vkfw::VkContext& ctx)
                                          .height = xr_swapchain_height_,
                                          .mip_levels = 1,
                                          .format = vkfw::TextureFormat::D32_SFLOAT,
-                                         .usage = vkfw::TextureUsage::DepthStencilAttachment,
+                                         .usage = static_cast<vkfw::TextureUsage>(
+                                             static_cast<uint32_t>(vkfw::TextureUsage::DepthStencilAttachment) |
+                                             static_cast<uint32_t>(vkfw::TextureUsage::Sampled)),
                                          .mipmap = false,
                                      })) {
             for (auto& created_depth : depth_textures_) {

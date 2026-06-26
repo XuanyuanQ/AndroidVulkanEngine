@@ -21,6 +21,7 @@ enum class RenderPassBit : uint32_t {
     UI = 1u << 4,
     ToneMapping = 1u << 5,
     Compute = 1u << 6,
+    VolumetricLight = 1u << 7,
 };
 
 constexpr uint32_t ToMask(RenderLayer layer)

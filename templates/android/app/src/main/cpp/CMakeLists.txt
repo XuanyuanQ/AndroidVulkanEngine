@@ -42,6 +42,7 @@ add_library(ave_runtime SHARED
     "${AVE_ENGINE_ROOT}/src/render/ShadowPass.cpp"
     "${AVE_ENGINE_ROOT}/src/render/SkyboxPass.cpp"
     "${AVE_ENGINE_ROOT}/src/render/PBRPass.cpp"
+    "${AVE_ENGINE_ROOT}/src/render/VolumetricLightPass.cpp"
     "${AVE_ENGINE_ROOT}/src/render/ComputePass.cpp"
     "${AVE_ENGINE_ROOT}/src/render/UIPass.cpp"
     "${AVE_ENGINE_ROOT}/src/render/XRWorldUIPass.cpp"

@@ -67,6 +67,35 @@ void FrameGraph::ResetRuntimeState(vkfw::VkContext* ctx)
     }
 }
 
+void FrameGraph::Clear(vkfw::VkContext* ctx)
+{
+    ResetRuntimeState(ctx);
+    passes_.clear();
+    resources_.Clear();
+}
+
+bool FrameGraph::HasPass(std::string_view name) const noexcept
+{
+    for (auto const& node : passes_) {
+        if (node.pass && node.pass->Name() == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string FrameGraph::DescribePasses() const
+{
+    std::string result;
+    for (size_t i = 0; i < passes_.size(); ++i) {
+        if (i != 0) {
+            result += " -> ";
+        }
+        result += passes_[i].pass ? std::string{passes_[i].pass->Name()} : std::string{"<null>"};
+    }
+    return result;
+}
+
 size_t FrameGraph::PassCount() const noexcept
 {
     return passes_.size();

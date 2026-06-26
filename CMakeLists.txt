@@ -33,6 +33,7 @@ add_library(ave_engine STATIC
     src/render/ShadowPass.cpp
     src/render/SkyboxPass.cpp
     src/render/PBRPass.cpp
+    src/render/VolumetricLightPass.cpp
     src/render/ComputePass.cpp
     src/render/UIPass.cpp
     src/render/XRWorldUIPass.cpp

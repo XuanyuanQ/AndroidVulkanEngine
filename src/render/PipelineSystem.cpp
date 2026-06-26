@@ -301,6 +301,7 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
             (key.rt_format == 0) && (key.depth_format != 0 || key.stencil_format != 0);
         bool const alpha_blended_pipeline = key.render_state_id == 2;
         bool const skybox_pipeline = key.render_state_id == 3;
+        bool const additive_light_pipeline = key.render_state_id == 4;
 
         // Set vertex input state (simplified for now)
         vkfw::PipelineVertexInputState vertex_input;
@@ -405,12 +406,20 @@ uint32_t PipelineCache::GetOrCreatePipeline(PipelineKey const& key, vk::RenderPa
 
         pipeline_info.depth_stencil.depth_test_enable = (key.depth_format != 0);
         pipeline_info.depth_stencil.depth_write_enable =
-            (key.depth_format != 0) && !alpha_blended_pipeline && !skybox_pipeline;
+            (key.depth_format != 0) && !alpha_blended_pipeline && !skybox_pipeline && !additive_light_pipeline;
         pipeline_info.depth_stencil.depth_compare_op = vk::CompareOp::eLessOrEqual;
 
         if (!depth_only_pipeline) {
             vkfw::PipelineColorBlendAttachment blend_attachment{};
-            if (alpha_blended_pipeline) {
+            if (additive_light_pipeline) {
+                blend_attachment.blend_enable = true;
+                blend_attachment.src_color_blend = vk::BlendFactor::eOne;
+                blend_attachment.dst_color_blend = vk::BlendFactor::eOne;
+                blend_attachment.color_blend_op = vk::BlendOp::eAdd;
+                blend_attachment.src_alpha_blend = vk::BlendFactor::eOne;
+                blend_attachment.dst_alpha_blend = vk::BlendFactor::eOne;
+                blend_attachment.alpha_blend_op = vk::BlendOp::eAdd;
+            } else if (alpha_blended_pipeline) {
                 blend_attachment.blend_enable = true;
                 blend_attachment.src_color_blend = vk::BlendFactor::eSrcAlpha;
                 blend_attachment.dst_color_blend = vk::BlendFactor::eOneMinusSrcAlpha;

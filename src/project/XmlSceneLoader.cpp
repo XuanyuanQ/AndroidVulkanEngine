@@ -332,6 +332,10 @@ GameObjectData ParseGameObjectData(ElementMatch const& element, std::string cons
         light.color = Float3(Attribute(directional_light_tags.front(), "color"), light.color);
         light.intensity = std::stof(Attribute(directional_light_tags.front(), "intensity", std::to_string(light.intensity)));
         light.cast_shadows = Attribute(directional_light_tags.front(), "castShadows", "false") == "true";
+        light.volumetric = Attribute(directional_light_tags.front(), "volumetric", "false") == "true";
+        light.volumetric_intensity = std::stof(Attribute(directional_light_tags.front(), "volumetricIntensity", std::to_string(light.volumetric_intensity)));
+        light.volumetric_density = std::stof(Attribute(directional_light_tags.front(), "volumetricDensity", std::to_string(light.volumetric_density)));
+        light.volumetric_decay = std::stof(Attribute(directional_light_tags.front(), "volumetricDecay", std::to_string(light.volumetric_decay)));
         object.components.light = std::move(light);
     }
 
@@ -343,6 +347,10 @@ GameObjectData ParseGameObjectData(ElementMatch const& element, std::string cons
         light.intensity = std::stof(Attribute(point_light_tags.front(), "intensity", std::to_string(light.intensity)));
         light.range = std::stof(Attribute(point_light_tags.front(), "range", std::to_string(light.range)));
         light.cast_shadows = Attribute(point_light_tags.front(), "castShadows", "false") == "true";
+        light.volumetric = Attribute(point_light_tags.front(), "volumetric", "false") == "true";
+        light.volumetric_intensity = std::stof(Attribute(point_light_tags.front(), "volumetricIntensity", std::to_string(light.volumetric_intensity)));
+        light.volumetric_density = std::stof(Attribute(point_light_tags.front(), "volumetricDensity", std::to_string(light.volumetric_density)));
+        light.volumetric_decay = std::stof(Attribute(point_light_tags.front(), "volumetricDecay", std::to_string(light.volumetric_decay)));
         object.components.light = std::move(light);
     }
 
@@ -356,6 +364,10 @@ GameObjectData ParseGameObjectData(ElementMatch const& element, std::string cons
         light.inner_angle = std::stof(Attribute(spot_light_tags.front(), "innerAngle", std::to_string(light.inner_angle)));
         light.outer_angle = std::stof(Attribute(spot_light_tags.front(), "outerAngle", std::to_string(light.outer_angle)));
         light.cast_shadows = Attribute(spot_light_tags.front(), "castShadows", "false") == "true";
+        light.volumetric = Attribute(spot_light_tags.front(), "volumetric", "false") == "true";
+        light.volumetric_intensity = std::stof(Attribute(spot_light_tags.front(), "volumetricIntensity", std::to_string(light.volumetric_intensity)));
+        light.volumetric_density = std::stof(Attribute(spot_light_tags.front(), "volumetricDensity", std::to_string(light.volumetric_density)));
+        light.volumetric_decay = std::stof(Attribute(spot_light_tags.front(), "volumetricDecay", std::to_string(light.volumetric_decay)));
         object.components.light = std::move(light);
     }
 

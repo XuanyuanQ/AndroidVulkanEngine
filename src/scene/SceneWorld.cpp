@@ -761,6 +761,10 @@ void SceneWorld::RebuildFromScene(project::SceneData const& scene,
             frame_light.inner_angle = light.inner_angle;
             frame_light.outer_angle = light.outer_angle;
             frame_light.cast_shadows = light.cast_shadows;
+            frame_light.volumetric = light.volumetric;
+            frame_light.volumetric_intensity = light.volumetric_intensity;
+            frame_light.volumetric_density = light.volumetric_density;
+            frame_light.volumetric_decay = light.volumetric_decay;
             // 将光源在本地空间的默认朝向 (0, 0, -1) 乘以世界矩阵，推导出真实的世界照射方向
             frame_light.direction = glm::normalize(glm::vec3(world_matrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 
