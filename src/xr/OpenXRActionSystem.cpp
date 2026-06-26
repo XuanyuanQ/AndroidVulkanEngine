@@ -96,7 +96,9 @@ XRControllerState ReadControllerState(OpenXRRuntime& runtime,
                                       XrAction trigger_action,
                                       XrAction grip_action,
                                       XrAction grip_pose_action,
+                                      XrAction aim_pose_action,
                                       XrSpace grip_space,
+                                      XrSpace aim_space,
                                       XrPath hand_path,
                                       XrTime predicted_display_time)
 {
@@ -145,6 +147,12 @@ XRControllerState ReadControllerState(OpenXRRuntime& runtime,
         if (xr_get_pose(session, &get_info, &pose_state) == XR_SUCCESS && pose_state.isActive != 0) {
             state.active = true;
         }
+
+        get_info.action = aim_pose_action;
+        pose_state = {XR_TYPE_ACTION_STATE_POSE};
+        if (xr_get_pose(session, &get_info, &pose_state) == XR_SUCCESS && pose_state.isActive != 0) {
+            state.active = true;
+        }
     }
 
     if (xr_locate_space != nullptr && grip_space != XR_NULL_HANDLE && base_space != XR_NULL_HANDLE) {
@@ -161,6 +169,28 @@ XRControllerState ReadControllerState(OpenXRRuntime& runtime,
                 location.pose.position.z,
             };
             state.grip_orientation = {
+                location.pose.orientation.w,
+                location.pose.orientation.x,
+                location.pose.orientation.y,
+                location.pose.orientation.z,
+            };
+        }
+    }
+
+    if (xr_locate_space != nullptr && aim_space != XR_NULL_HANDLE && base_space != XR_NULL_HANDLE) {
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        XrResult const result = xr_locate_space(aim_space, base_space, predicted_display_time, &location);
+        bool const position_valid = (location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0;
+        bool const orientation_valid = (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0;
+        if (result == XR_SUCCESS && position_valid && orientation_valid) {
+            state.aim_pose_active = true;
+            state.active = true;
+            state.aim_position = {
+                location.pose.position.x,
+                location.pose.position.y,
+                location.pose.position.z,
+            };
+            state.aim_orientation = {
                 location.pose.orientation.w,
                 location.pose.orientation.x,
                 location.pose.orientation.y,
@@ -205,6 +235,8 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
     XrPath right_squeeze = XR_NULL_PATH;
     XrPath left_grip_pose = XR_NULL_PATH;
     XrPath right_grip_pose = XR_NULL_PATH;
+    XrPath left_aim_pose = XR_NULL_PATH;
+    XrPath right_aim_pose = XR_NULL_PATH;
 
     if (!StringToPath(runtime, "/user/hand/left", left_hand) ||
         !StringToPath(runtime, "/user/hand/right", right_hand) ||
@@ -216,7 +248,9 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
         !StringToPath(runtime, "/user/hand/left/input/squeeze/value", left_squeeze) ||
         !StringToPath(runtime, "/user/hand/right/input/squeeze/value", right_squeeze) ||
         !StringToPath(runtime, "/user/hand/left/input/grip/pose", left_grip_pose) ||
-        !StringToPath(runtime, "/user/hand/right/input/grip/pose", right_grip_pose)) {
+        !StringToPath(runtime, "/user/hand/right/input/grip/pose", right_grip_pose) ||
+        !StringToPath(runtime, "/user/hand/left/input/aim/pose", left_aim_pose) ||
+        !StringToPath(runtime, "/user/hand/right/input/aim/pose", right_aim_pose)) {
         return false;
     }
 
@@ -238,16 +272,18 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
     XrAction trigger_action = XR_NULL_HANDLE;
     XrAction grip_action = XR_NULL_HANDLE;
     XrAction grip_pose_action = XR_NULL_HANDLE;
+    XrAction aim_pose_action = XR_NULL_HANDLE;
     if (!CreateAction(runtime, action_set, XR_ACTION_TYPE_VECTOR2F_INPUT, "move", "Move", subaction_paths, move_action) ||
         !CreateAction(runtime, action_set, XR_ACTION_TYPE_FLOAT_INPUT, "trigger", "Trigger", subaction_paths, trigger_action) ||
         !CreateAction(runtime, action_set, XR_ACTION_TYPE_FLOAT_INPUT, "grip", "Grip", subaction_paths, grip_action) ||
-        !CreateAction(runtime, action_set, XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip Pose", subaction_paths, grip_pose_action)) {
+        !CreateAction(runtime, action_set, XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip Pose", subaction_paths, grip_pose_action) ||
+        !CreateAction(runtime, action_set, XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim Pose", subaction_paths, aim_pose_action)) {
         action_set_ = action_set;
         Shutdown(runtime);
         return false;
     }
 
-    std::array<XrActionSuggestedBinding, 8> bindings{{
+    std::array<XrActionSuggestedBinding, 10> bindings{{
         {move_action, left_thumbstick},
         {move_action, right_thumbstick},
         {trigger_action, left_trigger},
@@ -256,6 +292,8 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
         {grip_action, right_squeeze},
         {grip_pose_action, left_grip_pose},
         {grip_pose_action, right_grip_pose},
+        {aim_pose_action, left_aim_pose},
+        {aim_pose_action, right_aim_pose},
     }};
 
     XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
@@ -306,6 +344,32 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
         return false;
     }
 
+    space_info.action = aim_pose_action;
+    XrSpace left_aim_space = XR_NULL_HANDLE;
+    space_info.subactionPath = left_hand;
+    result = xr_create_action_space(reinterpret_cast<XrSession>(runtime.GetSessionHandle()), &space_info, &left_aim_space);
+    if (result != XR_SUCCESS || left_aim_space == XR_NULL_HANDLE) {
+        LOGW("OpenXR xrCreateActionSpace(left aim) failed: result=%d", result);
+        left_grip_space_ = left_space;
+        right_grip_space_ = right_space;
+        action_set_ = action_set;
+        Shutdown(runtime);
+        return false;
+    }
+
+    XrSpace right_aim_space = XR_NULL_HANDLE;
+    space_info.subactionPath = right_hand;
+    result = xr_create_action_space(reinterpret_cast<XrSession>(runtime.GetSessionHandle()), &space_info, &right_aim_space);
+    if (result != XR_SUCCESS || right_aim_space == XR_NULL_HANDLE) {
+        LOGW("OpenXR xrCreateActionSpace(right aim) failed: result=%d", result);
+        left_grip_space_ = left_space;
+        right_grip_space_ = right_space;
+        left_aim_space_ = left_aim_space;
+        action_set_ = action_set;
+        Shutdown(runtime);
+        return false;
+    }
+
     left_hand_path_ = left_hand;
     right_hand_path_ = right_hand;
     action_set_ = action_set;
@@ -313,8 +377,11 @@ bool OpenXRActionSystem::Initialize(OpenXRRuntime& runtime)
     trigger_action_ = trigger_action;
     grip_action_ = grip_action;
     grip_pose_action_ = grip_pose_action;
+    aim_pose_action_ = aim_pose_action;
     left_grip_space_ = left_space;
     right_grip_space_ = right_space;
+    left_aim_space_ = left_aim_space;
+    right_aim_space_ = right_aim_space;
     attached_ = true;
     initialized_ = true;
     state_ = {};
@@ -336,6 +403,12 @@ void OpenXRActionSystem::Shutdown(OpenXRRuntime& runtime)
         if (right_grip_space_ != nullptr) {
             xr_destroy_space(reinterpret_cast<XrSpace>(right_grip_space_));
         }
+        if (left_aim_space_ != nullptr) {
+            xr_destroy_space(reinterpret_cast<XrSpace>(left_aim_space_));
+        }
+        if (right_aim_space_ != nullptr) {
+            xr_destroy_space(reinterpret_cast<XrSpace>(right_aim_space_));
+        }
     }
     if (xr_destroy_action != nullptr) {
         if (move_action_ != nullptr) {
@@ -349,6 +422,9 @@ void OpenXRActionSystem::Shutdown(OpenXRRuntime& runtime)
         }
         if (grip_pose_action_ != nullptr) {
             xr_destroy_action(reinterpret_cast<XrAction>(grip_pose_action_));
+        }
+        if (aim_pose_action_ != nullptr) {
+            xr_destroy_action(reinterpret_cast<XrAction>(aim_pose_action_));
         }
     }
     if (xr_destroy_action_set != nullptr && action_set_ != nullptr) {
@@ -364,8 +440,11 @@ void OpenXRActionSystem::Shutdown(OpenXRRuntime& runtime)
     trigger_action_ = nullptr;
     grip_action_ = nullptr;
     grip_pose_action_ = nullptr;
+    aim_pose_action_ = nullptr;
     left_grip_space_ = nullptr;
     right_grip_space_ = nullptr;
+    left_aim_space_ = nullptr;
+    right_aim_space_ = nullptr;
     last_log_frame_ = 0;
     state_ = {};
 }
@@ -406,7 +485,9 @@ void OpenXRActionSystem::SyncAndLog(OpenXRRuntime& runtime, int64_t predicted_di
                                       reinterpret_cast<XrAction>(trigger_action_),
                                       reinterpret_cast<XrAction>(grip_action_),
                                       reinterpret_cast<XrAction>(grip_pose_action_),
+                                      reinterpret_cast<XrAction>(aim_pose_action_),
                                       reinterpret_cast<XrSpace>(left_grip_space_),
+                                      reinterpret_cast<XrSpace>(left_aim_space_),
                                       static_cast<XrPath>(left_hand_path_),
                                       static_cast<XrTime>(predicted_display_time));
     state_.right = ReadControllerState(runtime,
@@ -416,7 +497,9 @@ void OpenXRActionSystem::SyncAndLog(OpenXRRuntime& runtime, int64_t predicted_di
                                        reinterpret_cast<XrAction>(trigger_action_),
                                        reinterpret_cast<XrAction>(grip_action_),
                                        reinterpret_cast<XrAction>(grip_pose_action_),
+                                       reinterpret_cast<XrAction>(aim_pose_action_),
                                        reinterpret_cast<XrSpace>(right_grip_space_),
+                                       reinterpret_cast<XrSpace>(right_aim_space_),
                                        static_cast<XrPath>(right_hand_path_),
                                        static_cast<XrTime>(predicted_display_time));
 
@@ -425,14 +508,15 @@ void OpenXRActionSystem::SyncAndLog(OpenXRRuntime& runtime, int64_t predicted_di
         return;
     }
 
-    LOGI("XR input L active=%d stick=(%.2f, %.2f) trigger=%.2f grip=%.2f pose=%d pos=(%.2f, %.2f, %.2f) | "
-         "R active=%d stick=(%.2f, %.2f) trigger=%.2f grip=%.2f pose=%d pos=(%.2f, %.2f, %.2f)",
+    LOGI("XR input L active=%d stick=(%.2f, %.2f) trigger=%.2f grip=%.2f grip_pose=%d aim_pose=%d pos=(%.2f, %.2f, %.2f) | "
+         "R active=%d stick=(%.2f, %.2f) trigger=%.2f grip=%.2f grip_pose=%d aim_pose=%d pos=(%.2f, %.2f, %.2f)",
          state_.left.active ? 1 : 0,
          state_.left.thumbstick.x,
          state_.left.thumbstick.y,
          state_.left.trigger,
          state_.left.grip,
          state_.left.pose_active ? 1 : 0,
+         state_.left.aim_pose_active ? 1 : 0,
          state_.left.grip_position.x,
          state_.left.grip_position.y,
          state_.left.grip_position.z,
@@ -442,6 +526,7 @@ void OpenXRActionSystem::SyncAndLog(OpenXRRuntime& runtime, int64_t predicted_di
          state_.right.trigger,
          state_.right.grip,
          state_.right.pose_active ? 1 : 0,
+         state_.right.aim_pose_active ? 1 : 0,
          state_.right.grip_position.x,
          state_.right.grip_position.y,
          state_.right.grip_position.z);

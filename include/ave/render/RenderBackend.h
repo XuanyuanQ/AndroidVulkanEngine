@@ -31,6 +31,7 @@ struct RenderFrameRequest {
     vkfw::VkContext* vk = nullptr;
     vk::CommandBuffer command_buffer = {};
     std::vector<RenderViewTarget> views{};
+    void const* backend_debug = nullptr;
 };
 
 class RenderBackend {

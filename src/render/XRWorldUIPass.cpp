@@ -1,6 +1,7 @@
 #include "ave/render/RenderPasses.h"
 
 #include "ave/render/RenderPassCommon.h"
+#include "ave/xr/OpenXRRenderBackend.h"
 
 namespace ave::render {
 namespace {
@@ -90,6 +91,161 @@ bool AppendXRWorldUiQuad(std::vector<UiVertex>& vertices,
         indices.push_back(base_vertex + index);
     }
     return true;
+}
+
+bool AppendWorldQuad(std::vector<UiVertex>& vertices,
+                     std::vector<uint32_t>& indices,
+                     core::FrameViewData const& frame_view,
+                     glm::vec3 const& center,
+                     glm::vec3 const& right,
+                     glm::vec3 const& long_axis,
+                     float half_width,
+                     float half_length,
+                     glm::vec4 const& color)
+{
+    uint32_t const base_vertex = static_cast<uint32_t>(vertices.size());
+    glm::vec3 const corners[4] = {
+        center - right * half_width - long_axis * half_length,
+        center + right * half_width - long_axis * half_length,
+        center + right * half_width + long_axis * half_length,
+        center - right * half_width + long_axis * half_length,
+    };
+
+    for (glm::vec3 const& corner : corners) {
+        glm::vec4 const clip = frame_view.view_projection * glm::vec4{corner, 1.0f};
+        if (clip.w <= 0.0001f) {
+            vertices.resize(base_vertex);
+            return false;
+        }
+        UiVertex vertex{};
+        vertex.position = glm::vec2{clip.x, clip.y} / clip.w;
+        vertex.uv = glm::vec2{0.5f, 0.5f};
+        vertex.color = color;
+        vertex.texture_index = 0;
+        vertices.push_back(vertex);
+    }
+
+    indices.push_back(base_vertex + 0);
+    indices.push_back(base_vertex + 1);
+    indices.push_back(base_vertex + 2);
+    indices.push_back(base_vertex + 0);
+    indices.push_back(base_vertex + 2);
+    indices.push_back(base_vertex + 3);
+    return true;
+}
+
+bool AppendOverlayQuad(std::vector<UiVertex>& vertices,
+                       std::vector<uint32_t>& indices,
+                       glm::vec2 const& center,
+                       glm::vec2 const& right,
+                       glm::vec2 const& up,
+                       float half_width,
+                       float half_height,
+                       glm::vec4 const& color)
+{
+    uint32_t const base = static_cast<uint32_t>(vertices.size());
+    glm::vec2 const corners[4] = {
+        center - right * half_width - up * half_height,
+        center + right * half_width - up * half_height,
+        center + right * half_width + up * half_height,
+        center - right * half_width + up * half_height,
+    };
+
+    for (glm::vec2 const& corner : corners) {
+        UiVertex vertex{};
+        vertex.position = corner;
+        vertex.uv = glm::vec2{0.5f, 0.5f};
+        vertex.color = color;
+        vertex.texture_index = 0;
+        vertices.push_back(vertex);
+    }
+
+    indices.push_back(base + 0);
+    indices.push_back(base + 1);
+    indices.push_back(base + 2);
+    indices.push_back(base + 0);
+    indices.push_back(base + 2);
+    indices.push_back(base + 3);
+    return true;
+}
+
+glm::vec2 ClampOverlayPoint(glm::vec2 point)
+{
+    return glm::clamp(point, glm::vec2{-0.95f, -0.95f}, glm::vec2{0.95f, 0.95f});
+}
+
+void AppendXRUiPointerVisual(std::vector<UiVertex>& vertices,
+                             std::vector<uint32_t>& indices,
+                             core::FrameViewData const& frame_view,
+                             xr::OpenXRRenderBackend const& xr_backend)
+{
+    glm::vec3 const origin = xr_backend.XRUiPointerRayOrigin();
+    glm::vec3 const end = xr_backend.XRUiPointerRayEnd();
+    glm::vec3 const delta = end - origin;
+    float const length = glm::length(delta);
+    if (!xr_backend.IsXRUiPointerActive() || length < 0.001f) {
+        return;
+    }
+
+    glm::vec4 const ray_color = xr_backend.HasXRUiPointerHit()
+        ? glm::vec4{0.15f, 1.0f, 0.25f, 0.95f}
+        : glm::vec4{1.0f, 0.85f, 0.10f, 0.85f};
+
+    glm::vec4 origin_clip = frame_view.view_projection * glm::vec4{origin, 1.0f};
+    glm::vec4 end_clip = frame_view.view_projection * glm::vec4{end, 1.0f};
+    bool const origin_visible = origin_clip.w > 0.0001f;
+    bool const end_visible = end_clip.w > 0.0001f;
+    if (origin_visible || end_visible) {
+        glm::vec2 const raw_a = origin_visible ? glm::vec2{origin_clip.x, origin_clip.y} / origin_clip.w
+                                               : glm::vec2{0.0f, 0.0f};
+        glm::vec2 const raw_b = end_visible ? glm::vec2{end_clip.x, end_clip.y} / end_clip.w
+                                            : raw_a;
+        glm::vec2 const a = ClampOverlayPoint(raw_a);
+        glm::vec2 const b = ClampOverlayPoint(raw_b);
+        glm::vec2 dir2 = b - a;
+        if (glm::length(dir2) > 0.001f) {
+            dir2 = glm::normalize(dir2);
+            glm::vec2 const n{-dir2.y, dir2.x};
+            float constexpr width = 0.012f;
+            uint32_t const base = static_cast<uint32_t>(vertices.size());
+            UiVertex v{};
+            v.color = ray_color;
+            v.texture_index = 0;
+            v.uv = glm::vec2{0.5f, 0.5f};
+            v.position = a - n * width;
+            vertices.push_back(v);
+            v.position = a + n * width;
+            vertices.push_back(v);
+            v.position = b + n * width;
+            vertices.push_back(v);
+            v.position = b - n * width;
+            vertices.push_back(v);
+            indices.push_back(base + 0);
+            indices.push_back(base + 1);
+            indices.push_back(base + 2);
+            indices.push_back(base + 0);
+            indices.push_back(base + 2);
+            indices.push_back(base + 3);
+        }
+
+        glm::vec2 const pointer = ClampOverlayPoint(raw_b);
+        AppendOverlayQuad(vertices,
+                          indices,
+                          pointer,
+                          glm::vec2{1.0f, 0.0f},
+                          glm::vec2{0.0f, 1.0f},
+                          0.025f,
+                          0.025f,
+                          ray_color);
+    }
+
+    if (xr_backend.HasXRUiPointerHit()) {
+        glm::vec3 const hit = xr_backend.XRUiPointerHitPosition();
+        glm::mat4 const camera_world = glm::inverse(frame_view.view);
+        glm::vec3 const view_right = ExtractCameraRight(camera_world);
+        glm::vec3 const view_up = ExtractCameraUp(camera_world);
+        AppendWorldQuad(vertices, indices, frame_view, hit, view_right, view_up, 0.025f, 0.025f, glm::vec4{0.1f, 1.0f, 0.2f, 1.0f});
+    }
 }
 
 } // namespace
@@ -231,6 +387,19 @@ void XRWorldUIPass::Execute(RenderPassContext const& context, PassExecutionView 
             .index_count = static_cast<uint32_t>(indices.size()) - first_index,
             .texture_index = texture_index,
         });
+    }
+
+    if (auto const* xr_backend = static_cast<xr::OpenXRRenderBackend const*>(context.backend_debug)) {
+        uint32_t const first_pointer_index = static_cast<uint32_t>(indices.size());
+        AppendXRUiPointerVisual(vertices, indices, *frame_view, *xr_backend);
+        uint32_t const pointer_index_count = static_cast<uint32_t>(indices.size()) - first_pointer_index;
+        if (pointer_index_count != 0) {
+            draw_ranges.push_back(UiDrawRange{
+                .first_index = first_pointer_index,
+                .index_count = pointer_index_count,
+                .texture_index = 0,
+            });
+        }
     }
 
     if (vertices.empty() || indices.empty()) {

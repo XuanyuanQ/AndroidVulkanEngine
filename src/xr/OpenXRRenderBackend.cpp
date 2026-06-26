@@ -422,6 +422,21 @@ glm::quat PoseOrientation(XrPosef const& pose)
     return {pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z};
 }
 
+glm::vec3 ExtractCameraRight(glm::mat4 const& camera_world)
+{
+    return glm::normalize(glm::vec3{camera_world[0]});
+}
+
+glm::vec3 ExtractCameraUp(glm::mat4 const& camera_world)
+{
+    return glm::normalize(glm::vec3{camera_world[1]});
+}
+
+glm::vec3 ExtractCameraForward(glm::mat4 const& camera_world)
+{
+    return glm::normalize(-glm::vec3{camera_world[2]});
+}
+
 glm::mat4 BuildProjectionMatrix(XrFovf const& fov, float near_plane, float far_plane)
 {
     float const tan_left = std::tan(fov.angleLeft);
@@ -441,6 +456,20 @@ glm::mat4 BuildProjectionMatrix(XrFovf const& fov, float near_plane, float far_p
     projection[3][2] = (far_plane * near_plane) / (near_plane - far_plane);
     projection[1][1] *= -1.0f;
     return projection;
+}
+
+bool RayPlaneHit(glm::vec3 const& ray_origin,
+                 glm::vec3 const& ray_direction,
+                 glm::vec3 const& plane_point,
+                 glm::vec3 const& plane_normal,
+                 float& out_t)
+{
+    float const denom = glm::dot(ray_direction, plane_normal);
+    if (std::abs(denom) < 0.0001f) {
+        return false;
+    }
+    out_t = glm::dot(plane_point - ray_origin, plane_normal) / denom;
+    return out_t > 0.0f;
 }
 #endif
 
@@ -1005,6 +1034,10 @@ void OpenXRRenderBackend::ShutdownGraphics(OpenXRRuntime& runtime)
     xr_origin_yaw_radians_ = 0.0f;
     xr_last_input_time_ = 0;
     xr_locomotion_log_counter_ = 0;
+    xr_ui_pointer_has_hit_ = false;
+    xr_ui_pointer_ray_origin_ = glm::vec3{0.0f, 0.0f, 0.0f};
+    xr_ui_pointer_ray_end_ = glm::vec3{0.0f, 0.0f, -1.0f};
+    xr_ui_pointer_hit_position_ = glm::vec3{0.0f, 0.0f, -1.0f};
     xr_acquired_image_index_ = 0;
 }
 
@@ -1017,6 +1050,91 @@ bool OpenXRRenderBackend::BeginRuntimeFrame(core::FrameData const& frame)
     }
     EndFrame(render::FrameGraphRenderResult::Success);
     return true;
+}
+
+bool OpenXRRenderBackend::TryGetXRUiPointerNdc(float& out_x_ndc, float& out_y_ndc) const
+{
+#if defined(__ANDROID__)
+    const_cast<OpenXRRenderBackend*>(this)->UpdateXRUiPointerRay();
+    if (runtime_ == nullptr || xr_frame_data_.views.empty() || !runtime_->InputState().right.aim_pose_active) {
+        return false;
+    }
+
+    glm::vec3 const ray_origin = xr_ui_pointer_ray_origin_;
+    glm::vec3 const ray_direction = glm::normalize(xr_ui_pointer_ray_end_ - xr_ui_pointer_ray_origin_);
+
+    core::FrameViewData const& basis_view = xr_frame_data_.views.front();
+    glm::mat4 const camera_world = glm::inverse(basis_view.view);
+    glm::vec3 const right = ExtractCameraRight(camera_world);
+    glm::vec3 const up = ExtractCameraUp(camera_world);
+    glm::vec3 const forward = ExtractCameraForward(camera_world);
+
+    glm::vec3 stereo_center{0.0f};
+    for (auto const& view : xr_frame_data_.views) {
+        stereo_center += view.world_position;
+    }
+    stereo_center /= static_cast<float>(xr_frame_data_.views.size());
+
+    float constexpr panel_distance = 2.0f;
+    float constexpr panel_half_height = 0.55f;
+    float const ui_aspect_ratio =
+        xr_swapchain_width_ > 0 ? static_cast<float>(xr_swapchain_height_) / static_cast<float>(xr_swapchain_width_) : 1.0f;
+    float const panel_half_width = panel_half_height / std::max(ui_aspect_ratio, 0.01f);
+    glm::vec3 const panel_center = stereo_center + forward * panel_distance - up * 0.05f;
+
+    float t = 0.0f;
+    if (!RayPlaneHit(ray_origin, ray_direction, panel_center, -forward, t)) {
+        return false;
+    }
+    glm::vec3 const hit = ray_origin + ray_direction * t;
+    const_cast<OpenXRRenderBackend*>(this)->xr_ui_pointer_hit_position_ = hit;
+    glm::vec3 const local = hit - panel_center;
+    float const panel_x = glm::dot(local, right) / panel_half_width;
+    float const panel_y = glm::dot(local, up) / panel_half_height;
+    if (panel_x < -1.0f || panel_x > 1.0f || panel_y < -1.0f || panel_y > 1.0f) {
+        return false;
+    }
+
+    // XRWorldUIPass currently maps UI position as panel_position=(x, -y).
+    out_x_ndc = panel_x;
+    out_y_ndc = -panel_y;
+    const_cast<OpenXRRenderBackend*>(this)->xr_ui_pointer_has_hit_ = true;
+    const_cast<OpenXRRenderBackend*>(this)->xr_ui_pointer_ray_end_ = hit;
+    return true;
+#else
+    (void)out_x_ndc;
+    (void)out_y_ndc;
+    return false;
+#endif
+}
+
+void OpenXRRenderBackend::UpdateXRUiPointerRay()
+{
+#if defined(__ANDROID__)
+    xr_ui_pointer_has_hit_ = false;
+    if (runtime_ == nullptr || !runtime_->InputState().right.aim_pose_active) {
+        return;
+    }
+
+    XRInputState const& input = runtime_->InputState();
+    glm::quat const origin_rotation = YawRotation(xr_origin_yaw_radians_);
+    glm::vec3 const ray_origin = xr_origin_position_ + origin_rotation * input.right.aim_position;
+    glm::quat const ray_orientation = origin_rotation * input.right.aim_orientation;
+    glm::vec3 const ray_direction = glm::normalize(ray_orientation * glm::vec3{0.0f, 0.0f, -1.0f});
+    xr_ui_pointer_ray_origin_ = ray_origin;
+    xr_ui_pointer_ray_end_ = ray_origin + ray_direction * 3.0f;
+#endif
+}
+
+bool OpenXRRenderBackend::IsXRUiPointerActive() const noexcept
+{
+#if defined(__ANDROID__)
+    return runtime_ != nullptr &&
+           runtime_->InputState().right.aim_pose_active &&
+           (runtime_->InputState().right.trigger > 0.35f || xr_ui_pointer_has_hit_);
+#else
+    return false;
+#endif
 }
 
 void OpenXRRenderBackend::EndRuntimeFrame()
@@ -1097,6 +1215,7 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
 
         xr_predicted_display_time_ = frame_state.predictedDisplayTime;
         runtime_->SyncActionsAndLog(frame_state.predictedDisplayTime);
+        UpdateXRUiPointerRay();
         xr_frame_should_render_ = frame_state.shouldRender != 0;
         xr_frame_begun_ = true;
         if (!xr_frame_should_render_) {
@@ -1155,9 +1274,12 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
         glm::quat const move_yaw = YawRotation(world_yaw);
         glm::vec3 const right = move_yaw * glm::vec3{1.0f, 0.0f, 0.0f};
         glm::vec3 const forward = move_yaw * glm::vec3{0.0f, 0.0f, -1.0f};
+        glm::vec3 const up = glm::vec3{0.0f, 1.0f, 0.0f};
         float constexpr move_speed_mps = 2.0f;
+        float constexpr vertical_speed_mps = 1.5f;
         float constexpr turn_speed_rps = 1.8f;
         xr_origin_position_ += (right * move_stick.x + forward * move_stick.y) * move_speed_mps * dt_seconds;
+        xr_origin_position_ += up * turn_stick.y * vertical_speed_mps * dt_seconds;
         xr_origin_yaw_radians_ -= turn_stick.x * turn_speed_rps * dt_seconds;
 
         ++xr_locomotion_log_counter_;
@@ -1264,6 +1386,7 @@ render::FrameGraphRenderResult OpenXRRenderBackend::BeginFrame(render::RenderFra
         out_request.frame = &xr_frame_data_;
         out_request.vk = next_targets_.vk;
         out_request.command_buffer = command_buffer;
+        out_request.backend_debug = this;
         for (uint32_t eye = 0; eye < 2; ++eye) {
             uint32_t const eye_view_index = xr_acquired_image_index_ * 2u + eye;
             if (eye_view_index >= xr_swapchain_eye_image_views_.size()) {

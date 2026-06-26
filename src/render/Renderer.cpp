@@ -317,6 +317,7 @@ FrameGraphRenderResult Renderer::RenderFrameGraphToTargets(RenderFrameRequest co
         }
         pass_ctx.frame_resource_index = target.frame_resource_index;
         pass_ctx.frame_resource_count = target.frame_resource_count != 0 ? target.frame_resource_count : 1u;
+        pass_ctx.backend_debug = request.backend_debug;
         graph_.Execute(pass_ctx);
     }
 

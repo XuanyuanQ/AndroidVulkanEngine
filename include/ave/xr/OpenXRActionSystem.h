@@ -17,6 +17,9 @@ struct XRControllerState {
     float grip = 0.0f;
     glm::vec3 grip_position{0.0f, 0.0f, 0.0f};
     glm::quat grip_orientation{1.0f, 0.0f, 0.0f, 0.0f};
+    bool aim_pose_active = false;
+    glm::vec3 aim_position{0.0f, 0.0f, 0.0f};
+    glm::quat aim_orientation{1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct XRInputState {
@@ -43,8 +46,11 @@ private:
     void* trigger_action_ = nullptr;
     void* grip_action_ = nullptr;
     void* grip_pose_action_ = nullptr;
+    void* aim_pose_action_ = nullptr;
     void* left_grip_space_ = nullptr;
     void* right_grip_space_ = nullptr;
+    void* left_aim_space_ = nullptr;
+    void* right_aim_space_ = nullptr;
     uint64_t last_log_frame_ = 0;
     XRInputState state_{};
 };

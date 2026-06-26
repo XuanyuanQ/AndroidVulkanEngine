@@ -134,6 +134,7 @@ struct RenderPassContext {
     uint32_t frame_resource_index = 0;
     uint32_t frame_resource_count = 1;
     FrameGraphResourceRegistry* frame_graph_resources = nullptr;
+    void const* backend_debug = nullptr;
 
 
     // Optional: capture debug strings per pass for early bring-up.

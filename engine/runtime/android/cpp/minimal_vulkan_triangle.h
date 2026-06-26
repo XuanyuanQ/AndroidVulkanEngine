@@ -76,6 +76,8 @@ private:
     void releaseWindow();
     void drawFrame();
     void logRuntimeSnapshot(char const* reason) const;
+    void dispatchUiAction(ave::ui::UIRuntime::UiAction const& action);
+    void updateXRUiPointer();
 
     void cleanupSurfaceResources(bool full_cleanup);
     void logProjectAsset() const;
@@ -122,6 +124,8 @@ private:
     mutable std::recursive_mutex m_scene_mutex;
     std::unordered_set<std::string> instantiated_scripts_;
     bool ui_touch_captured_{false};
+    bool xr_ui_trigger_down_{false};
+    bool xr_ui_captured_{false};
 
     void processPendingDestructions();
     std::vector<std::string> pending_destructions_;

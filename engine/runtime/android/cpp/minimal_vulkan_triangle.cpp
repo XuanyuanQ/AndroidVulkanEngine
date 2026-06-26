@@ -55,6 +55,78 @@ bool ReadBoolSystemProperty(char const* name, bool fallback)
 
 } // namespace
 
+void MinimalVulkanTriangle::dispatchUiAction(ave::ui::UIRuntime::UiAction const& action)
+{
+    if (action.type == ave::ui::UIRuntime::ActionType::Click) {
+        LOGI("UI click hit, trigger script target=%s method=%s", action.target.c_str(), action.method.c_str());
+        Jni_TriggerScriptMethod(action.target, action.method);
+    } else if (action.type == ave::ui::UIRuntime::ActionType::ValueChanged) {
+        Jni_TriggerScriptValueMethod(action.target, action.method, action.source_id, action.value);
+    }
+}
+
+void MinimalVulkanTriangle::updateXRUiPointer()
+{
+    if (!openxr_render_backend_.HasGraphics() || !openxr_render_backend_.HasSwapchain()) {
+        if (xr_ui_trigger_down_ || xr_ui_captured_) {
+            ui_runtime_.HandlePointerCancel();
+        }
+        xr_ui_trigger_down_ = false;
+        xr_ui_captured_ = false;
+        return;
+    }
+
+    auto const& input = openxr_runtime_.InputState();
+    bool const trigger_pressed = input.right.trigger > 0.65f;
+    bool const trigger_released = input.right.trigger < 0.35f;
+    if (openxr_render_backend_.SwapchainWidth() > 0 && openxr_render_backend_.SwapchainHeight() > 0) {
+        ui_runtime_.SetInputViewportSize(openxr_render_backend_.SwapchainWidth(),
+                                         openxr_render_backend_.SwapchainHeight(),
+                                         0);
+    }
+    float x_ndc = 0.0f;
+    float y_ndc = 0.0f;
+    bool const has_hit = openxr_render_backend_.TryGetXRUiPointerNdc(x_ndc, y_ndc);
+
+    if (!xr_ui_trigger_down_ && trigger_pressed) {
+        xr_ui_trigger_down_ = true;
+        if (has_hit) {
+            auto action = ui_runtime_.HandlePointerNdcDown(x_ndc, y_ndc);
+            xr_ui_captured_ = action.has_value();
+            if (action.has_value()) {
+                dispatchUiAction(*action);
+            }
+        } else {
+            xr_ui_captured_ = false;
+        }
+        return;
+    }
+
+    if (xr_ui_trigger_down_ && !trigger_released) {
+        if (xr_ui_captured_ && has_hit) {
+            auto action = ui_runtime_.HandlePointerNdcMove(x_ndc, y_ndc);
+            if (action.has_value()) {
+                dispatchUiAction(*action);
+            }
+        }
+        return;
+    }
+
+    if (xr_ui_trigger_down_ && trigger_released) {
+        xr_ui_trigger_down_ = false;
+        if (xr_ui_captured_) {
+            auto action = has_hit ? ui_runtime_.HandlePointerNdcUp(x_ndc, y_ndc)
+                                  : ui_runtime_.HandlePointerCancel();
+            xr_ui_captured_ = false;
+            if (action.has_value()) {
+                dispatchUiAction(*action);
+            }
+        } else {
+            ui_runtime_.HandlePointerCancel();
+        }
+    }
+}
+
 bool MinimalVulkanTriangle::create(AAssetManager* assets,
                                    std::string project_path,
                                    void* android_application_vm,
@@ -86,7 +158,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         }
         ui_touch_captured_ = true;
         if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+            dispatchUiAction(*action_info);
         }
         return true;
     }
@@ -101,7 +173,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         if (ui_touch_captured_) {
             auto action_info = ui_runtime_.HandlePointerMove(x, y);
             if (action_info.has_value() && action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-                Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+                dispatchUiAction(*action_info);
             }
             return true;
         }
@@ -110,7 +182,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
             return false;
         }
         if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
+            dispatchUiAction(*action_info);
         }
         return true;
     }
@@ -125,12 +197,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
             return true;
         }
 
-        if (action_info->type == ave::ui::UIRuntime::ActionType::Click) {
-            LOGI("UI click hit, trigger script target=%s method=%s", action_info->target.c_str(), action_info->method.c_str());
-            Jni_TriggerScriptMethod(action_info->target, action_info->method);
-        } else if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-            Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
-        }
+        dispatchUiAction(*action_info);
         return true;
     }
     auto action_info = ui_runtime_.HandlePointerUp(x, y);
@@ -138,11 +205,7 @@ bool MinimalVulkanTriangle::onTouchEvent(float x, float y, int32_t action, int32
         return false;
     }
 
-    if (action_info->type == ave::ui::UIRuntime::ActionType::Click) {
-        Jni_TriggerScriptMethod(action_info->target, action_info->method);
-    } else if (action_info->type == ave::ui::UIRuntime::ActionType::ValueChanged) {
-        Jni_TriggerScriptValueMethod(action_info->target, action_info->method, action_info->source_id, action_info->value);
-    }
+    dispatchUiAction(*action_info);
     return true;
 }
 
@@ -663,6 +726,8 @@ void MinimalVulkanTriangle::drawFrame()
                 render_result = renderer_.RenderFrame(openxr_render_backend_);
                 if (render_result == ave::render::FrameGraphRenderResult::Success) {
                     xr_frame_rendered = true;
+                    std::lock_guard<std::recursive_mutex> lock(m_scene_mutex);
+                    updateXRUiPointer();
                 }
             }
             if (!xr_frame_rendered) {

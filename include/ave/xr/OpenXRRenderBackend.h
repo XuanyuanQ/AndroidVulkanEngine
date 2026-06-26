@@ -36,6 +36,15 @@ public:
     void* VulkanDeviceHandle() const noexcept { return xr_vulkan_device_; }
     uint32_t GraphicsQueueFamilyIndex() const noexcept { return xr_queue_family_index_; }
     bool SupportsDynamicRendering() const noexcept { return xr_supports_dynamic_rendering_; }
+    uint32_t SwapchainWidth() const noexcept { return xr_swapchain_width_; }
+    uint32_t SwapchainHeight() const noexcept { return xr_swapchain_height_; }
+    bool TryGetXRUiPointerNdc(float& out_x_ndc, float& out_y_ndc) const;
+    void UpdateXRUiPointerRay();
+    bool IsXRUiPointerActive() const noexcept;
+    bool HasXRUiPointerHit() const noexcept { return xr_ui_pointer_has_hit_; }
+    glm::vec3 XRUiPointerRayOrigin() const noexcept { return xr_ui_pointer_ray_origin_; }
+    glm::vec3 XRUiPointerRayEnd() const noexcept { return xr_ui_pointer_ray_end_; }
+    glm::vec3 XRUiPointerHitPosition() const noexcept { return xr_ui_pointer_hit_position_; }
 
     bool BeginRuntimeFrame(core::FrameData const& frame);
     void EndRuntimeFrame();
@@ -59,6 +68,10 @@ private:
     float xr_origin_yaw_radians_ = 0.0f;
     int64_t xr_last_input_time_ = 0;
     uint64_t xr_locomotion_log_counter_ = 0;
+    bool xr_ui_pointer_has_hit_ = false;
+    glm::vec3 xr_ui_pointer_ray_origin_{0.0f, 0.0f, 0.0f};
+    glm::vec3 xr_ui_pointer_ray_end_{0.0f, 0.0f, -1.0f};
+    glm::vec3 xr_ui_pointer_hit_position_{0.0f, 0.0f, -1.0f};
     void* xr_vulkan_instance_ = nullptr;
     void* xr_vulkan_device_ = nullptr;
     void* xr_physical_device_ = nullptr;
