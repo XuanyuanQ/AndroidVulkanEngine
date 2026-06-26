@@ -11,7 +11,7 @@
     </GameObject>
 
     <GameObject id="room" name="Viking Room">
-        <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+        <Transform position="0,0.55,0" rotation="0,0,0" scale="1,1,1" />
         
         <MeshRenderer 
             mesh="meshes/viking_room.obj" 
@@ -25,39 +25,94 @@
             receives_shadow="true"/>
     </GameObject>
     
-    <GameObject id="Tree" name="Tree">
-        <Transform position="0,0.0,0" rotation="90,0,0" scale="2,2,2" />
-        <GameObject id="tree_stem" name="tree stem">
-            <Transform position="0.0,0,0" rotation="0,0,0" scale="1,1,1" />
-            
-            <MeshRenderer 
-                mesh="meshes/47-mapletree/MapleTreeStem.obj" 
-                material="materials/tree_stem.material.xml"
-                visible="true"
-                casts_shadow="true"
-                receives_shadow="true"/>
-        </GameObject>
-
-        <GameObject id="tree_leaves" name="tree leaves">
-            <Transform position="0.0,0,0" rotation="0,0,0" scale="1,1,1" />
-            
-            <MeshRenderer 
-                mesh="meshes/47-mapletree/MapleTreeLeaves.obj" 
-                material="materials/tree_leaves.material.xml"
-                visible="true"
-                casts_shadow="true"
-                receives_shadow="true"/>
-        </GameObject>
-    </GameObject>
-
     <GameObject id="Ground" name="Ground">
-        <Transform position="0,-5,0" rotation="0,0,0" scale="12,1,12" />
+        <Transform position="0,0,0" rotation="0,0,0" scale="14,1,14" />
         <MeshRenderer 
             mesh="Plane" 
             visible="true"
             casts_shadow="true"
             receives_shadow="true" />
         <!-- <Script class="com.example.trianglegame.PlayerController"/> -->
+    </GameObject>
+
+    <GameObject id="forest_tree_back_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-3.84,1.0,-3.04" rotation="0,24,0" scale="1.0,1.0,1.0" />
+    </GameObject>
+
+    <GameObject id="forest_tree_back_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="3.92,1.0,-2.80" rotation="0,-18,0" scale="0.95,0.95,0.95" />
+    </GameObject>
+
+    <GameObject id="forest_tree_left_mid" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-4.64,1.0,0.64" rotation="0,72,0" scale="1.05,1.05,1.05" />
+    </GameObject>
+
+    <GameObject id="forest_tree_right_mid" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="4.48,1.0,0.80" rotation="0,-64,0" scale="0.90,0.90,0.90" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-2.96,1.0,3.68" rotation="0,132,0" scale="1.0,1.0,1.0" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="3.04,1.0,3.52" rotation="0,-116,0" scale="0.80,0.80,0.80" />
+    </GameObject>
+
+    <GameObject id="forest_tree_far_back" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="0.40,1.0,-4.96" rotation="0,8,0" scale="0.70,0.70,0.70" />
+    </GameObject>
+
+    <GameObject id="forest_tree_far_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-5.60,1.0,-0.96" rotation="0,48,0" scale="0.72,0.72,0.72" />
+    </GameObject>
+
+    <GameObject id="forest_tree_inner_back_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-2.24,1.0,-2.32" rotation="0,-36,0" scale="0.58,0.58,0.58" />
+    </GameObject>
+
+    <GameObject id="forest_tree_inner_back_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="2.32,1.0,-2.16" rotation="0,42,0" scale="0.62,0.62,0.62" />
+    </GameObject>
+
+    <GameObject id="forest_tree_inner_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-2.56,1.0,1.44" rotation="0,96,0" scale="0.64,0.64,0.64" />
+    </GameObject>
+
+    <GameObject id="forest_tree_inner_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="2.48,1.0,1.36" rotation="0,-88,0" scale="0.60,0.60,0.60" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_center_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-1.44,1.0,4.40" rotation="0,154,0" scale="0.66,0.66,0.66" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_center_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="1.52,1.0,4.32" rotation="0,-148,0" scale="0.68,0.68,0.68" />
+    </GameObject>
+
+    <GameObject id="forest_tree_far_back_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-4.72,1.0,-4.88" rotation="0,18,0" scale="0.82,0.82,0.82" />
+    </GameObject>
+
+    <GameObject id="forest_tree_far_back_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="4.96,1.0,-4.64" rotation="0,-28,0" scale="0.78,0.78,0.78" />
+    </GameObject>
+
+    <GameObject id="forest_tree_far_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="5.76,1.0,-0.72" rotation="0,-52,0" scale="0.74,0.74,0.74" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_far_left" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-4.96,1.0,4.64" rotation="0,118,0" scale="0.70,0.70,0.70" />
+    </GameObject>
+
+    <GameObject id="forest_tree_front_far_right" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="5.12,1.0,4.48" rotation="0,-128,0" scale="0.76,0.76,0.76" />
+    </GameObject>
+
+    <GameObject id="forest_tree_back_center" prefab="prefabs/maple_tree.prefab.xml">
+        <Transform position="-1.44,1.0,-4.32" rotation="0,12,0" scale="0.64,0.64,0.64" />
     </GameObject>
 
     <GameObject id="HierarchyPivot" name="Hierarchy Pivot">

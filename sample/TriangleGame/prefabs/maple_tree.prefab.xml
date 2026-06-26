@@ -1,0 +1,29 @@
+<Prefab name="MapleTreePrefab">
+    <GameObject id="MapleTreeRoot" name="Maple Tree">
+        <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+
+        <GameObject id="MapleTreeModel" name="Maple Tree Model">
+            <Transform position="0,0,0" rotation="90,0,0" scale="2,2,2" />
+
+            <GameObject id="MapleTreeStem" name="Maple Tree Stem">
+                <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+                <MeshRenderer
+                    mesh="meshes/47-mapletree/MapleTreeStem.obj"
+                    material="materials/tree_stem.material.xml"
+                    visible="true"
+                    casts_shadow="true"
+                    receives_shadow="true" />
+            </GameObject>
+
+            <GameObject id="MapleTreeLeaves" name="Maple Tree Leaves">
+                <Transform position="0,0,0" rotation="0,0,0" scale="1,1,1" />
+                <MeshRenderer
+                    mesh="meshes/47-mapletree/MapleTreeLeaves.obj"
+                    material="materials/tree_leaves.material.xml"
+                    visible="true"
+                    casts_shadow="true"
+                    receives_shadow="true" />
+            </GameObject>
+        </GameObject>
+    </GameObject>
+</Prefab>
